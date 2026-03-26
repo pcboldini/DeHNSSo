@@ -21,9 +21,14 @@ This is an extended and refactored version of [DeHNSSo](https://doi.org/10.1016/
 ### Inflow
 - **Phase reference** — inflow eigenfunction phase can be referenced to wall pressure (`'pwall'`) or streamwise velocity maximum (`'umax'`) via `Stab.phaseRef`
 
+### Spectral content
+- **3D support** — spanwise wavenumber modes (N > 0) fully supported for cross-flow instability analysis; beta-dependent LHS terms assembled as separate matrices (MLA3, MLA4) and combined at solve time
+
 ### Computational efficiency
 - **LHS matrix reuse** — pass the assembled LHS back across calls via `Opt.rerun = 'on'`; avoids full matrix reassembly for parameter sweeps (amplitude, actuation, frequency)
 - **LU factorisation cache** — factorisations are cached per mode and reused across iterations; reused across runs when `omega`/`beta` are unchanged (`Opt.lu_mode`: `'full'`, `'auto'`, `'none'`)
+- **Parallel assembly and solve** — `Opt.parfor = 'on'` parallelises LHS station assembly and mode solve (auto-detected; requires Parallel Computing Toolbox)
+- **GPU acceleration** — `Opt.gpu = 'on'` solves on GPU via `gpuArray \`; beneficial for ny ≥ 80 on NVIDIA GPUs (auto-detected; requires PCT)
 - **Vectorised BC assembly** — boundary condition rows applied with precomputed index vectors, eliminating redundant loops in the LHS assembly
 - **MFD_diff compression** — the mean-flow distortion LHS is stored as a difference matrix, reducing stored memory by 49%
 - **7.7x speedup** over the heritage version (Blasius test case, nx=800, ny=40, M=1)
@@ -146,8 +151,6 @@ Optional acceleration (requires Parallel Computing Toolbox):
 Features planned for future releases:
 
 - **Curvilinear mesh pipeline** — full interpolation from external CFD solvers (OpenFOAM, etc.) onto body-fitted Malik–Chebyshev grids (in progress)
-- **3D cases** — spanwise wavenumber modes (N > 0) for cross-flow instability
-- **`LOAD` inflow condition** — restart from a saved stability result
 
 If you are interested in contributing or collaborating, contact P.C.Boldini@tudelft.nl.
 
