@@ -30,7 +30,93 @@ StabRes.p      = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
 
 if ~exist('Opt','var') || ~isfield(Opt,'bc_top'); bc_top = 'dirichlet'; else; bc_top = Opt.bc_top; end
 
-if Stab.IC=="ILST"
+if Stab.IC=="LOAD"
+    % Load inflow condition from a previously saved StabRes or phiIC file.
+    % The file must be specified via Stab.ICfile and contain either:
+    %   - a variable 'StabRes' with fields u,v,w,p of size [nf x ny x nx], or
+    %   - a variable 'phiIC'   of size [nf x 4*ny] (concatenated inflow eigenvectors).
+    %
+    % The loaded result must have matching ny and nf (same M, N, omega_0, beta_0).
+
+    assert(isfield(Stab,'ICfile') && ~isempty(Stab.ICfile), ...
+        'Stab.ICfile must be set when Stab.IC = ''LOAD''.');
+    assert(isfile(Stab.ICfile), 'ICfile not found: %s', Stab.ICfile);
+
+    loaded = load(Stab.ICfile);
+
+    if isfield(loaded,'phiIC')
+        % Direct load of phiIC [nf x 4*ny]
+        phiIC_load = loaded.phiIC;
+        assert(size(phiIC_load,1) == Mode.nf && size(phiIC_load,2) == 4*StabGrid.ny, ...
+            'Loaded phiIC size [%d x %d] does not match expected [%d x %d].', ...
+            size(phiIC_load,1), size(phiIC_load,2), Mode.nf, 4*StabGrid.ny);
+        ny = StabGrid.ny;
+        for j = 1:Mode.nf
+            StabRes.u(j,:,1) = phiIC_load(j,      1:ny);
+            StabRes.v(j,:,1) = phiIC_load(j,   ny+1:2*ny);
+            StabRes.w(j,:,1) = phiIC_load(j, 2*ny+1:3*ny);
+            StabRes.p(j,:,1) = phiIC_load(j, 3*ny+1:4*ny);
+        end
+
+    elseif isfield(loaded,'StabRes')
+        SR = loaded.StabRes;
+        assert(size(SR.u,1) == Mode.nf && size(SR.u,2) == StabGrid.ny, ...
+            'Loaded StabRes.u size [%d x %d x ...] does not match expected [%d x %d x ...].', ...
+            size(SR.u,1), size(SR.u,2), Mode.nf, StabGrid.ny);
+        for j = 1:Mode.nf
+            StabRes.u(j,:,1) = SR.u(j,:,1);
+            StabRes.v(j,:,1) = SR.v(j,:,1);
+            StabRes.w(j,:,1) = SR.w(j,:,1);
+            StabRes.p(j,:,1) = SR.p(j,:,1);
+        end
+
+    else
+        error('ICfile must contain a variable named ''StabRes'' or ''phiIC''.');
+    end
+
+    % Apply amplitude scaling and phase reference for physical modes
+    [~, nonzeromodesic] = find(Stab.A0 > 0);
+    for j = flip(nonzeromodesic)
+        if j >= round(Mode.nf/2)
+            % Normalise by max(|u|) before scaling by A0
+            y_int  = linspace(StabGrid.y(1), StabGrid.y(end), 4000);
+            u1int  = interp1(StabGrid.y, abs(StabRes.u(j,:,1)), y_int, 'spline');
+            ampltd = max(abs(u1int));
+            if ampltd > 0
+                StabRes.u(j,:,1) = StabRes.u(j,:,1) / ampltd;
+                StabRes.v(j,:,1) = StabRes.v(j,:,1) / ampltd;
+                StabRes.w(j,:,1) = StabRes.w(j,:,1) / ampltd;
+                StabRes.p(j,:,1) = StabRes.p(j,:,1) / ampltd;
+            end
+            StabRes.u(j,:,1) = Stab.A0(j) .* StabRes.u(j,:,1);
+            StabRes.v(j,:,1) = Stab.A0(j) .* StabRes.v(j,:,1);
+            StabRes.w(j,:,1) = Stab.A0(j) .* StabRes.w(j,:,1);
+            StabRes.p(j,:,1) = Stab.A0(j) .* StabRes.p(j,:,1);
+            StabRes.phi(j,:,1) = [StabRes.u(j,:,1) StabRes.v(j,:,1) StabRes.w(j,:,1) StabRes.p(j,:,1)];
+            switch lower(Stab.phaseRef)
+                case 'pwall'
+                    theta0 = angle(StabRes.p(j,end,1));
+                case 'umax'
+                    [~,iy] = max(abs(StabRes.u(j,:,1)));
+                    theta0 = angle(StabRes.u(j,iy,1));
+                otherwise
+                    error('Unknown phaseRef option');
+            end
+            StabRes.phi(j,:,1) = StabRes.phi(j,:,1) * exp(-1i*theta0);
+        else
+            % Conjugate mode
+            j2 = round(Mode.nf/2) - (j - round(Mode.nf/2));
+            StabRes.u(j,:,1)   = conj(StabRes.u(j2,:,1));
+            StabRes.v(j,:,1)   = conj(StabRes.v(j2,:,1));
+            StabRes.w(j,:,1)   = conj(StabRes.w(j2,:,1));
+            StabRes.p(j,:,1)   = conj(StabRes.p(j2,:,1));
+            StabRes.alpha(j,1) = -conj(StabRes.alpha(j2,1));
+            StabRes.phi(j,:,1) = conj(StabRes.phi(j2,:,1));
+        end
+    end
+    fprintf('Initialising with LOAD solution from: %s\n', Stab.ICfile);
+
+elseif Stab.IC=="ILST"
     [~,nonzeromodesic]= find(Stab.A0>0);
 
     for j = flip(nonzeromodesic) %Run initial condition for all nonzero modes
@@ -68,16 +154,13 @@ if Stab.IC=="ILST"
     end 
     
     if max(abs(Stab.bcw(2:end,:)))==0
-    fprintf('Initialising with ILST solution at inflow. \n')
+        fprintf('Initialising with ILST solution at inflow. \n')
     else
-    fprintf('Initialising with ILST solution at inflow and non-homogeneous b.c. at wall. \n')
+        fprintf('Initialising with ILST solution at inflow and non-homogeneous b.c. at wall. \n')
     end
 
 else
-
-fprintf('Error: no valid inflow condition. \n')
-return
-
+    error('Unknown inflow condition Stab.IC = ''%s''. Valid options: ''ILST'', ''LOAD''.', Stab.IC);
 end
 
 % nonzero modes are those initiated at inflow + those forced at wall

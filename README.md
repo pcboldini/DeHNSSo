@@ -103,7 +103,9 @@ Set in the caller before calling `main()`:
 | `Opt.Conv` | `1e-4` | Convergence criterion |
 | `Opt.lu_mode` | `'full'` | LU cache strategy: `'full'`, `'auto'`, `'none'` |
 | `Opt.rerun` | `'off'` | Reuse LHS from previous run: `'on'` or `'off'` |
-| `Opt.plot` | `true` | Intermediate plots during iteration |
+| `Opt.parfor` | auto | Parallel LHS/solve: `'on'` or `'off'` (auto-detected) |
+| `Opt.gpu` | auto | GPU solve via gpuArray: `'on'` or `'off'` (auto-detected) |
+| `Opt.plot` | `'on'` | Intermediate plots: `'on'` or `'off'` |
 
 See [docs/user_guide.md](docs/user_guide.md) for a full parameter reference.
 
@@ -120,13 +122,19 @@ During a run, the solver produces:
 
 ## Performance
 
-Blasius BL test case (nx=800, ny=40, M=1):
+Blasius BL test case (nx=800, ny=40, M=1, sequential):
 
 | Metric | Heritage | v2 |
 |---|---|---|
 | Total time | 194.7 s | 25.2 s (**7.7x faster**) |
 | LHS stored memory | 224.4 MB | 115.4 MB (**49% less**) |
 | Non-LHS memory | 54.4 MB | 10.6 MB (**5.1x less**) |
+
+For the nonlinear case (M=5): heritage 785.8 s → v2 88.5 s (**8.8x faster**).
+
+Optional acceleration (requires Parallel Computing Toolbox):
+- `Opt.parfor = 'on'` — parallelises LHS station assembly and mode solve; effective for ny ≥ 80 or many modes
+- `Opt.gpu = 'on'` — GPU solve via `gpuArray \`; effective for ny ≥ 80 on NVIDIA GPUs
 
 ## Documentation
 
@@ -139,8 +147,6 @@ Features planned for future releases:
 
 - **Curvilinear mesh pipeline** — full interpolation from external CFD solvers (OpenFOAM, etc.) onto body-fitted Malik–Chebyshev grids (in progress)
 - **3D cases** — spanwise wavenumber modes (N > 0) for cross-flow instability
-- **GPU acceleration** — sparse matrix solve on GPU via MATLAB gpuArray
-- **Parallel mode loop** — `parfor` over modes for multi-core speedup
 - **`LOAD` inflow condition** — restart from a saved stability result
 
 If you are interested in contributing or collaborating, contact P.C.Boldini@tudelft.nl.

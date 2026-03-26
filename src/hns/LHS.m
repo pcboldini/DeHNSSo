@@ -1,422 +1,108 @@
-function [MLAMFD,MLA1,MLA2] = LHS(BF,Bound,Grid,Init,Stab,StabRes,Opt)
+function [MLAMFD,MLA1,MLA2,MLA3,MLA4] = LHS(BF,Bound,Grid,Init,Stab,StabRes,Opt)
 %LHS  Assemble the global sparse LHS matrices for the HNS system.
 %
-%   [MLAMFD, MLA1, MLA2] = LHS(BF, Bound, Grid, Init, Stab, StabRes)
+%   [MLAMFD, MLA1, MLA2, MLA3, MLA4] = LHS(BF, Bound, Grid, Init, Stab, StabRes, Opt)
 %
 %   Constructs the block-pentadiagonal LHS operator from local coefficient
 %   matrices (Ai..Gi) at each streamwise station using 4th-order FD stencils.
 %   Sparse triplets are accumulated in cell arrays (O(n) cost).
 %
+%   Parallel assembly controlled by Opt.parfor:
+%     true  — parfor over stations i=2:nx (requires Parallel Computing Toolbox)
+%     false — standard for loop with progress reporting
+%
 %   Outputs:
 %     MLAMFD  [N x N] sparse — LHS for the mean-flow-distortion (omega=0, beta=0)
 %     MLA1    [N x N] sparse — base LHS (common to all modes)
-%     MLA2    [N x N] sparse — omega-dependent part (ML = MLA1 + omega*MLA2)
+%     MLA2    [N x N] sparse — omega-dependent part  (ML = MLA1 + omega*MLA2)
+%     MLA3    [N x N] sparse — beta-dependent part   (ML = MLA1 + ... + beta*MLA3)
+%     MLA4    [N x N] sparse — beta^2-dependent part (ML = MLA1 + ... + beta^2*MLA4)
 %   where N = 4 * ny * nx.
+%   For 2D cases (N=0, all beta=0), MLA3 and MLA4 are empty sparse matrices.
 
-% Pre-allocate cell arrays for sparse triplets (avoids O(n^2) concatenation)
-nx = Grid.nx;
-ny = Grid.ny;
+nx    = Grid.nx;
+ny    = Grid.ny;
 bsize = 4*ny;
 
+if ~isfield(Opt,'parfor'); Opt.parfor = 'off'; end
+
+% Pre-allocate cell arrays for sparse triplets (avoids O(n^2) concatenation)
 cell_i1MFD = cell(nx,1);  cell_j1MFD = cell(nx,1);  cell_s1MFD = cell(nx,1);
 cell_i1    = cell(nx,1);  cell_j1    = cell(nx,1);  cell_s1    = cell(nx,1);
 cell_i2    = cell(nx,1);  cell_j2    = cell(nx,1);  cell_s2    = cell(nx,1);
 cell_i3    = cell(nx,1);  cell_j3    = cell(nx,1);  cell_s3    = cell(nx,1);
 cell_i4    = cell(nx,1);  cell_j4    = cell(nx,1);  cell_s4    = cell(nx,1);
 
-bufc   = Bound.bufc;
-bufp   = Bound.bufp;
-bufs   = Bound.bufs;
-bufsp  = Bound.bufsp;
+% Chebyshev/Malik grid: index 1 = freestream (y=H), index ny = wall (y=0).
+bc_top     = [1, ny+1, 2*ny+1];
+bc_top_mfd = [1, 2*ny+1];
+bc_wall    = [ny, 2*ny, 3*ny];
+neumann_top = isfield(Opt,'bc_top') && strcmpi(Opt.bc_top,'neumann');
 
-iu = Init.iu;
-D1 = Grid.D1;
-D2 = Grid.D2;
-I  = Stab.I;
-Z  = Stab.Z;
+iu  = Init.iu;
+D1  = Grid.D1;
+D2  = Grid.D2;
+I   = Stab.I;
+Z   = Stab.Z;
 dxi = Grid.dxi;
-Re = BF.Re;
+Re  = BF.Re;
 
-% Pre-allocate local block matrices
-% Chebyshev D1/D2 are dense → full arithmetic is faster for large ny
-% FD D1/D2 are sparse (bandwidth 5) → keep sparse to exploit structure
+% Use full (dense) arithmetic for large Chebyshev operators
 D1_is_sparse = issparse(Grid.D1) && (nnz(Grid.D1) < 0.2 * ny^2);
 use_full = (ny >= 60) && ~D1_is_sparse;
-
-ML1MFD = spalloc(bsize, bsize*nx, 4*(3*ny^2+4*ny)+7*ny^2+4*ny);
-ML1    = spalloc(bsize, bsize*nx, 4*(3*ny^2+4*ny)+7*ny^2+4*ny);
-ML2    = spalloc(bsize, bsize*nx, 3*ny);
-ML3    = spalloc(bsize, bsize*nx, 5*ny);
-ML4    = spalloc(bsize, bsize*nx, 3*ny);
-
-% Convert operators to full if beneficial
 if use_full
     D1f = full(D1);  D2f = full(D2);  If = full(I);  Zf = full(Z);
 else
     D1f = D1;  D2f = D2;  If = I;  Zf = Z;
 end
 
-% Precompute BC row indices.
-% Chebyshev/Malik grid: index 1 = freestream (y=H), index ny = wall (y=0).
-%   freestream row for variable k:  (k-1)*ny+1  (k=1,2,3 → rows 1, ny+1, 2*ny+1)
-%   wall row for variable k:         k*ny       (k=1,2,3 → rows ny, 2*ny, 3*ny)
-% For MFD (omega=0,beta=0), v-freestream BC is transpiration → skip k=2 freestream row.
-bc_top     = [1, ny+1, 2*ny+1];   % freestream rows: all three velocity components
-bc_top_mfd = [1, 2*ny+1];         % freestream rows: MFD (skip v, k=2)
-bc_wall    = [ny, 2*ny, 3*ny];    % wall rows: all three velocity components
-neumann_top = isfield(Opt,'bc_top') && strcmpi(Opt.bc_top,'neumann');
+%% Station i=1: inflow — identity block (no PDE, just stores IC)
+[ii,jj,ss] = find(speye(bsize));
+cell_i1MFD{1} = reshape(ii,[],1);  cell_j1MFD{1} = reshape(jj,[],1);  cell_s1MFD{1} = reshape(ss,[],1);
+cell_i1{1}    = reshape(ii,[],1);  cell_j1{1}    = reshape(jj,[],1);  cell_s1{1}    = reshape(ss,[],1);
+cell_i2{1}    = zeros(0,1);  cell_j2{1}    = zeros(0,1);  cell_s2{1}    = zeros(0,1);
+cell_i3{1}    = zeros(0,1);  cell_j3{1}    = zeros(0,1);  cell_s3{1}    = zeros(0,1);
+cell_i4{1}    = zeros(0,1);  cell_j4{1}    = zeros(0,1);  cell_s4{1}    = zeros(0,1);
 
-% --- Before the loop ---
-t_lhs_start = tic;
-lastPerc = 0;
-
-for i=1:nx
-
- %% Prepare LHS building — use diag() for full, spdiags() for sparse
-
-    if use_full
-        U   = diag(BF.U(:,i));
-        dxU = diag(BF.dxU(:,i));
-        dyU = diag(BF.dyU(:,i));
-        V   = diag(BF.V(:,i));
-        dxV = diag(BF.dxV(:,i));
-        dyV = diag(BF.dyV(:,i));
-        W   = diag(BF.W(:,i));
-        dxW = diag(BF.dxW(:,i));
-        dyW = diag(BF.dyW(:,i));
-    else
-        U   = spdiags(BF.U(:,i),   0, ny, ny);
-        dxU = spdiags(BF.dxU(:,i), 0, ny, ny);
-        dyU = spdiags(BF.dyU(:,i), 0, ny, ny);
-        V   = spdiags(BF.V(:,i),   0, ny, ny);
-        dxV = spdiags(BF.dxV(:,i), 0, ny, ny);
-        dyV = spdiags(BF.dyV(:,i), 0, ny, ny);
-        W   = spdiags(BF.W(:,i),   0, ny, ny);
-        dxW = spdiags(BF.dxW(:,i), 0, ny, ny);
-        dyW = spdiags(BF.dyW(:,i), 0, ny, ny);
+%% Stations i=2:nx
+if strcmpi(Opt.parfor, 'on')
+    fprintf('   LHS: assembling stations 2:%d in parallel ...\n', nx);
+    parfor i = 2:nx
+        [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4] = ...
+            lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, dxi, ...
+                        bc_top, bc_top_mfd, bc_wall, neumann_top);
+        cell_i1MFD{i}=ci1MFD; cell_j1MFD{i}=cj1MFD; cell_s1MFD{i}=cs1MFD;
+        cell_i1{i}=ci1;       cell_j1{i}=cj1;       cell_s1{i}=cs1;
+        cell_i2{i}=ci2;       cell_j2{i}=cj2;       cell_s2{i}=cs2;
+        cell_i3{i}=ci3;       cell_j3{i}=cj3;       cell_s3{i}=cs3;
+        cell_i4{i}=ci4;       cell_j4{i}=cj4;       cell_s4{i}=cs4;
     end
+    fprintf('   LHS: parallel assembly done\n');
+else
+    t_lhs = tic;
+    lastPerc = 0;
+    for i = 2:nx
+        [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4] = ...
+            lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, dxi, ...
+                        bc_top, bc_top_mfd, bc_wall, neumann_top);
+        cell_i1MFD{i}=ci1MFD; cell_j1MFD{i}=cj1MFD; cell_s1MFD{i}=cs1MFD;
+        cell_i1{i}=ci1;       cell_j1{i}=cj1;       cell_s1{i}=cs1;
+        cell_i2{i}=ci2;       cell_j2{i}=cj2;       cell_s2{i}=cs2;
+        cell_i3{i}=ci3;       cell_j3{i}=cj3;       cell_s3{i}=cs3;
+        cell_i4{i}=ci4;       cell_j4{i}=cj4;       cell_s4{i}=cs4;
 
- % Local transformations
-    xix  = Grid.xix(:,i);
-    etax = Grid.etax(:,i);
-    xiy  = Grid.xiy(:,i);
-    etay = Grid.etay(:,i);
-    xixx = Grid.xixx(:,i);
-    xiyy = Grid.xiyy(:,i);
-    etaxx= Grid.etaxx(:,i);
-    etayy= Grid.etayy(:,i);
-
- % Buffer
-    bufs_i  = bufs(:,i);
-    bufsp_i = bufsp(:,i);
-    bufc_i  = bufc(i);
-    bufp_i  = bufp(i);
-
- % Create common terms (ct) for matrices A-F
-    Act =  U.*etax*D1f...
-          +V.*etay*D1f...
-          -1/Re.*(etax.^2+etay.^2).*D2f...
-          -1/Re.*(etaxx+etayy).*D1f;
-
-    Ect =  U.*xix...
-          +V.*xiy...
-          -1/Re*(xixx+xiyy).*I...
-          -1/Re*(2*etax.*xix+2*etay.*xiy).*D1f;
-
-%% construct coefficient matrices
-    Ai=[(Act+dxU).*bufs_i       dyU.*bufs_i        Zf    etax.*D1f.*bufs_i
-            dxV.*bufs_i        (Act+dyV).*bufs_i   Zf    etay.*D1f.*bufs_i
-            dxW.*bufs_i         dyW.*bufs_i       Act.*bufs_i Zf
-           (etax.*D1f).*bufsp_i (etay.*D1f).*bufsp_i Zf             Zf];
-
-    Bi=[-iu*If.*bufs_i  Zf  Zf  Zf
-         Zf  -iu*If.*bufs_i Zf  Zf
-         Zf  Zf  -iu*If.*bufs_i Zf
-         Zf  Zf                Zf  Zf];
-
-    Ci=[iu*W.*bufs_i    Zf   Zf    Zf
-         Zf    iu*W.*bufs_i  Zf    Zf
-         Zf    Zf   iu*W.*bufs_i   iu*If.*bufs_i
-         Zf    Zf   iu*If.*bufsp_i  Zf];
-
-    Di=[If/Re.*bufs_i  Zf  Zf  Zf
-         Zf  If/Re.*bufs_i Zf  Zf
-         Zf  Zf  If/Re.*bufs_i Zf
-         Zf                      Zf  Zf  Zf];
-
-    Ei=[Ect.*bufs_i      Zf        Zf    If.*xix.*bufs_i
-        Zf       Ect.*bufs_i       Zf    If.*xiy.*bufs_i
-        Zf       Zf        Ect.*bufs_i            Zf
-        If.*xix.*bufsp_i   If.*xiy.*bufsp_i Zf  Zf];
-
-    Fi=[-If/Re.*(xix.^2+xiy.^2).*bufs_i.*bufp_i   Zf       Zf       Zf
-        Zf       -If/Re.*(xix.^2+xiy.^2).*bufs_i.*bufp_i   Zf       Zf
-        Zf       Zf       -If/Re.*(xix.^2+xiy.^2).*bufs_i.*bufp_i   Zf
-        Zf       Zf                                                   Zf       Zf];
-
-    % Ensure pressure is copied downward from the surface
-    if use_full
-        Pres = diag(1-bufsp_i) + diag(-1*(1-bufsp(2:end,i)), -1);
-    else
-        Pres = I.*(1-bufsp_i) + spdiags(-1*(1-bufsp(2:end,i)), -1, ny, ny);
+        perc = floor(i * 100 / nx);
+        if perc >= lastPerc + 25 && perc < 100
+            elapsed = toc(t_lhs);
+            eta = elapsed / i * (nx - i);
+            fprintf('   LHS: %d%% (%.0fs elapsed, ~%.0fs remaining)\n', perc, elapsed, eta);
+            lastPerc = perc;
+        end
     end
-
-    % Set up buffer and embedded boundary method
-    Gi=[If.*(1-bufs_i)+If.*bufs(:,end)*(1-bufc_i) Zf Zf Zf
-        Zf If.*(1-bufs_i) Zf Zf
-        Zf Zf If.*(1-bufs_i)+If.*bufs(:,end)*(1-bufc_i)  Zf
-        Zf Zf Zf Pres];
-
-
-
-    % construct the ML block for station i
-
-    sten=bsize*(i-1)+1:bsize*i; % row coordinates of FD stencil
-    sten1=1:bsize;              % stencil height
-    bc_col0 = bsize*(i-1);     % column offset for BC diagonal entries
-
-    if i==1
-        ML1MFD(sten1,sten)=eye(bsize);
-        ML1(sten1,sten)=eye(bsize);
-        ML2(sten1,sten)=zeros(bsize);
-        ML3(sten1,sten)=zeros(bsize);
-        ML4(sten1,sten)=zeros(bsize);
-
-    elseif (i==2)
-
-        stenr=[sten-bsize sten sten+bsize sten+2*bsize sten+3*bsize];
-
-        ML1MFD(sten1,stenr)=[-3*Ei/(12*dxi)+11*Fi/(12*dxi^2), ...
-                         (Ai-10*Ei/(12*dxi)-20*Fi/(12*dxi^2))+Gi/bufc_i,...
-                             18*Ei/(12*dxi)+ 6*Fi/(12*dxi^2), ...
-                            - 6*Ei/(12*dxi)+ 4*Fi/(12*dxi^2), ...
-                                Ei/(12*dxi)- 1*Fi/(12*dxi^2)]*bufc_i;
-
-        ML1(sten1,stenr)=ML1MFD(sten1,stenr);
-        ML2(sten1,sten)=Bi*bufc_i;
-        ML3(sten1,sten)=Ci*bufc_i;
-        ML4(sten1,sten)=Di*bufc_i;
-
-        ML1MFD(bc_top_mfd,:)=0; ML1(bc_top,:)=0; ML2(bc_top,:)=0; ML3(bc_top,:)=0; ML4(bc_top,:)=0;
-        if neumann_top
-            for k=1:3
-                r = (k-1)*ny+1;
-                cs = bc_col0+(k-1)*ny+1;  ce = bc_col0+k*ny;
-                ML1(r,cs:ce) = D1f(1,:);
-                if k~=2; ML1MFD(r,cs:ce) = D1f(1,:); end  % skip v-freestream for MFD (transpiration)
-            end
-        else
-            for r=bc_top_mfd; ML1MFD(r,bc_col0+r)=1; end
-            for r=bc_top;     ML1(r,   bc_col0+r)=1; end
-        end
-        ML1MFD(bc_wall,:)=0; ML1(bc_wall,:)=0; ML2(bc_wall,:)=0; ML3(bc_wall,:)=0; ML4(bc_wall,:)=0;
-        for r=bc_wall; ML1MFD(r,bc_col0+r)=1; ML1(r,bc_col0+r)=1; end
-
-    elseif (i==nx-1)
-
-        stenr=[sten-2*bsize sten-bsize sten sten+bsize];
-
-        ML1MFD(sten1,stenr)=[Ei/(6*dxi), ...
-                          -6*Ei/(6*dxi)+  Fi/(dxi^2),...
-                       (Ai+3*Ei/(6*dxi)-2*Fi/(dxi^2))+Gi/bufc_i,...
-                           2*Ei/(6*dxi)+  Fi/(dxi^2)]*bufc_i;
-
-        ML1(sten1,stenr)=ML1MFD(sten1,stenr);
-        ML2(sten1,sten)=Bi*bufc_i;
-        ML3(sten1,sten)=Ci*bufc_i;
-        ML4(sten1,sten)=Di*bufc_i;
-
-        ML1MFD(bc_top_mfd,:)=0; ML1(bc_top,:)=0; ML2(bc_top,:)=0; ML3(bc_top,:)=0; ML4(bc_top,:)=0;
-        if neumann_top
-            for k=1:3
-                r = (k-1)*ny+1;
-                cs = bc_col0+(k-1)*ny+1;  ce = bc_col0+k*ny;
-                ML1(r,cs:ce) = D1f(1,:);
-                if k~=2; ML1MFD(r,cs:ce) = D1f(1,:); end  % skip v-freestream for MFD (transpiration)
-            end
-        else
-            for r=bc_top_mfd; ML1MFD(r,bc_col0+r)=1; end
-            for r=bc_top;     ML1(r,   bc_col0+r)=1; end
-        end
-        ML1MFD(bc_wall,:)=0; ML1(bc_wall,:)=0; ML2(bc_wall,:)=0; ML3(bc_wall,:)=0; ML4(bc_wall,:)=0;
-        for r=bc_wall; ML1MFD(r,bc_col0+r)=1; ML1(r,bc_col0+r)=1; end
-
-    elseif (i==nx)
-        stenr=[sten-2*bsize sten-bsize sten];
-
-        ML1MFD(sten1,stenr)=[Ei/(2*dxi)+  Fi/(dxi^2), ...
-                          -4*Ei/(2*dxi)-2*Fi/(dxi^2), ...
-                       (Ai+3*Ei/(2*dxi)+  Fi/(dxi^2))+Gi/bufc_i]*bufc_i;
-
-        ML1(sten1,stenr)=ML1MFD(sten1,stenr);
-        ML2(sten1,sten)=Bi*bufc_i;
-        ML3(sten1,sten)=Ci*bufc_i;
-        ML4(sten1,sten)=Di*bufc_i;
-
-        ML1MFD(bc_top_mfd,:)=0; ML1(bc_top,:)=0; ML2(bc_top,:)=0; ML3(bc_top,:)=0; ML4(bc_top,:)=0;
-        if neumann_top
-            for k=1:3
-                r = (k-1)*ny+1;
-                cs = bc_col0+(k-1)*ny+1;  ce = bc_col0+k*ny;
-                ML1(r,cs:ce) = D1f(1,:);
-                if k~=2; ML1MFD(r,cs:ce) = D1f(1,:); end  % skip v-freestream for MFD (transpiration)
-            end
-        else
-            for r=bc_top_mfd; ML1MFD(r,bc_col0+r)=1; end
-            for r=bc_top;     ML1(r,   bc_col0+r)=1; end
-        end
-        ML1MFD(bc_wall,:)=0; ML1(bc_wall,:)=0; ML2(bc_wall,:)=0; ML3(bc_wall,:)=0; ML4(bc_wall,:)=0;
-        for r=bc_wall; ML1MFD(r,bc_col0+r)=1; ML1(r,bc_col0+r)=1; end
-    elseif i == Bound.stepi-1 && Grid.StepH ~= 0
-        yi = Bound.yi;
-
-        % Values under step height
-        sten1u=[0*ny+((yi+1):ny) 1*ny+((yi+1):ny) 2*ny+((yi+1):ny) 3*ny+((yi+1):ny) ];
-        stenr=[sten-3*bsize sten-2*bsize sten-bsize sten sten+bsize];
-
-        ML1MFD(sten1u,stenr)=[- 1*Ei(sten1u,:)/(12*dxi)-   Fi(sten1u,:)/(12*dxi^2),...
-                               6*Ei(sten1u,:)/(12*dxi)+ 4*Fi(sten1u,:)/(12*dxi^2),...
-                             -18*Ei(sten1u,:)/(12*dxi)+ 6*Fi(sten1u,:)/(12*dxi^2),...
-                  Ai(sten1u,:)+10*Ei(sten1u,:)/(12*dxi)-20*Fi(sten1u,:)/(12*dxi^2)+Gi(sten1u,:)/bufc_i,...
-                               3*Ei(sten1u,:)/(12*dxi)+11*Fi(sten1u,:)/(12*dxi^2)]*bufc_i;
-
-        ML1(sten1u,stenr)=ML1MFD(sten1u,stenr);
-        ML2(sten1u,sten)=Bi(sten1u,:)*bufc_i;
-        ML3(sten1u,sten)=Ci(sten1u,:)*bufc_i;
-        ML4(sten1u,sten)=Di(sten1u,:)*bufc_i;
-
-        % Values above step
-        sten1a=[0*ny+(1:yi) 1*ny+(1:yi) 2*ny+(1:yi) 3*ny+(1:yi) ];
-        stenr=[sten-2*bsize sten-bsize sten sten+bsize sten+2*bsize];
-
-        ML1MFD(sten1a,stenr)=[   Ei(sten1a,:)/(12*dxi)-   Fi(sten1a,:)/(12*dxi^2),...
-                             -8*Ei(sten1a,:)/(12*dxi)+16*Fi(sten1a,:)/(12*dxi^2),...
-                (Ai(sten1a,:)                        -30*Fi(sten1a,:)/(12*dxi^2))+Gi(sten1a,:)/bufc_i,...
-                              8*Ei(sten1a,:)/(12*dxi)+16*Fi(sten1a,:)/(12*dxi^2),...
-                             -  Ei(sten1a,:)/(12*dxi)-   Fi(sten1a,:)/(12*dxi^2)]*bufc_i;
-
-        ML1(sten1a,stenr)=ML1MFD(sten1a,stenr);
-        ML2(sten1a,sten)=Bi(sten1a,:)*bufc_i;
-        ML3(sten1a,sten)=Ci(sten1a,:)*bufc_i;
-        ML4(sten1a,sten)=Di(sten1a,:)*bufc_i;
-
-        ML1MFD(bc_top_mfd,:)=0; ML1(bc_top,:)=0; ML2(bc_top,:)=0; ML3(bc_top,:)=0; ML4(bc_top,:)=0;
-        if neumann_top
-            for k=1:3
-                r = (k-1)*ny+1;
-                cs = bc_col0+(k-1)*ny+1;  ce = bc_col0+k*ny;
-                ML1(r,cs:ce) = D1f(1,:);
-                if k~=2; ML1MFD(r,cs:ce) = D1f(1,:); end  % skip v-freestream for MFD (transpiration)
-            end
-        else
-            for r=bc_top_mfd; ML1MFD(r,bc_col0+r)=1; end
-            for r=bc_top;     ML1(r,   bc_col0+r)=1; end
-        end
-        ML1MFD(bc_wall,:)=0; ML1(bc_wall,:)=0; ML2(bc_wall,:)=0; ML3(bc_wall,:)=0; ML4(bc_wall,:)=0;
-        for r=bc_wall; ML1MFD(r,bc_col0+r)=1; ML1(r,bc_col0+r)=1; end
-
-    elseif i == Bound.stepi && Grid.StepH ~= 0
-        yi = Bound.yi;
-
-        % Values under step height
-        sten1u=[0*ny+((yi+1):ny) 1*ny+((yi+1):ny) 2*ny+((yi+1):ny) 3*ny+((yi+1):ny) ];
-        stenr=[sten-4*bsize sten-3*bsize sten-2*bsize sten-bsize sten];
-
-        ML1MFD(sten1u,stenr)=[+ 3*Ei(sten1u,:)/(12*dxi)+ 11*Fi(sten1u,:)/(12*dxi^2),...
-                             -16*Ei(sten1u,:)/(12*dxi)- 56*Fi(sten1u,:)/(12*dxi^2),...
-                             +36*Ei(sten1u,:)/(12*dxi)+114*Fi(sten1u,:)/(12*dxi^2),...
-                             -48*Ei(sten1u,:)/(12*dxi)-104*Fi(sten1u,:)/(12*dxi^2),...
-                 (Ai(sten1u,:)+25*Ei(sten1u,:)/(12*dxi)+ 35*Fi(sten1u,:)/(12*dxi^2))+Gi(sten1u,:)/bufc_i]*bufc_i;
-
-        ML1(sten1u,stenr)=ML1MFD(sten1u,stenr);
-        ML2(sten1u,sten)=Bi(sten1u,:)*bufc_i;
-        ML3(sten1u,sten)=Ci(sten1u,:)*bufc_i;
-        ML4(sten1u,sten)=Di(sten1u,:)*bufc_i;
-
-        % Values above step
-        sten1a=[0*ny+(1:yi) 1*ny+(1:yi) 2*ny+(1:yi) 3*ny+(1:yi) ];
-        stenr=[sten-2*bsize sten-bsize sten sten+bsize sten+2*bsize];
-
-        ML1MFD(sten1a,stenr)=[Ei(sten1a,:)/(12*dxi)- 1*Fi(sten1a,:)/(12*dxi^2), ...
-                          -8*Ei(sten1a,:)/(12*dxi)+16*Fi(sten1a,:)/(12*dxi^2), ...
-             (Ai(sten1a,:)                        -30*Fi(sten1a,:)/(12*dxi^2))+Gi(sten1a,:)/bufc_i, ...
-                           8*Ei(sten1a,:)/(12*dxi)+16*Fi(sten1a,:)/(12*dxi^2), ...
-                          -1*Ei(sten1a,:)/(12*dxi)- 1*Fi(sten1a,:)/(12*dxi^2)]*bufc_i;
-
-        ML1(sten1a,stenr)=ML1MFD(sten1a,stenr);
-        ML2(sten1a,sten)=Bi(sten1a,:)*bufc_i;
-        ML3(sten1a,sten)=Ci(sten1a,:)*bufc_i;
-        ML4(sten1a,sten)=Di(sten1a,:)*bufc_i;
-
-        ML1MFD(bc_top_mfd,:)=0; ML1(bc_top,:)=0; ML2(bc_top,:)=0; ML3(bc_top,:)=0; ML4(bc_top,:)=0;
-        if neumann_top
-            for k=1:3
-                r = (k-1)*ny+1;
-                cs = bc_col0+(k-1)*ny+1;  ce = bc_col0+k*ny;
-                ML1(r,cs:ce) = D1f(1,:);
-                if k~=2; ML1MFD(r,cs:ce) = D1f(1,:); end  % skip v-freestream for MFD (transpiration)
-            end
-        else
-            for r=bc_top_mfd; ML1MFD(r,bc_col0+r)=1; end
-            for r=bc_top;     ML1(r,   bc_col0+r)=1; end
-        end
-        ML1MFD(bc_wall,:)=0; ML1(bc_wall,:)=0; ML2(bc_wall,:)=0; ML3(bc_wall,:)=0; ML4(bc_wall,:)=0;
-        for r=bc_wall; ML1MFD(r,bc_col0+r)=1; ML1(r,bc_col0+r)=1; end
-    else
-        stenr=[sten-2*bsize sten-bsize sten sten+bsize sten+2*bsize];
-
-        ML1MFD(sten1,stenr)=[Ei/(12*dxi)- 1*Fi/(12*dxi^2), ...
-                          -8*Ei/(12*dxi)+16*Fi/(12*dxi^2), ...
-                        (Ai             -30*Fi/(12*dxi^2))+Gi/bufc_i, ...
-                           8*Ei/(12*dxi)+16*Fi/(12*dxi^2), ...
-                            -Ei/(12*dxi)- 1*Fi/(12*dxi^2)]*bufc_i;
-
-        ML1(sten1,stenr)=ML1MFD(sten1,stenr);
-        ML2(sten1,sten)=Bi*bufc_i;
-        ML3(sten1,sten)=Ci*bufc_i;
-        ML4(sten1,sten)=Di*bufc_i;
-
-        ML1MFD(bc_top_mfd,:)=0; ML1(bc_top,:)=0; ML2(bc_top,:)=0; ML3(bc_top,:)=0; ML4(bc_top,:)=0;
-        if neumann_top
-            for k=1:3
-                r = (k-1)*ny+1;
-                cs = bc_col0+(k-1)*ny+1;  ce = bc_col0+k*ny;
-                ML1(r,cs:ce) = D1f(1,:);
-                if k~=2; ML1MFD(r,cs:ce) = D1f(1,:); end  % skip v-freestream for MFD (transpiration)
-            end
-        else
-            for r=bc_top_mfd; ML1MFD(r,bc_col0+r)=1; end
-            for r=bc_top;     ML1(r,   bc_col0+r)=1; end
-        end
-        ML1MFD(bc_wall,:)=0; ML1(bc_wall,:)=0; ML2(bc_wall,:)=0; ML3(bc_wall,:)=0; ML4(bc_wall,:)=0;
-        for r=bc_wall; ML1MFD(r,bc_col0+r)=1; ML1(r,bc_col0+r)=1; end
-    end
-
-% --- Progress ---
-perc = floor(i * 100 / nx);
-if perc >= lastPerc + 25 && perc < 100
-    elapsed = toc(t_lhs_start);
-    eta = elapsed / i * (nx - i);
-    fprintf('   LHS: %d%% (%.0fs elapsed, ~%.0fs remaining)\n', perc, elapsed, eta);
-    lastPerc = perc;
+    fprintf('   LHS: 100%% (%.1fs total)\n', toc(t_lhs));
 end
 
-% Store triplets in cell arrays (O(1) per iteration instead of O(n))
-[ii,jj,ss] = find(ML1MFD); cell_i1MFD{i} = ii+bsize*(i-1); cell_j1MFD{i} = jj; cell_s1MFD{i} = ss;
-[ii,jj,ss] = find(ML1);    cell_i1{i}    = ii+bsize*(i-1); cell_j1{i}    = jj; cell_s1{i}    = ss;
-[ii,jj,ss] = find(ML2);    cell_i2{i}    = ii+bsize*(i-1); cell_j2{i}    = jj; cell_s2{i}    = ss;
-[ii,jj,ss] = find(ML3);    cell_i3{i}    = ii+bsize*(i-1); cell_j3{i}    = jj; cell_s3{i}    = ss;
-[ii,jj,ss] = find(ML4);    cell_i4{i}    = ii+bsize*(i-1); cell_j4{i}    = jj; cell_s4{i}    = ss;
-
-% Reset local blocks
-ML1MFD(:) = 0; ML1(:) = 0; ML2(:) = 0; ML3(:) = 0; ML4(:) = 0;
-
-end
-
-% --- After the loop ---
-fprintf('   LHS: 100%% (%.1fs total)\n', toc(t_lhs_start));
-
-% Concatenate cell arrays and clear immediately to reduce peak memory
+%% Assemble global sparse matrices from triplets
 N = bsize * nx;
 
 MLAMFD = sparse(cell2mat(cell_i1MFD), cell2mat(cell_j1MFD), cell2mat(cell_s1MFD), N, N);
@@ -427,14 +113,187 @@ clear cell_i1 cell_j1 cell_s1
 
 if any(StabRes.omegavec)
     MLA2 = sparse(cell2mat(cell_i2), cell2mat(cell_j2), cell2mat(cell_s2), N, N);
+else
+    MLA2 = sparse(N, N);
 end
 clear cell_i2 cell_j2 cell_s2
 
 if any(StabRes.betavec)
     MLA3 = sparse(cell2mat(cell_i3), cell2mat(cell_j3), cell2mat(cell_s3), N, N);
     MLA4 = sparse(cell2mat(cell_i4), cell2mat(cell_j4), cell2mat(cell_s4), N, N);
+else
+    MLA3 = sparse(N, N);
+    MLA4 = sparse(N, N);
 end
 clear cell_i3 cell_j3 cell_s3 cell_i4 cell_j4 cell_s4
-clear ML1MFD ML1 ML2 ML3 ML4
+
+end
+
+
+%% Local function: assemble triplets for one station i (i >= 2)
+function [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4] = ...
+    lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, dxi, ...
+                bc_top, bc_top_mfd, bc_wall, neumann_top)
+
+% Base flow diagonal matrices
+if use_full
+    U   = diag(BF.U(:,i));    dxU = diag(BF.dxU(:,i));  dyU = diag(BF.dyU(:,i));
+    V   = diag(BF.V(:,i));    dxV = diag(BF.dxV(:,i));  dyV = diag(BF.dyV(:,i));
+    W   = diag(BF.W(:,i));    dxW = diag(BF.dxW(:,i));  dyW = diag(BF.dyW(:,i));
+else
+    U   = spdiags(BF.U(:,i),   0,ny,ny);  dxU = spdiags(BF.dxU(:,i),0,ny,ny);  dyU = spdiags(BF.dyU(:,i),0,ny,ny);
+    V   = spdiags(BF.V(:,i),   0,ny,ny);  dxV = spdiags(BF.dxV(:,i),0,ny,ny);  dyV = spdiags(BF.dyV(:,i),0,ny,ny);
+    W   = spdiags(BF.W(:,i),   0,ny,ny);  dxW = spdiags(BF.dxW(:,i),0,ny,ny);  dyW = spdiags(BF.dyW(:,i),0,ny,ny);
+end
+
+% Metric coefficients
+xix  = Grid.xix(:,i);   etax = Grid.etax(:,i);
+xiy  = Grid.xiy(:,i);   etay = Grid.etay(:,i);
+xixx = Grid.xixx(:,i);  xiyy = Grid.xiyy(:,i);
+etaxx= Grid.etaxx(:,i); etayy= Grid.etayy(:,i);
+
+% Buffer
+bufs_i  = Bound.bufs(:,i);
+bufsp_i = Bound.bufsp(:,i);
+bufc_i  = Bound.bufc(i);
+bufp_i  = Bound.bufp(i);
+
+% Common terms
+Act = U.*etax*D1f + V.*etay*D1f ...
+    - 1/Re*(etax.^2+etay.^2).*D2f - 1/Re*(etaxx+etayy).*D1f;
+Ect = U.*xix + V.*xiy - 1/Re*(xixx+xiyy).*If ...
+    - 1/Re*(2*etax.*xix+2*etay.*xiy).*D1f;
+
+% Coefficient matrices
+Ai = [(Act+dxU).*bufs_i    dyU.*bufs_i       Zf    etax.*D1f.*bufs_i
+       dxV.*bufs_i         (Act+dyV).*bufs_i  Zf    etay.*D1f.*bufs_i
+       dxW.*bufs_i          dyW.*bufs_i        Act.*bufs_i  Zf
+      (etax.*D1f).*bufsp_i (etay.*D1f).*bufsp_i  Zf   Zf];
+
+Bi = [-iu*If.*bufs_i  Zf             Zf             Zf
+       Zf            -iu*If.*bufs_i  Zf             Zf
+       Zf             Zf            -iu*If.*bufs_i  Zf
+       Zf             Zf             Zf             Zf];
+
+Ci = [iu*W.*bufs_i  Zf           Zf           Zf
+       Zf           iu*W.*bufs_i  Zf           Zf
+       Zf           Zf           iu*W.*bufs_i  iu*If.*bufs_i
+       Zf           Zf           iu*If.*bufsp_i  Zf];
+
+Di = [If/Re.*bufs_i  Zf           Zf           Zf
+       Zf           If/Re.*bufs_i  Zf           Zf
+       Zf           Zf           If/Re.*bufs_i  Zf
+       Zf           Zf           Zf            Zf];
+
+Ei = [Ect.*bufs_i   Zf          Zf          If.*xix.*bufs_i
+       Zf           Ect.*bufs_i  Zf          If.*xiy.*bufs_i
+       Zf           Zf          Ect.*bufs_i  Zf
+      If.*xix.*bufsp_i  If.*xiy.*bufsp_i  Zf  Zf];
+
+Fi = [-If/Re.*(xix.^2+xiy.^2).*bufs_i.*bufp_i  Zf  Zf  Zf
+       Zf  -If/Re.*(xix.^2+xiy.^2).*bufs_i.*bufp_i  Zf  Zf
+       Zf  Zf  -If/Re.*(xix.^2+xiy.^2).*bufs_i.*bufp_i  Zf
+       Zf  Zf  Zf  Zf];
+
+if use_full
+    Pres = diag(1-bufsp_i) + diag(-1*(1-Bound.bufsp(2:end,i)), -1);
+else
+    Pres = If.*(1-bufsp_i) + spdiags(-1*(1-Bound.bufsp(2:end,i)), -1, ny, ny);
+end
+
+Gi = [If.*(1-bufs_i)+If.*Bound.bufs(:,end)*(1-bufc_i)  Zf  Zf  Zf
+       Zf  If.*(1-bufs_i)  Zf  Zf
+       Zf  Zf  If.*(1-bufs_i)+If.*Bound.bufs(:,end)*(1-bufc_i)  Zf
+       Zf  Zf  Zf  Pres];
+
+% Determine stencil: stenr = global column indices, cur_blk = 1-index of current station
+sten = bsize*(i-1)+1 : bsize*i;   % global row (= global col of diagonal block)
+
+if i == 2
+    stenr   = [sten-bsize, sten, sten+bsize, sten+2*bsize, sten+3*bsize];
+    cur_blk = 2;
+    blk1MFD = [-3*Ei/(12*dxi)+11*Fi/(12*dxi^2), ...
+               (Ai-10*Ei/(12*dxi)-20*Fi/(12*dxi^2))+Gi/bufc_i, ...
+                18*Ei/(12*dxi)+ 6*Fi/(12*dxi^2), ...
+               - 6*Ei/(12*dxi)+ 4*Fi/(12*dxi^2), ...
+                   Ei/(12*dxi)- 1*Fi/(12*dxi^2)]*bufc_i;
+
+elseif i == nx-1
+    stenr   = [sten-2*bsize, sten-bsize, sten, sten+bsize];
+    cur_blk = 3;
+    blk1MFD = [   Ei/(6*dxi), ...
+               -6*Ei/(6*dxi)+  Fi/(dxi^2), ...
+               (Ai+3*Ei/(6*dxi)-2*Fi/(dxi^2))+Gi/bufc_i, ...
+                2*Ei/(6*dxi)+  Fi/(dxi^2)]*bufc_i;
+
+elseif i == nx
+    stenr   = [sten-2*bsize, sten-bsize, sten];
+    cur_blk = 3;
+    blk1MFD = [   Ei/(2*dxi)+  Fi/(dxi^2), ...
+               -4*Ei/(2*dxi)-2*Fi/(dxi^2), ...
+               (Ai+3*Ei/(2*dxi)+  Fi/(dxi^2))+Gi/bufc_i]*bufc_i;
+
+else   % interior
+    stenr   = [sten-2*bsize, sten-bsize, sten, sten+bsize, sten+2*bsize];
+    cur_blk = 3;
+    blk1MFD = [ Ei/(12*dxi)- 1*Fi/(12*dxi^2), ...
+               -8*Ei/(12*dxi)+16*Fi/(12*dxi^2), ...
+               (Ai             -30*Fi/(12*dxi^2))+Gi/bufc_i, ...
+                8*Ei/(12*dxi)+16*Fi/(12*dxi^2), ...
+               -  Ei/(12*dxi)- 1*Fi/(12*dxi^2)]*bufc_i;
+end
+
+ncols     = numel(stenr);          % = nblocks * bsize
+blk1      = blk1MFD;              % ML1 identical to ML1MFD except for BCs
+cur_off   = (cur_blk-1)*bsize;    % local column offset for the current station block
+
+% ML2/ML3/ML4 only write to the diagonal (current station) block
+blk2 = zeros(bsize, ncols);
+blk3 = zeros(bsize, ncols);
+blk4 = zeros(bsize, ncols);
+blk2(:, cur_off+1:cur_off+bsize) = Bi*bufc_i;
+blk3(:, cur_off+1:cur_off+bsize) = Ci*bufc_i;
+blk4(:, cur_off+1:cur_off+bsize) = Di*bufc_i;
+
+% Apply freestream BCs (zero rows, then set BC)
+blk1MFD(bc_top_mfd,:) = 0;
+blk1(bc_top,:)   = 0;
+blk2(bc_top,:)   = 0;
+blk3(bc_top,:)   = 0;
+blk4(bc_top,:)   = 0;
+
+if neumann_top
+    for k = 1:3
+        r  = (k-1)*ny + 1;
+        cs = cur_off + (k-1)*ny + 1;
+        ce = cur_off + k*ny;
+        blk1(r, cs:ce) = D1f(1,:);
+        if k ~= 2; blk1MFD(r, cs:ce) = D1f(1,:); end
+    end
+else
+    for r = bc_top_mfd;  blk1MFD(r, cur_off+r) = 1;  end
+    for r = bc_top;      blk1(r,    cur_off+r) = 1;  end
+end
+
+% Apply wall BCs
+blk1MFD(bc_wall,:) = 0;
+blk1(bc_wall,:)    = 0;
+blk2(bc_wall,:)    = 0;
+blk3(bc_wall,:)    = 0;
+blk4(bc_wall,:)    = 0;
+for r = bc_wall
+    blk1MFD(r, cur_off+r) = 1;
+    blk1(r,    cur_off+r) = 1;
+end
+
+% Extract sparse triplets; map local column indices to global via stenr.
+% reshape(...,[],1) guarantees column vectors even when find returns empty 0x0.
+row_off = bsize*(i-1);
+
+[ii,jj,ss] = find(blk1MFD);  ci1MFD=reshape(ii+row_off,[],1); cj1MFD=reshape(stenr(jj),[],1); cs1MFD=reshape(ss,[],1);
+[ii,jj,ss] = find(blk1);     ci1   =reshape(ii+row_off,[],1); cj1   =reshape(stenr(jj),[],1); cs1   =reshape(ss,[],1);
+[ii,jj,ss] = find(blk2);     ci2   =reshape(ii+row_off,[],1); cj2   =reshape(stenr(jj),[],1); cs2   =reshape(ss,[],1);
+[ii,jj,ss] = find(blk3);     ci3   =reshape(ii+row_off,[],1); cj3   =reshape(stenr(jj),[],1); cs3   =reshape(ss,[],1);
+[ii,jj,ss] = find(blk4);     ci4   =reshape(ii+row_off,[],1); cj4   =reshape(stenr(jj),[],1); cs4   =reshape(ss,[],1);
 
 end

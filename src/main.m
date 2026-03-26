@@ -53,6 +53,8 @@ print_config(StabGrid, Stab, Opt);
 if strcmpi(Opt.rerun,'on') && isfield(LHS,'MLA1') && ~isempty(LHS.MLA1)
     MLA1     = LHS.MLA1;
     MLA2     = LHS.MLA2;
+    if isfield(LHS, 'MLA3'); MLA3 = LHS.MLA3; else; MLA3 = []; end
+    if isfield(LHS, 'MLA4'); MLA4 = LHS.MLA4; else; MLA4 = []; end
     MFD_diff = LHS.MFD_diff;
     Opt.mmry = 1;   % signal solve_modes to skip LHS construction
     % Restore cached LU factorisations so modes with unchanged omega/beta
@@ -63,7 +65,7 @@ if strcmpi(Opt.rerun,'on') && isfield(LHS,'MLA1') && ~isempty(LHS.MLA1)
     end
     fprintf(' Reusing LHS matrices from previous run.\n');
 else
-    MLA1 = []; MLA2 = []; MFD_diff = [];
+    MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MFD_diff = [];
 end
 
 fprintf('\n--- Convergence loop ---\n');
@@ -76,8 +78,8 @@ while max(abs(Opt.dal)) >= Opt.Conv || Opt.AF ~= 1
 
     % Solve for all active modes
     t_iter = tic;
-    [StabRes, Opt, MLA1, MLA2, MFD_diff] = solve_modes( ...
-        BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MFD_diff);
+    [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MFD_diff] = solve_modes( ...
+        BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MFD_diff);
 
     % Damp inflow amplitude (nonlinear only)
     if nnz(Stab.A0) ~= 1 && Opt.k1 == 0
@@ -98,7 +100,7 @@ while max(abs(Opt.dal)) >= Opt.Conv || Opt.AF ~= 1
         iter, Opt.AF, n_active, max_A, max_dal, toc(t_iter));
 
     % Intermediate plotting
-    if Opt.plot
+    if strcmpi(Opt.plot,'on')
         plot_intermediate(StabGrid, StabRes, Mode, Stab, Opt);
     end
 
@@ -108,7 +110,7 @@ while max(abs(Opt.dal)) >= Opt.Conv || Opt.AF ~= 1
     end
 
     % Convergence plot
-    if Opt.plot
+    if strcmpi(Opt.plot,'on')
         plot_convergence(StabGrid, Mode, Stab, Opt);
     end
 
@@ -128,6 +130,8 @@ StabRes = postprocess(StabGrid, Init, Mode, Opt, StabRes);
 %% Pack LHS output (for reuse in subsequent runs)
 LHS.MLA1     = MLA1;
 LHS.MLA2     = MLA2;
+LHS.MLA3     = MLA3;
+LHS.MLA4     = MLA4;
 LHS.MFD_diff = MFD_diff;
 if isfield(Opt,'LU_cache')
     LHS.LU_cache = Opt.LU_cache;  % store factorisations for actuation/amplitude reruns

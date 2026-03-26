@@ -15,6 +15,14 @@ fprintf('    IC method: %s,  active modes: %d\n', Stab.IC, nnz(Stab.A0));
 fprintf('  Solver\n');
 fprintf('    Buffer: %s from %d%%,  Conv: %.1e\n', Opt.buffer, Opt.xb, Opt.Conv);
 fprintf('    LU mode: %s\n', Opt.lu_mode);
+if isfield(Opt,'gpu') && strcmpi(Opt.gpu,'on')
+    try
+        g = gpuDevice;
+        fprintf('    GPU: %s (%.1f GB VRAM)\n', g.Name, g.TotalMemory/1e9);
+    catch
+        fprintf('    GPU: enabled (device info unavailable)\n');
+    end
+end
 
 % Memory estimates
 nx = StabGrid.nx;  ny = StabGrid.ny;  bsize = 4*ny;
@@ -38,6 +46,16 @@ lu_mem_one  = 2 * N_dof * b_half * 20 * 0.75 / 1e9;
 n_unique    = Stab.M + 1;
 if ~isfield(Opt, 'lu_max_cache'); Opt.lu_max_cache = 3; end
 
+% parfor workers each hold a copy of the broadcast LU objects
+% nw: number of parallel workers (default pool size, capped at n_unique modes)
+if strcmpi(Opt.parfor,'on') && license('test','Distrib_Computing_Toolbox') && ~isempty(ver('parallel'))
+    pool = gcp('nocreate');
+    if isempty(pool); nw = 0; else; nw = min(pool.NumWorkers, n_unique); end
+else
+    nw = 0;
+end
+parfor_overhead = nw * n_unique * lu_mem_one;  % each worker gets all LU objects
+
 fprintf('    Memory estimates (%s):\n', eta_lbl);
 fprintf('      LHS:                   ~%.1f GB\n', lhs_mem_est);
 fprintf('      LU per factorisation:  ~%.1f GB\n', lu_mem_one);
@@ -45,11 +63,16 @@ fprintf('      LU full   (cache %d):  ~%.1f GB\n', n_unique, n_unique * lu_mem_o
 fprintf('      LU auto   (cache %d):  ~%.1f GB\n', Opt.lu_max_cache, Opt.lu_max_cache * lu_mem_one);
 fprintf('      LU single (cache 1):   ~%.1f GB\n', lu_mem_one);
 fprintf('      Total peak (single):   ~%.1f GB\n', lu_mem_one + lhs_mem_est);
+if nw > 0
+    fprintf('      parfor workers (%d):   ~%.1f GB overhead\n', nw, parfor_overhead);
+    fprintf('      Total peak (parfor):   ~%.1f GB\n', n_unique * lu_mem_one + lhs_mem_est + parfor_overhead);
+end
 
 lu_mem_total = lu_mem_one;
 if strcmp(Opt.lu_mode, 'full'); lu_mem_total = n_unique * lu_mem_one; end
+if strcmpi(Opt.parfor,'on'); lu_mem_total = lu_mem_total + parfor_overhead; end
 if lu_mem_total > 20
-    warning('Estimated LU memory: %.1f GB. Consider lu_mode = ''single'' or ''none'' if RAM is limited.', lu_mem_total);
+    warning('Estimated LU memory: %.1f GB. Consider lu_mode = ''auto'' or ''none'' if RAM is limited.', lu_mem_total);
 end
 fprintf('  --------------------------------------------\n');
 

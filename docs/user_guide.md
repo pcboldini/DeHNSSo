@@ -1,10 +1,6 @@
 # DeHNSSo — User Guide
 
-**Version 2** | Delft Harmonic Navier-Stokes Solver
-
-**Contact:** Pietro Carlo Boldini — P.C.Boldini@tudelft.nl — for questions, bug reports, or collaboration requests.
-
-> **Note:** The accompanying paper is currently in preparation. Please contact the author for questions about the method or implementation.
+**Version 1.2** | Delft Harmonic Navier-Stokes Solver
 
 ---
 
@@ -30,23 +26,24 @@ The equations are the incompressible Navier-Stokes equations, written for pertur
 For a Blasius flat-plate boundary layer:
 
 ```matlab
-cd baseflow/
-caller        % produces BF_Blasius.mat in baseflow/output/
+cd BL/
+caller        % produces BF_Blasius.mat
 ```
 
 Then convert to DeHNSSo format:
 
 ```matlab
-cd interpolation/
+cd Interpol/
 edit config.m   % set Re, grid size, domain height
-main_interpol   % reads ../baseflow/output/, saves DeHNSSo_input.mat to ../stability/
+main_interpol   % produces DeHNSSo_input.mat
+copyfile('Interpol/output/DeHNSSo_input.mat', 'input/')
 ```
 
 For a curvilinear geometry (e.g., from OpenFOAM): see [README.md](../README.md).
 
 ### Step 2 — Configure and run
 
-Open `callers/example_BlasiusBL.m`. The file is organized into sections:
+Open `caller_BL.m`. The file is organized into sections:
 
 | Section | What to set |
 |---|---|
@@ -60,8 +57,7 @@ Open `callers/example_BlasiusBL.m`. The file is organized into sections:
 Run the caller from the MATLAB command window:
 
 ```matlab
-cd callers/
-example_BlasiusBL
+caller_BL
 ```
 
 ---
@@ -189,6 +185,26 @@ Opt.lu_mode = 'none';  % solve with backslash each time (slowest, least memory)
 % Opt.lu_max_cache = 3;  % only relevant for 'auto' mode
 ```
 
+### Parallel and GPU acceleration
+
+Both require the MATLAB Parallel Computing Toolbox. If omitted, auto-detected at startup.
+
+```matlab
+Opt.parfor = 'off';  % 'on'  parfor over LHS stations and modes (helps at large ny or many modes)
+Opt.gpu    = 'off';  % 'on'  GPU solve via gpuArray \ (beneficial for ny >> 80)
+```
+
+**`parfor`:** parallelises the LHS station loop (Phase 1) and the mode solve loop (Phase 3). Memory overhead grows with the number of parallel workers — each worker holds a copy of the broadcast LU objects. Effective crossover is roughly ny ≥ 80 where per-station compute exceeds broadcast cost.
+
+**`gpu`:** transfers each assembled mode matrix `ML` to GPU memory and solves with `gpuArray \`. GPU does not support the `decomposition` cache; the matrix is refactorised on every iteration. Beneficial when ny is large (O(ny²) compute dominates memory bandwidth).
+
+### Output control
+
+```matlab
+Opt.plot = 'on';   % 'on'  show amplitude and convergence plots during iteration (default)
+Opt.plot = 'off';  % 'off' suppress all intermediate plots (recommended for batch runs)
+```
+
 ---
 
 ## 8. Running and reruns
@@ -253,7 +269,7 @@ Index convention: `y=1` is the freestream (`y=H`), `y=ny` is the wall (`y=0`).
 ### Post-processing
 
 ```matlab
-ref = struct('file', fullfile(root, 'stability', 'literature', 'StabRes_Blasius_NPSE.mat'), 'label', 'NPSE');
+ref = struct('file', 'input/StabRes_Blasius_NPSE.mat', 'label', 'NPSE');
 plot_amplitudes(StabGrid, StabRes, ref);
 ```
 
@@ -265,6 +281,6 @@ plot_amplitudes(StabGrid, StabRes, ref);
 |---|---|---|
 | ILST does not find a physical mode | Domain too short/tall, wrong `omega`/`beta` | Check eigenvalue spectrum in Figure 1 |
 | Solver does not converge | Amplitude too high, too few modes | Reduce `Stab.A0`, increase `Stab.M` |
-| Memory error | Large `nx × ny`, `lu_mode = 'full'` | Use `lu_mode = 'auto'` with `lu_max_cache` |
+| Memory error | Large `nx × ny`, `lu_mode = 'full'` | Use `lu_mode = 'auto'` with `lu_max_cache`; disable `parfor` to avoid worker copies |
 | Results differ from PSE | Buffer too short, nonlinear effects | Increase `Opt.xb`, check `Stab.M` |
 | Freestream BC oscillations | Domain truncated, Dirichlet BC | Switch to `Opt.bc_top = 'neumann'` |

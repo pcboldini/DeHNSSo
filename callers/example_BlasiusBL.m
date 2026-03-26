@@ -104,8 +104,13 @@ Opt.lu_mode      = 'full';  % 'full' cache all LU factorisations (fastest, most 
                              % 'none' backslash each time (slowest, least memory)
 % Opt.lu_max_cache = 3;      % max cached factorisations — only for 'auto' mode
 
+% --- Parallel and GPU (both require Parallel Computing Toolbox) ---
+Opt.parfor = 'off';    % 'on'  parfor over stations (LHS) and modes (solve) — auto-detected if omitted
+Opt.gpu    = 'off';    % 'on'  GPU solve via gpuArray \ (beneficial for ny >> 80) — auto-detected if omitted
+
 % --- Output ---
-Opt.plot  = true;   % intermediate amplitude/convergence plots during iteration
+Opt.plot  = 'on';   % 'on'  intermediate amplitude/convergence plots during iteration
+                    % 'off' suppress plots (useful for batch/benchmark runs)
 % Opt.Sweep = 0;    % save intermediate results at each converged amplitude step
 
 % =========================================================================
@@ -120,8 +125,12 @@ Opt.plot  = true;   % intermediate amplitude/convergence plots during iteration
 %   omega_vec = Stab.omega_0 * linspace(0.8, 1.2, 5);
 %   for k = 1:numel(omega_vec)
 %       Stab.omega_0 = omega_vec(k);
-%       [StabRes_sweep{k}, ~, LHS] = main(Stab, StabGrid, Opt, LHS);
-%       Opt.rerun = 'on';
+%       if k == 1
+%           [StabRes_sweep{k}, ~, LHS] = main(Stab, StabGrid, Opt);
+%       else
+%           Opt.rerun = 'on';
+%           [StabRes_sweep{k}, ~, LHS] = main(Stab, StabGrid, Opt, LHS);
+%       end
 %   end
 
 Opt.rerun = 'off';  % 'off' = full run | 'on' = reuse LHS from previous run

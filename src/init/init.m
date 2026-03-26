@@ -12,7 +12,7 @@ assert(isfield(Stab,'M') && ~isempty(Stab.M),       'Stab.M (spectral truncation
 assert(isfield(Stab,'N') && ~isempty(Stab.N),       'Stab.N (spectral truncation beta) is required.');
 assert(isfield(Stab,'omega_0') && ~isempty(Stab.omega_0), 'Stab.omega_0 (fundamental frequency) is required.');
 assert(isfield(Stab,'beta_0') && ~isempty(Stab.beta_0),   'Stab.beta_0 (fundamental spanwise wavenumber) is required.');
-assert(isfield(Stab,'IC') && ~isempty(Stab.IC),     'Stab.IC (inflow method: ILST, WALL, or LOAD) is required.');
+assert(isfield(Stab,'IC') && ~isempty(Stab.IC),     'Stab.IC (inflow method: ILST or LOAD) is required.');
 assert(isfield(Grid,'nx') && ~isempty(Grid.nx),      'Grid.nx (streamwise points) is required.');
 assert(isfield(Grid,'ny') && ~isempty(Grid.ny),      'Grid.ny (wall-normal points) is required.');
 assert(isfield(Grid,'Re') && ~isempty(Grid.Re),      'Grid.Re (Reynolds number) is required.');
@@ -45,11 +45,19 @@ if ~isfield(Opt,'Conv');        Opt.Conv = 1e-4 ; end
 if ~isfield(Opt,'kappa');       Opt.kappa = 6; end
 if ~isfield(Opt,'AMAX');        Opt.AMAX = 0.1; end
 if ~isfield(Opt,'ConvF');       Opt.ConvF = 100; end
-if ~isfield(Opt,'plot');        Opt.plot = true; end
+if ~isfield(Opt,'plot');        Opt.plot = 'on'; end
 if ~isfield(Opt,'buffer');     Opt.buffer = 'on'; end     % 'on', 'para', or 'off'
 if ~isfield(Opt,'bc_top');    Opt.bc_top = 'dirichlet'; end  % 'dirichlet' or 'neumann'
 if ~isfield(Opt,'lu_mode');    Opt.lu_mode = 'full'; end  % 'full', 'auto', or 'none'
 if ~isfield(Opt,'lu_max_cache'); Opt.lu_max_cache = 3; end  % max cached LU for 'auto' mode
+if ~isfield(Opt,'parfor')
+    has_pct = license('test','Distrib_Computing_Toolbox') && ~isempty(ver('parallel'));
+    if has_pct; Opt.parfor = 'on'; else; Opt.parfor = 'off'; end
+end
+if ~isfield(Opt,'gpu')
+    try; has_gpu = canUseGPU(); catch; has_gpu = false; end
+    if has_gpu; Opt.gpu = 'on'; else; Opt.gpu = 'off'; end
+end
 
 % Define imaginary unit
 Init.iu=sqrt(-1);
