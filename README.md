@@ -133,6 +133,18 @@ Blasius BL test case (nx=800, ny=40, M=1):
 - [docs/user_guide.md](docs/user_guide.md) — how to configure and run cases
 - [docs/developer_guide.md](docs/developer_guide.md) — code architecture, data structures, how to extend
 
+## Roadmap
+
+Features planned for future releases:
+
+- **Curvilinear mesh pipeline** — full interpolation from external CFD solvers (OpenFOAM, etc.) onto body-fitted Malik–Chebyshev grids (in progress)
+- **3D cases** — spanwise wavenumber modes (N > 0) for cross-flow instability
+- **GPU acceleration** — sparse matrix solve on GPU via MATLAB gpuArray
+- **Parallel mode loop** — `parfor` over modes for multi-core speedup
+- **`LOAD` inflow condition** — restart from a saved stability result
+
+If you are interested in contributing or collaborating, contact P.C.Boldini@tudelft.nl.
+
 ## References
 
 - S. Westerbeek, S. Hulshoff, H. Schuttelaars, M. Kotsonis. *DeHNSSo: The Delft Harmonic Navier-Stokes Solver for nonlinear stability problems with complex geometric features.* Computer Physics Communications 302, 109250 (2024). [DOI](https://doi.org/10.1016/j.cpc.2024.109250)
