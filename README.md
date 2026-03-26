@@ -83,10 +83,7 @@ example_BlasiusBL   % runs DeHNSSo, plots amplitude development
 
 ### Curvilinear mesh (e.g., from OpenFOAM)
 
-1. Export CFD data as CSV with columns: `x, y, U, V, W` (include wall points with U=V=W=0)
-2. Set reference scales in `interpolation/config.m`: `Uref`, `lref`, `Re`
-3. Enable elliptic smoothing: `ctype_params.elliptic = true`
-4. Run `main_interpol` — the pipeline detects the curvilinear geometry automatically
+> **Under development.** Contact P.C.Boldini@tudelft.nl for the current status.
 
 ## Key solver options
 
