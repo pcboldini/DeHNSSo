@@ -1,0 +1,28 @@
+# MATLAB
+*.asv
+*.m~
+*.mlapp
+*.mlx
+
+# Input/output data files
+stability/*.mat
+!stability/literature/
+baseflow/output/
+interpolation/output/
+
+# Figures
+*.fig
+
+# macOS
+.DS_Store
+
+# Paper build artifacts
+paper/*.aux
+paper/*.log
+paper/*.bbl
+paper/*.blg
+paper/*.out
+paper/*.pdf
+paper/*.synctex.gz
+paper/*.fls
+paper/*.fdb_latexmk
