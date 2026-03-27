@@ -26,16 +26,14 @@ if Opt.k1 ~= 0
         Opt.AF = Opt.AF * Opt.AFg;
         if ge(Opt.AF, 1); Opt.AF = 1; end
 
-        % Initialize forcing extrapolation list
+        % Keep a rolling window of the last 3 AF values and forcing fields
+        % (only 3 entries needed for the 2nd-order extrapolation; avoids unbounded growth)
         if ~isfield(Opt, 'AFlist')
-            Opt.AFlist = [Opt.AF Opt.AF];
-            Stab.flist = Stab.f;
-            Stab.flist(:,:,size(Stab.flist,3)+1) = Stab.f;
+            Opt.AFlist     = [Opt.AF, Opt.AF, Opt.AF];
+            Stab.flist     = cat(3, Stab.f, Stab.f, Stab.f);
         end
-
-        % Append
-        Opt.AFlist = [Opt.AFlist Opt.AF];
-        Stab.flist(:,:,size(Stab.flist,3)+1) = Stab.f;
+        Opt.AFlist = [Opt.AFlist(2:3), Opt.AF];
+        Stab.flist = cat(3, Stab.flist(:,:,2:3), Stab.f);
 
         % Linearly (in A^2) extrapolate the forcing term
         if Opt.AFlist(end) ~= Opt.AFlist(end-1) && Opt.AFlist(end-1) ~= Opt.AFlist(end-2)

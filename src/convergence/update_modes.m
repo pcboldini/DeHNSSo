@@ -15,7 +15,7 @@ end
 
 %% Compute amplitudes
 for j = Mode.RunJ
-    StabRes.A(j,:) = max(abs(squeeze(StabRes.u(j,:,:))), [], 1);
+    StabRes.A(j,:) = max(abs(reshape(StabRes.u(j,:,:), ny_, nx_)), [], 1);
 end
 
 %% Determine active modes

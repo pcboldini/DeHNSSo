@@ -59,11 +59,7 @@ for j = RunJ
     dwdeta(j,:,:) = D1 * squeeze(StabRes.w(j,:,:));
 end
 
-%% Calculate forcing (accumulate directly, no intermediate arrays)
-
-xmom = zeros(nf, ny, nx);
-ymom = zeros(nf, ny, nx);
-zmom = zeros(nf, ny, nx);
+%% Calculate forcing (local ny x nx accumulation per mode, avoids 3D indexing)
 
 for j = RunJ(RunJ >= round(nf/2))
 
@@ -74,6 +70,11 @@ for j = RunJ(RunJ >= round(nf/2))
     active = ismember(gharray, RunJ) & ismember(jkarray, RunJ);
     gharray = gharray(active);
     jkarray = jkarray(active);
+
+    % Local accumulation arrays — avoids squeeze into 3D array each interaction
+    xm_j = zeros(ny, nx);
+    ym_j = zeros(ny, nx);
+    zm_j = zeros(ny, nx);
 
     for j2 = 1:length(gharray)
         gh = gharray(j2);
@@ -95,29 +96,25 @@ for j = RunJ(RunJ >= round(nf/2))
         v_jk = squeeze(StabRes.v(jk,:,:));
         w_jk = squeeze(StabRes.w(jk,:,:));
 
-        % Accumulate momentum forcing directly (no temporary arrays stored)
-        xmom(j,:,:) = squeeze(xmom(j,:,:)) ...
+        % Accumulate momentum forcing into local arrays
+        xm_j = xm_j ...
             - u_gh.*dudxi_jk.*xix - u_gh.*dudeta_jk.*etax ...
             - v_gh.*dudxi_jk.*xiy - v_gh.*dudeta_jk.*etay ...
             - iu*beta .* w_gh.*u_jk;
 
-        ymom(j,:,:) = squeeze(ymom(j,:,:)) ...
+        ym_j = ym_j ...
             - u_gh.*dvdxi_jk.*xix - u_gh.*dvdeta_jk.*etax ...
             - v_gh.*dvdxi_jk.*xiy - v_gh.*dvdeta_jk.*etay ...
             - iu*beta .* w_gh.*v_jk;
 
-        zmom(j,:,:) = squeeze(zmom(j,:,:)) ...
+        zm_j = zm_j ...
             - u_gh.*dwdxi_jk.*xix - u_gh.*dwdeta_jk.*etax ...
             - v_gh.*dwdxi_jk.*xiy - v_gh.*dwdeta_jk.*etay ...
             - iu*beta .* w_gh.*w_jk;
     end
 
     % Reshape momentum into f (vectorised, skip i=1)
-    xm = squeeze(xmom(j,:,2:nx));  % [ny x nx-1]
-    ym = squeeze(ymom(j,:,2:nx));
-    zm = squeeze(zmom(j,:,2:nx));
-    zr = zeros(ny, nx-1);
-    block = [xm; ym; zm; zr];      % [4*ny x nx-1]
+    block = [xm_j(:,2:nx); ym_j(:,2:nx); zm_j(:,2:nx); zeros(ny, nx-1)];
     f(j, 4*ny+1:end) = block(:).';
 
 end
