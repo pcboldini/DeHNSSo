@@ -113,32 +113,6 @@ for n = 1:NE
     % Times "power" amplifies the error of multiple switches.
     Error(n) = SlopeError(n).*10.^(Switches(n)*power2);
     
-    
-    
-    
-%     %% Per EF plots
-%     figure(3)
-%     clf
-%     
-%     h1=subplot(1,2,1);
-%     plot(wavenumber,'-x')
-%     h1.YLim(1)=0;
-%     
-%     h2=subplot(1,2,2);
-%     hold on
-%     plot(log(abs(V(:,n))),y,'-x')
-%     plot(-wavenumber(n)*y(s1),y(s1),'-o')
-%     if y_top(n)<y(1)
-%         plot(h2.XLim,y_top(n)*[1 1],'k--')
-%     end
-%     if y_bulge(n)<y(1)
-%         plot(h2.XLim,y_bulge(n)*[1 1],'b--','linewidth',1.5)
-%     end
-%     hold off
-%     grid on
-%     title(sprintf('Top=%.2f, Bulge=%.2f',y_top(n),y_bulge(n)));
-%     keyboard
-    
 
 end
 
@@ -151,66 +125,6 @@ eigenvalue = EV(keep);
 % Select correct index of original EV list
 remain = find(use);
 index = remain(keep);
-
-
-%% Plots
-
-
-% figure(2)
-% clf
-% hold on
-% plot(1:NE,log10(SlopeError))
-% plot(1:NE,Switches)
-% plot(1:NE,log10(Error))
-% hold off
-% grid on
-% h=gca;
-% h.YLim = [min(log10(SlopeError))-2, 10];
-% xlabel('Index of eigenfunction')
-% legend('Slopes of exponential (log)','Number of switches','Scaled with switches (log)')
-% 
-% figure(10)
-% EF_wavenumber = -repmat(wavenumber,NC,1).*repmat(y,1,NE);
-% [~,ordered] = sort(Error);
-% % [~,ordered] = sort(SlopeError);
-% % [~,ordered] = sort(switches);
-% 
-% for i = ordered(1)
-%     
-%     clf
-%     subplot(1,2,1)
-%     hold on
-%     plot(abs(V(:,i)),y,real(V(:,i)),y,imag(V(:,i)),y)
-% %     plot(GR(:,i)./max(abs(GR(:,i))),y(s3),'x-')
-%     hold off
-%     grid on
-%     title(sprintf('Index: %.0f',remain(i)))
-%     xlabel('$\phi$','interpreter','latex')
-%     ylabel('$y$','interpreter','latex','rot',0,...
-%         'horizontalalignment','right','verticalalignment','middle')
-% 
-%     h2=subplot(1,2,2);
-%     hold on
-%     plot(log(abs(V(:,i))),y,'-x')
-%     plot(EF_wavenumber(:,i),y,'-o')
-%     plot(h2.XLim,y_top(i)*[1 1],'k--')
-%     plot(h2.XLim,y_bulge(i)*[1 1],'b--','linewidth',1.5)
-%     hold off
-%     title('Logarithmic fit')
-%     h=legend('abs( $\phi$ )',...
-%         'abs( $e^{-i \sqrt{\alpha_r^2+\beta^2} y}$ )',...
-%         'Top limit',...
-%         'Bulge limit',...
-%         'location','best');
-%     h.Interpreter = 'latex';
-%     h.FontSize = 11;
-%     grid on
-%     xlabel('$ln(\phi)$','interpreter','latex')
-%     ylabel('$y$','interpreter','latex','rot',0,...
-%         'horizontalalignment','right','verticalalignment','middle')
-%     pause(0.01)
-%     keyboard
-% end
 
 
 end

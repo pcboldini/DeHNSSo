@@ -1,4 +1,4 @@
-function [StabRes] = ILST(j,i,StabGrid,StabRes,bc_top)
+function [StabRes] = ILST(j,i,StabGrid,StabRes,bc_top,Opt)
 %ILST  Compute inflow condition for mode j via local stability theory.
 %
 %   StabRes = ILST(j, i, StabGrid, StabRes)
@@ -31,6 +31,7 @@ d2zdy2 = StabGrid.d2zdy2;
 
 % Solve local eigenvalue problem ILST
 if ~exist('bc_top','var'); bc_top = 'dirichlet'; end
+if ~exist('Opt','var');   Opt.plot = 'on'; end
 fprintf(' Calculating IC for nonzero modes with ILST: ')
 [eig,u,v,w,p] = ILST_solver(Re,flip(U),flip(W),flip(dyU),flip(dyW),omega,beta,ny,flip(dzdy),flip(d2zdy2),bc_top);
 
@@ -65,6 +66,8 @@ StabRes.phi(j,:,i) = ([ StabRes.u(j,:,i).';
                         StabRes.p(j,:,i).']);
 
 %% Visual Check for Mode Selection
+
+if ~strcmpi(Opt.plot, 'on'); return; end
 
 figure(1); clf; set(gcf, 'Position', [200 200 1200 350]);
 tiledlayout(1, 3, 'TileSpacing', 'compact', 'Padding', 'compact');

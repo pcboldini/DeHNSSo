@@ -121,7 +121,7 @@ elseif Stab.IC=="ILST"
 
     for j = flip(nonzeromodesic) %Run initial condition for all nonzero modes
     if j >= round(Mode.nf/2)% Mode is physical
-        [StabRes]=ILST(j,1,StabGrid,StabRes,bc_top); 
+        [StabRes]=ILST(j,1,StabGrid,StabRes,bc_top,Opt);
     
         % Output from IC_HNS is normalized by max(u'), superimpose amplitude
         StabRes.u(j,:,1) = Stab.A0(j).*StabRes.u(j,:,1);

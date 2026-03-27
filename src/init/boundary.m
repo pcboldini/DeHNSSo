@@ -20,21 +20,12 @@ case 'on'
     Bound.ibuf  = round(Opt.xb * Grid.nx / 100);
     Bound.bufc  = ones(1, Grid.nx);
     Bound.bufp  = ones(1, Grid.nx);   % Fi not modified in 'on' mode
-
-    span = max(Grid.nx - Bound.ibuf, 1);
-    for i = Bound.ibuf:Grid.nx
-        Bound.bufc(i) = 0.5*(1 + tanh(Opt.kappa*(1 - 2*(i-Bound.ibuf)/span)));
-    end
-    Bound.bufc(Bound.ibuf:Grid.nx) = Bound.bufc(Bound.ibuf:Grid.nx) ./ Bound.bufc(Bound.ibuf);
+    Bound.bufc  = buffer_ramp(Bound.bufc,  Bound.ibuf,  Grid.nx, Opt.kappa);
 
     % NLT forcing buffer
     Bound.ibuff = round(Opt.nltbufxb * Grid.nx / 100);
     Bound.bufcf = ones(1, Grid.nx);
-    spanf = max(Grid.nx - Bound.ibuff, 1);
-    for i = Bound.ibuff:Grid.nx
-        Bound.bufcf(i) = 0.5*(1 + tanh(Opt.kappa*(1 - 2*(i-Bound.ibuff)/spanf)));
-    end
-    Bound.bufcf(Bound.ibuff:Grid.nx) = Bound.bufcf(Bound.ibuff:Grid.nx) ./ Bound.bufcf(Bound.ibuff);
+    Bound.bufcf = buffer_ramp(Bound.bufcf, Bound.ibuff, Grid.nx, Opt.kappa);
 
     fprintf(' Buffer: amplitude damping from %.3g%% to 100%%\n', Opt.xb);
 
@@ -46,20 +37,12 @@ case 'para'
     Bound.bufc  = ones(1, Grid.nx);   % no amplitude damping
 
     Bound.bufp  = ones(1, Grid.nx);
-    span = max(Grid.nx - Bound.ibuf, 1);
-    for i = Bound.ibuf:Grid.nx
-        Bound.bufp(i) = 0.5*(1 + tanh(Opt.kappa*(1 - 2*(i-Bound.ibuf)/span)));
-    end
-    Bound.bufp(Bound.ibuf:Grid.nx) = Bound.bufp(Bound.ibuf:Grid.nx) ./ Bound.bufp(Bound.ibuf);
+    Bound.bufp  = buffer_ramp(Bound.bufp,  Bound.ibuf,  Grid.nx, Opt.kappa);
 
     % NLT forcing buffer (same ramp as bufp)
     Bound.ibuff = round(Opt.nltbufxb * Grid.nx / 100);
     Bound.bufcf = ones(1, Grid.nx);
-    spanf = max(Grid.nx - Bound.ibuff, 1);
-    for i = Bound.ibuff:Grid.nx
-        Bound.bufcf(i) = 0.5*(1 + tanh(Opt.kappa*(1 - 2*(i-Bound.ibuff)/spanf)));
-    end
-    Bound.bufcf(Bound.ibuff:Grid.nx) = Bound.bufcf(Bound.ibuff:Grid.nx) ./ Bound.bufcf(Bound.ibuff);
+    Bound.bufcf = buffer_ramp(Bound.bufcf, Bound.ibuff, Grid.nx, Opt.kappa);
 
     fprintf(' Buffer: parabolisation from %.3g%% to 100%%\n', Opt.xb);
 
@@ -70,6 +53,18 @@ case 'off'
     Bound.bufp  = ones(1, Grid.nx);
     Bound.bufcf = ones(1, Grid.nx);
     fprintf(' Buffer: off\n');
+end
+
+end
+
+%% Local helpers
+
+function buf = buffer_ramp(buf, ib, nx, kappa)
+%BUFFER_RAMP  Apply tanh ramp over buf(ib:nx), normalised to 1 at ib.
+i_vec        = ib:nx;
+span         = max(nx - ib, 1);
+buf(i_vec)   = 0.5*(1 + tanh(kappa*(1 - 2*(i_vec - ib)/span)));
+buf(i_vec)   = buf(i_vec) ./ buf(ib);
 end
 
 %% EBM
