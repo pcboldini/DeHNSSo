@@ -19,10 +19,11 @@ for j = Mode.RunJ
 end
 
 %% Determine active modes
+% Compute max outer product incrementally — avoids allocating nf x nf x nx array
+Amat = zeros(Mode.nf, Mode.nf);
 for i = 1:nx_
-    Amat(:,:,i) = StabRes.A(:,i) * StabRes.A(:,i)';
+    Amat = max(Amat, StabRes.A(:,i) * StabRes.A(:,i)');
 end
-Amat = max(Amat, [], 3);
 
 [~, index] = max(StabRes.A(:,:), [], 2);
 index = max(index);
@@ -72,12 +73,10 @@ Mode.RunJ = sort([Mode.RunJ NewModes]);
 [Stab.f] = NLT_HNS(StabGrid, Mode.RunJ, StabRes, StabGrid.D1, Stab.HB);
 
 
-% Apply buffer attenuation
+% Apply buffer attenuation (vectorised over active modes)
 ib = Bound.ibuff;
 bufcf_vec = repelem(Bound.bufcf(ib:nx_), 4*ny_);
-for jj = Mode.RunJ
-    idx = (ib-1)*4*ny_+1 : nx_*4*ny_;
-    Stab.f(jj, idx) = Stab.f(jj, idx) .* bufcf_vec;
-end
+idx = (ib-1)*4*ny_+1 : nx_*4*ny_;
+Stab.f(Mode.RunJ, idx) = Stab.f(Mode.RunJ, idx) .* bufcf_vec;
 
 end
