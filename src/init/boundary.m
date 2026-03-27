@@ -55,18 +55,6 @@ case 'off'
     fprintf(' Buffer: off\n');
 end
 
-end
-
-%% Local helpers
-
-function buf = buffer_ramp(buf, ib, nx, kappa)
-%BUFFER_RAMP  Apply tanh ramp over buf(ib:nx), normalised to 1 at ib.
-i_vec        = ib:nx;
-span         = max(nx - ib, 1);
-buf(i_vec)   = 0.5*(1 + tanh(kappa*(1 - 2*(i_vec - ib)/span)));
-buf(i_vec)   = buf(i_vec) ./ buf(ib);
-end
-
 %% EBM
 if strcmpi(Grid.StepType,"FFS")
     % Forward-facing step
@@ -118,5 +106,15 @@ if has_bcw || has_bct
     if has_bct; fprintf(' Inhomogeneous freestream BC active (%d modes).\n', nnz(squeeze(any(any(Stab.bct,1),2)))); end
 end
 
+end
+
+%% Local helpers
+
+function buf = buffer_ramp(buf, ib, nx, kappa)
+%BUFFER_RAMP  Apply tanh ramp over buf(ib:nx), normalised to 1 at ib.
+i_vec        = ib:nx;
+span         = max(nx - ib, 1);
+buf(i_vec)   = 0.5*(1 + tanh(kappa*(1 - 2*(i_vec - ib)/span)));
+buf(i_vec)   = buf(i_vec) ./ buf(ib);
 end
 
