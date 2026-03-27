@@ -20,9 +20,14 @@ This is an extended and refactored version of [DeHNSSo](https://doi.org/10.1016/
 
 ### Inflow
 - **Phase reference** — inflow eigenfunction phase can be referenced to wall pressure (`'pwall'`) or streamwise velocity maximum (`'umax'`) via `Stab.phaseRef`
+- **Simplified amplitude interface** — set `Stab.A0_fund` (scalar) instead of manually building the full amplitude vector with `ModeToModeNumber`; conjugate pairs are built automatically in `init.m`
 
 ### Spectral content
 - **3D support** — spanwise wavenumber modes (N > 0) fully supported for cross-flow instability analysis; beta-dependent LHS terms assembled as separate matrices (MLA3, MLA4) and combined at solve time
+- **Single oblique mode** — set `N = 0` with `beta_0 > 0` to track a single oblique wave; `betavec` is constructed with `beta_0 * sign(Mvec)` for conjugate symmetry
+
+### Solver modes
+- **Linear mode** — `Opt.linear = 'on'` disables nonlinear terms (NLT) and converges in a single iteration; equivalent to linear PSE. Default is `'off'` (nonlinear)
 
 ### Computational efficiency
 - **LHS matrix reuse** — pass the assembled LHS back across calls via `Opt.rerun = 'on'`; avoids full matrix reassembly for parameter sweeps (amplitude, actuation, frequency)
@@ -101,7 +106,7 @@ Set in the caller before calling `main()`:
 | `Stab.omega_0` | — | Fundamental angular frequency |
 | `Stab.beta_0` | — | Fundamental spanwise wavenumber |
 | `Stab.IC` | `'ILST'` | Inflow method |
-| `Stab.A0` | — | Initial amplitude vector |
+| `Stab.A0_fund` | — | Fundamental mode amplitude (scalar; builds full A0 automatically) |
 | `Opt.bc_top` | `'dirichlet'` | Freestream BC: `'dirichlet'` or `'neumann'` |
 | `Opt.buffer` | `'on'` | Buffer zone type: `'on'`, `'para'`, `'off'` |
 | `Opt.xb` | 85 | Buffer start (% of domain length) |
@@ -110,6 +115,7 @@ Set in the caller before calling `main()`:
 | `Opt.rerun` | `'off'` | Reuse LHS from previous run: `'on'` or `'off'` |
 | `Opt.parfor` | auto | Parallel LHS/solve: `'on'` or `'off'` (auto-detected) |
 | `Opt.gpu` | auto | GPU solve via gpuArray: `'on'` or `'off'` (auto-detected) |
+| `Opt.linear` | `'off'` | Linear mode (no NLT, 1 iteration): `'on'` or `'off'` |
 | `Opt.plot` | `'on'` | Intermediate plots: `'on'` or `'off'` |
 
 See [docs/user_guide.md](docs/user_guide.md) for a full parameter reference.
@@ -124,6 +130,8 @@ During a run, the solver produces:
 | 2 | Amplitude evolution during convergence iterations |
 | 3 | Convergence history (relative error per mode, log scale) |
 | 4 | Final amplitude development (with optional PSE/DNS reference overlay) |
+| 5 | N-factor, growth rates, wavenumber, phase speed (via `plot_stability`) |
+| 6 | Eigenfunctions at selected streamwise stations (via `plot_stability`) |
 
 ## Performance
 
@@ -151,6 +159,8 @@ Optional acceleration (requires Parallel Computing Toolbox):
 Features planned for future releases:
 
 - **Curvilinear mesh pipeline** — full interpolation from external CFD solvers (OpenFOAM, etc.) onto body-fitted Malik–Chebyshev grids (in progress)
+- **Discrete adjoint** — receptivity and sensitivity analysis via the adjoint HNS operator (Carpenter et al., AIAA 2010-378); receptivity maps and optimal wall actuation (in progress)
+- **Compressible extension** — compressible HNS with (ρ, u, v, w, T) variables for high-speed boundary layers (planned)
 
 If you are interested in contributing or collaborating, contact P.C.Boldini@tudelft.nl.
 

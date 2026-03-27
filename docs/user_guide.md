@@ -73,6 +73,18 @@ Stab.beta_0  = 0;      % fundamental spanwise wavenumber (0 = 2D)
 
 Total number of modes: `nf = (2M+1)(2N+1)`. Each mode `(m,n)` has frequency `m*omega_0` and wavenumber `n*beta_0`.
 
+### Single oblique mode
+
+To track a single oblique wave without spanwise harmonics, set `N = 0` with `beta_0 > 0`:
+
+```matlab
+Stab.M = 1;
+Stab.N = 0;
+Stab.beta_0 = 0.1;  % oblique wavenumber
+```
+
+The solver assigns `betavec = beta_0 * sign(Mvec)` for correct conjugate symmetry.
+
 To get the index of mode `(m,n)` in the solution arrays:
 
 ```matlab
@@ -89,6 +101,14 @@ Stab.phaseRef = 'pwall';  % 'pwall' = wall pressure reference | 'umax' = max u
 ```
 
 ### Setting initial amplitudes
+
+The simplest way is to set the fundamental amplitude as a scalar:
+
+```matlab
+Stab.A0_fund = 0.00125*sqrt(2);  % fundamental mode amplitude
+```
+
+`init.m` automatically builds the full amplitude vector with conjugate pairs. For per-mode control, set `Stab.A0` directly:
 
 ```matlab
 Stab.A0 = zeros(1, (2*Stab.N+1)*(2*Stab.M+1));
@@ -153,7 +173,18 @@ The same BC is applied in the ILST inflow computation.
 
 ---
 
-## 7. Solver options
+## 7. Linear vs nonlinear mode
+
+```matlab
+Opt.linear = 'on';   % linear: NLT off, single iteration, AF = 1
+Opt.linear = 'off';  % nonlinear (default): iterative solve with NLT
+```
+
+In linear mode the solver converges in one iteration (equivalent to linear PSE). Use this for parametric sweeps, N-factor computations, or adjoint analysis where nonlinear interactions are not needed.
+
+---
+
+## 8. Solver options
 
 ### Buffer zone
 
@@ -207,7 +238,7 @@ Opt.plot = 'off';  % 'off' suppress all intermediate plots (recommended for batc
 
 ---
 
-## 8. Running and reruns
+## 9. Running and reruns
 
 ```matlab
 Opt.rerun = 'off';  % full run: builds LHS matrices and returns them in LHS struct
@@ -242,7 +273,7 @@ When `Opt.rerun = 'on'`:
 
 ---
 
-## 9. Output
+## 10. Output
 
 The main output is `StabRes`:
 
@@ -265,17 +296,23 @@ Index convention: `y=1` is the freestream (`y=H`), `y=ny` is the wall (`y=0`).
 | 2 | Amplitude evolution during convergence iterations |
 | 3 | Convergence history (relative error per mode, log scale) |
 | 4 | Final amplitude development (optionally overlaid with PSE/DNS reference) |
+| 5 | N-factor, growth rates, wavenumber, phase speed |
+| 6 | Eigenfunctions at selected streamwise stations |
 
 ### Post-processing
 
 ```matlab
-ref = struct('file', 'input/StabRes_Blasius_NPSE.mat', 'label', 'NPSE');
+% Amplitude plot (with optional reference for nonlinear runs)
+ref = struct('file', 'stability/literature/StabRes_Blasius_NPSE.mat', 'label', 'NPSE');
 plot_amplitudes(StabGrid, StabRes, ref);
+
+% Stability diagnostics (N-factor, growth rates, eigenfunctions)
+plot_stability(StabGrid, StabRes, Opt);
 ```
 
 ---
 
-## 10. Common issues
+## 11. Common issues
 
 | Problem | Likely cause | Fix |
 |---|---|---|

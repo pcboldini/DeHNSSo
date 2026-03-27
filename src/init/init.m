@@ -21,6 +21,19 @@ assert(isfield(Grid,'Re') && ~isempty(Grid.Re),      'Grid.Re (Reynolds number) 
 if ~isfield(Stab,'bcx'); Stab.bcx = linspace(Grid.S,Grid.S+Grid.L,10); end
 if ~isfield(Stab,'bcw'); Stab.bcw = zeros(3,10,(2*Stab.N+1)*(2*Stab.M+1)); end
 if ~isfield(Stab,'bct'); Stab.bct = zeros(3,10,(2*Stab.N+1)*(2*Stab.M+1)); end
+% Build A0 from A0_fund if user provided the simplified scalar form
+if isfield(Stab,'A0_fund') && ~isfield(Stab,'A0')
+    nf = (2*Stab.N+1)*(2*Stab.M+1);
+    Stab.A0 = zeros(1, nf);
+    if isfield(Opt,'linear') && strcmpi(Opt.linear,'on')
+        % Linear mode: small amplitude keeps NLT inactive (1 iteration)
+        Stab.A0(ModeToModeNumber( 1, 0, Stab.M, Stab.N)) = 1e-10;
+        Stab.A0(ModeToModeNumber(-1, 0, Stab.M, Stab.N)) = 1e-10;
+    else
+        Stab.A0(ModeToModeNumber( 1, 0, Stab.M, Stab.N)) = Stab.A0_fund;
+        Stab.A0(ModeToModeNumber(-1, 0, Stab.M, Stab.N)) = Stab.A0_fund;
+    end
+end
 if ~isfield(Stab,'A0');  Stab.A0 = []; end
 
 % % Grid: Straight geometry without streamwise refinement by default
@@ -73,7 +86,13 @@ Init.iu=sqrt(-1);
 
 % Create vectors of omegas and betas per mode
 StabRes.omegavec = Stab.omega_0*Stab.Mvec;
-StabRes.betavec = Stab.beta_0*Stab.Nvec;
+if Stab.N == 0 && Stab.beta_0 ~= 0
+    % Single oblique mode: beta follows sign of omega (conjugate symmetry)
+    % Mode (m,0): beta = sign(m) * beta_0,  MFD (0,0): beta = 0
+    StabRes.betavec = Stab.beta_0 * sign(Stab.Mvec);
+else
+    StabRes.betavec = Stab.beta_0*Stab.Nvec;
+end
 
 % Define mode counter L and count total number of modes nf
 Mode.L = 1:(2*Stab.N+1)*(2*Stab.M+1); 

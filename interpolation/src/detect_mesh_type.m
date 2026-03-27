@@ -12,8 +12,8 @@ function mesh_type = detect_mesh_type(BF)
 % Output
 %   mesh_type - 'cartesian' or 'curvilinear'
 
-x = BF.X(:);
-y = BF.Y(:);
+x = real(double(BF.X(:)));
+y = real(double(BF.Y(:)));
 
 % If X and Y have different lengths they are separate coordinate vectors
 % (not paired points) — this is always a Cartesian grid.
@@ -24,9 +24,14 @@ if length(x) ~= length(y)
     return
 end
 
-n     = length(x);
-tol_x = max(1e-6 * (max(x) - min(x)), 1e-12);
-tol_y = max(1e-6 * (max(y) - min(y)), 1e-12);
+n = length(x);
+
+xf    = x(isfinite(x));
+yf    = y(isfinite(y));
+tol_x = max(1e-6 * (max(xf) - min(xf)), 1e-12);
+tol_y = max(1e-6 * (max(yf) - min(yf)), 1e-12);
+if ~isfinite(tol_x) || tol_x <= 0;  tol_x = 1e-6;  end
+if ~isfinite(tol_y) || tol_y <= 0;  tol_y = 1e-6;  end
 
 xu = uniquetol(x, tol_x, 'DataScale', 1);
 yu = uniquetol(y, tol_y, 'DataScale', 1);

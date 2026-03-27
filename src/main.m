@@ -68,60 +68,81 @@ else
     MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MFD_diff = [];
 end
 
-fprintf('\n--- Convergence loop ---\n');
-iter = 0;
-t_loop = tic;
+is_linear = isfield(Opt,'linear') && strcmpi(Opt.linear,'on');
 
-while max(abs(Opt.dal)) >= Opt.Conv || Opt.AF ~= 1
-    iter = iter + 1;
+if is_linear
+    %% Linear solve (single iteration, no NLT, no amplitude ramping)
+    fprintf('\n--- Linear solve ---\n');
+    t_loop = tic;
     Opt.dal = zeros(Mode.nf, 1);
+    Opt.AF  = 1;
 
-    % Solve for all active modes
-    t_iter = tic;
     [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MFD_diff] = solve_modes( ...
         BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MFD_diff);
-
-    % Damp inflow amplitude (nonlinear only)
-    if nnz(Stab.A0) ~= 1 && Opt.k1 == 0
-        [Opt, StabRes] = AVAL(StabGrid, Opt, Mode, StabRes);
-    end
-
-    % Update u,v,w,p, amplitudes, active modes, nonlinear forcing
     [StabRes, Mode, Stab] = update_modes(StabGrid, Bound, Mode, Opt, Stab, StabRes);
 
-    % Check convergence and ramp amplitude
-    [Opt, Stab, StabRes] = check_convergence(StabGrid, Bound, Mode, Opt, Stab, StabRes);
-
-    % Status (after check_convergence so dal is updated)
-    n_active = numel(Mode.RunJ(Mode.RunJ >= round(Mode.nf/2)));
-    max_A = max(StabRes.A(:));
-    max_dal = max(abs(Opt.dal));
-    fprintf('  Iter %3d | AF=%.3f | %d modes | max(A)=%.3e | max(dal)=%.3e | %.1f s\n', ...
-        iter, Opt.AF, n_active, max_A, max_dal, toc(t_iter));
-
-    % Intermediate plotting
     if strcmpi(Opt.plot,'on')
         plot_intermediate(StabGrid, StabRes, Mode, Stab, Opt);
     end
 
-    % Sweep: save intermediate results
-    if Opt.Sweep == 1 && max(abs(Opt.dal)) <= Opt.Sweep * Opt.Conv
-        [Opt, StabRes] = save_sweep(StabGrid, Mode, Opt, Stab, StabRes);
+    fprintf('--- Linear solve done (%.1f s) ---\n\n', toc(t_loop));
+else
+    %% Nonlinear convergence loop
+    fprintf('\n--- Convergence loop ---\n');
+    iter = 0;
+    t_loop = tic;
+
+    while max(abs(Opt.dal)) >= Opt.Conv || Opt.AF ~= 1
+        iter = iter + 1;
+        Opt.dal = zeros(Mode.nf, 1);
+
+        % Solve for all active modes
+        t_iter = tic;
+        [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MFD_diff] = solve_modes( ...
+            BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MFD_diff);
+
+        % Damp inflow amplitude (nonlinear only)
+        if nnz(Stab.A0) ~= 1 && Opt.k1 == 0
+            [Opt, StabRes] = AVAL(StabGrid, Opt, Mode, StabRes);
+        end
+
+        % Update u,v,w,p, amplitudes, active modes, nonlinear forcing
+        [StabRes, Mode, Stab] = update_modes(StabGrid, Bound, Mode, Opt, Stab, StabRes);
+
+        % Check convergence and ramp amplitude
+        [Opt, Stab, StabRes] = check_convergence(StabGrid, Bound, Mode, Opt, Stab, StabRes);
+
+        % Status
+        n_active = numel(Mode.RunJ(Mode.RunJ >= round(Mode.nf/2)));
+        max_A = max(StabRes.A(:));
+        max_dal = max(abs(Opt.dal));
+        fprintf('  Iter %3d | AF=%.3f | %d modes | max(A)=%.3e | max(dal)=%.3e | %.1f s\n', ...
+            iter, Opt.AF, n_active, max_A, max_dal, toc(t_iter));
+
+        % Intermediate plotting
+        if strcmpi(Opt.plot,'on')
+            plot_intermediate(StabGrid, StabRes, Mode, Stab, Opt);
+        end
+
+        % Sweep: save intermediate results
+        if Opt.Sweep == 1 && max(abs(Opt.dal)) <= Opt.Sweep * Opt.Conv
+            [Opt, StabRes] = save_sweep(StabGrid, Mode, Opt, Stab, StabRes);
+        end
+
+        % Convergence plot
+        if strcmpi(Opt.plot,'on')
+            plot_convergence(StabGrid, Mode, Stab, Opt);
+        end
     end
 
-    % Convergence plot
-    if strcmpi(Opt.plot,'on')
-        plot_convergence(StabGrid, Mode, Stab, Opt);
+    % Report
+    try
+        [~, rss] = system(sprintf('ps -o rss= -p %d', feature('getpid')));
+        fprintf('--- Converged in %d iterations (%.1f s, peak %.1f GB) ---\n\n', ...
+            iter, toc(t_loop), str2double(strtrim(rss))/1e6);
+    catch
+        fprintf('--- Converged in %d iterations (%.1f s) ---\n\n', iter, toc(t_loop));
     end
-
-end
-% Report peak memory (RSS)
-try
-    [~, rss] = system(sprintf('ps -o rss= -p %d', feature('getpid')));
-    fprintf('--- Converged in %d iterations (%.1f s, peak %.1f GB) ---\n\n', ...
-        iter, toc(t_loop), str2double(strtrim(rss))/1e6);
-catch
-    fprintf('--- Converged in %d iterations (%.1f s) ---\n\n', iter, toc(t_loop));
 end
 
 %% 3. Post-processing

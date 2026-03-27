@@ -32,6 +32,7 @@ DeHNSSo_test_refactor/
 │   │   └── ModeToModeNumber.m
 │   ├── plot/
 │   │   ├── plot_amplitudes.m    — Final amplitude vs x (with optional reference)
+│   │   ├── plot_stability.m     — N-factor, growth rates, wavenumber, phase speed, eigenfunctions
 │   │   ├── plot_intermediate.m  — Amplitude during iteration (Figure 2)
 │   │   └── plot_convergence.m   — Convergence history (Figure 3, log scale)
 │   └── math/
@@ -76,7 +77,8 @@ User-specified physics parameters.
 | `omega_0, beta_0` | Fundamental frequency and wavenumber |
 | `IC` | Inflow method: `'ILST'` |
 | `phaseRef` | Phase reference: `'pwall'` or `'umax'` |
-| `A0` | Initial amplitude vector (1 × nf) |
+| `A0_fund` | Fundamental amplitude (scalar; expanded to full A0 in init.m) |
+| `A0` | Initial amplitude vector (1 × nf); built from A0_fund if not set directly |
 | `bcx` | x-locations for inhomogeneous BCs |
 | `bcw(k,ix,j)` | Wall BC values (3 × nx_bc × nf) |
 | `bct(k,ix,j)` | Freestream BC values (3 × nx_bc × nf) |
@@ -100,6 +102,7 @@ Solver control options.
 | `rerun` | `'off'` | Reuse LHS from previous call |
 | `parfor` | auto | Parallel LHS/solve: `'on'` or `'off'` (auto-detected) |
 | `gpu` | auto | GPU solve via gpuArray: `'on'` or `'off'` (auto-detected) |
+| `linear` | `'off'` | Linear mode: `'on'` (no NLT, 1 iter) or `'off'` |
 | `plot` | `'on'` | Intermediate plots: `'on'` or `'off'` |
 | `mmry` | 0 | Internal: 1 = skip LHS assembly (set by rerun) |
 | `AF` | scalar | Current amplitude factor (set internally) |
@@ -266,6 +269,10 @@ The heritage version is at `../DeHNSSo_original/Tools/Stability/HNS/DeHNSSo.m` (
 | Parallel LHS | None | `Opt.parfor = 'on'`: parfor over stations (LHS) and modes (solve) |
 | GPU solve | None | `Opt.gpu = 'on'`: gpuArray `\` for large ny; auto-detected |
 | Intermediate plots | Always on | `Opt.plot = 'on'`/`'off'`; suppressed by default in benchmarks |
+| Linear mode | Not supported | `Opt.linear = 'on'`: single iteration, no NLT (linear PSE) |
+| Oblique mode | Not supported | `N = 0` with `beta_0 > 0` for single oblique wave |
+| Amplitude interface | Manual `ModeToModeNumber` | `Stab.A0_fund` scalar; conjugates built in `init.m` |
+| Stability plots | Not available | `plot_stability(StabGrid, StabRes, Opt)`: N-factor, growth rates, eigenfunctions |
 
 ---
 
