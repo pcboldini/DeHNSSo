@@ -19,11 +19,9 @@ for j = Mode.RunJ
 end
 
 %% Determine active modes
-% Compute max outer product incrementally — avoids allocating nf x nf x nx array
-Amat = zeros(Mode.nf, Mode.nf);
-for i = 1:nx_
-    Amat = max(Amat, StabRes.A(:,i) * StabRes.A(:,i)');
-end
+% Outer product of per-mode amplitude maxima
+Amax = max(StabRes.A, [], 2);
+Amat = Amax * Amax';
 
 [~, index] = max(StabRes.A(:,:), [], 2);
 index = max(index);
