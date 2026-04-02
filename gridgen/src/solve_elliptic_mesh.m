@@ -26,13 +26,13 @@ function [X_out, Y_out] = solve_elliptic_mesh(X_init, Y_init, ...
 %   Outputs
 %     X_out, Y_out    [n_eta x n_xi]  smoothed mesh on Malik-Chebyshev nodes
 
-%% Parse options
-max_iter   = 5000;
-tol        = 1e-6;
-omega      = 1.7;
-n_uniform  = 201;
-P_strength = 0;
-P_decay    = 5;
+%% Default options
+max_iter   = 5000;    % maximum SOR iterations
+tol        = 1e-6;    % convergence tolerance (max point displacement)
+omega      = 1.7;     % SOR relaxation factor (1 < omega < 2)
+n_uniform  = 201;     % uniform eta points for intermediate solve
+P_strength = 0;       % Poisson source term strength (0 = Laplace)
+P_decay    = 5;       % source term decay rate from wall
 
 if nargin >= 9 && isstruct(opts)
     if isfield(opts, 'max_iter'),   max_iter   = opts.max_iter;   end
@@ -236,27 +236,4 @@ plot(X_wall, Y_wall, 'r-', 'LineWidth', 1.5);
 daspect([1 1 1]);
 title('Final mesh (elliptic + Malik-Chebyshev redistribution)');
 
-end
-
-%% =========================================================================
-function x = tdma(a, b, c, d)
-%TDMA  Thomas tridiagonal matrix algorithm.
-n = length(b);
-c_star = zeros(n, 1);
-d_star = zeros(n, 1);
-
-c_star(1) = c(1) / b(1);
-d_star(1) = d(1) / b(1);
-
-for i = 2:n
-    m = b(i) - a(i) * c_star(i-1);
-    c_star(i) = c(i) / m;
-    d_star(i) = (d(i) - a(i) * d_star(i-1)) / m;
-end
-
-x = zeros(n, 1);
-x(n) = d_star(n);
-for i = n-1:-1:1
-    x(i) = d_star(i) - c_star(i) * x(i+1);
-end
 end
