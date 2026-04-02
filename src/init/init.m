@@ -60,7 +60,15 @@ if ~isfield(Opt,'AMAX');        Opt.AMAX = 0.1; end
 if ~isfield(Opt,'ConvF');       Opt.ConvF = 100; end
 if ~isfield(Opt,'plot');        Opt.plot = 'on'; end
 if ~isfield(Opt,'buffer');     Opt.buffer = 'on'; end     % 'on', 'para', or 'off'
-if ~isfield(Opt,'bc_top');    Opt.bc_top = 'dirichlet'; end  % 'dirichlet' or 'neumann'
+if ~isfield(Opt,'bc_top')
+    Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};
+elseif ischar(Opt.bc_top) || isstring(Opt.bc_top)
+    switch lower(char(Opt.bc_top))
+        case 'dirichlet'; Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};
+        case 'neumann';   Opt.bc_top = {'H_NM', 'H_NM', 'H_NM'};
+        otherwise;         error('Unknown bc_top: %s', Opt.bc_top);
+    end
+end
 if ~isfield(Opt,'lu_mode');    Opt.lu_mode = 'full'; end  % 'full', 'auto', or 'none'
 if ~isfield(Opt,'lu_max_cache'); Opt.lu_max_cache = 3; end  % max cached LU for 'auto' mode
 if ~isfield(Opt,'parfor')

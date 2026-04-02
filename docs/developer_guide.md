@@ -89,7 +89,7 @@ Solver control options.
 
 | Field | Default | Description |
 |---|---|---|
-| `bc_top` | `'dirichlet'` | Freestream BC: `'dirichlet'` or `'neumann'` |
+| `bc_top` | `{'H_DR','H_DR','H_DR'}` | Freestream BC per component {u,v,w}: `'H_DR'`, `'IH_DR'`, `'H_NM'` |
 | `buffer` | `'on'` | Buffer zone type |
 | `xb` | 85 | Buffer start (% of domain) |
 | `Conv` | 1e-4 | Convergence criterion |
@@ -185,9 +185,9 @@ bc_top_mfd = [1, 2*ny+1];         % freestream rows for MFD mode (skip v)
 bc_wall    = [ny, 2*ny, 3*ny];    % wall rows (u,v,w at y=0) — per station
 ```
 
-**Freestream BC:**
-- Dirichlet: identity rows at `bc_top`.
-- Neumann: rows from `D1f(1,:)` (the first row of the FD derivative, evaluating `d/dx` at freestream).
+**Freestream BC** (per component via `Opt.bc_top{k}`):
+- `'H_DR'` / `'IH_DR'`: identity rows at `bc_top`. RHS injects `bct` value for `IH_DR`.
+- `'H_NM'`: rows from `D1f(1,:)` (Chebyshev derivative row at freestream, evaluating `d/dy = 0`).
 
 **Wall BC:** always Dirichlet (no-slip).
 
@@ -204,7 +204,7 @@ bc_wall    = [ny, 2*ny, 3*ny];    % wall rows (u,v,w at y=0) — per station
    - Freestream: `R(base + (k-1)*ny + 1) = bct(k,i,j)` (first row in the block = y=H row).
    - Wall: `R(base + k*ny) = bcw(k,i,j)` (last row in the block = y=0 row).
 
-This requires that the LHS rows at those positions are identity rows (Dirichlet BC). If `Opt.bc_top = 'neumann'`, the freestream rows in the LHS are Neumann, so setting a non-zero value in `bct` would prescribe a derivative condition rather than a Dirichlet value.
+Freestream values are only injected for components where `Opt.bc_top{k} = 'IH_DR'`. For `'H_DR'` and `'H_NM'` components, the freestream RHS stays zero. Wall values are always injected (wall BCs are always Dirichlet).
 
 ---
 
@@ -237,7 +237,7 @@ This requires that the LHS rows at those positions are identity rows (Dirichlet 
 - Conjugate modes are set by complex conjugate symmetry.
 
 **Neumann freestream BC in ILST_solver:**
-When `Opt.bc_top = 'neumann'`, the farfield rows `n4-2:n4` use rows from the Chebyshev differentiation matrix `Total_Dn` rather than identity rows. This imposes `d/dz = 0` at `z = H` in the mapped coordinate.
+When any component uses `'H_NM'`, the ILST solver receives `bc_top = 'H_NM'` and the farfield rows `n4-2:n4` use rows from the Chebyshev differentiation matrix `Total_Dn` rather than identity rows, imposing `d/dy = 0` at `y = H`.
 
 ---
 
@@ -262,7 +262,7 @@ The heritage version is at `../DeHNSSo_original/Tools/Stability/HNS/DeHNSSo.m` (
 | LHS reuse | None | `Opt.rerun`: pass LHS across calls |
 | LU cache | Pre-factorised `dML` passed in | `Opt.LU_cache` keyed by `(omega,beta)` |
 | Inhomogeneous BCs | Not supported | `Stab.bcw`, `Stab.bct` interpolated and injected in RHS |
-| Freestream BC type | Dirichlet only | `Opt.bc_top`: `'dirichlet'` or `'neumann'` |
+| Freestream BC type | Dirichlet only | `Opt.bc_top`: per-component `{'H_DR','IH_DR','H_NM'}` |
 | ILST phase reference | Fixed (wall pressure) | `Stab.phaseRef`: `'pwall'` or `'umax'` |
 | Convergence plot | Linear y-axis (bug) | Log y-axis fixed |
 | Caller | Flat script | Sectioned with inline documentation |

@@ -36,9 +36,8 @@ V = V./repmat(Vmax,NC,1); % Normalize
 V(isnan(V))=0+0*sqrt(-1);% replace NaN with zeros
 
 % Combined wavenumbers of alpha and beta
-% wavenumber = sqrt(real(EV).^2 + beta^2 - (real(EV)-omega).^2 * Mach)';
+% Balakumar & Malik (1992) - Discrete modes and continuous spectra, eqs. (3.7) & (2.19)
 wavenumber = real(sqrt(EV.^2 + beta^2 - (EV-omega).^2 * Mach^2))';
-%wavenumber = real(sqrt(EV.^2 + beta^2))';
 % the former result is derived by Balakumar & Malik (1992) - Discrete modes
 % and continuous spectra in supersonic boundary layers, eqs. (3.7) & (2.19)
 % note that it is assumed that Pr = 3/4 and Re >> 1, in other cases,

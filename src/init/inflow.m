@@ -28,7 +28,14 @@ StabRes.v      = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
 StabRes.w      = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
 StabRes.p      = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
 
-if ~exist('Opt','var') || ~isfield(Opt,'bc_top'); bc_top = 'dirichlet'; else; bc_top = Opt.bc_top; end
+% Determine ILST freestream BC from per-component Opt.bc_top.
+if ~exist('Opt','var') || ~isfield(Opt,'bc_top')
+    bc_top = 'H_DR';
+elseif iscell(Opt.bc_top)
+    if any(strcmpi(Opt.bc_top, 'H_NM')); bc_top = 'H_NM'; else; bc_top = 'H_DR'; end
+else
+    bc_top = Opt.bc_top;
+end
 
 if Stab.IC=="LOAD"
     % Load inflow condition from a previously saved StabRes or phiIC file.

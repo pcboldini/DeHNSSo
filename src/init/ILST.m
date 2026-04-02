@@ -30,30 +30,24 @@ d2zdy2 = StabGrid.d2zdy2;
 %% Find initial condition as solution to local stability eigenvalue problem
 
 % Solve local eigenvalue problem ILST
-if ~exist('bc_top','var'); bc_top = 'dirichlet'; end
+if ~exist('bc_top','var'); bc_top = 'H_DR'; end
 if ~exist('Opt','var');   Opt.plot = 'on'; end
 fprintf(' Calculating IC for nonzero modes with ILST: ')
 [eig,u,v,w,p] = ILST_solver(Re,flip(U),flip(W),flip(dyU),flip(dyW),omega,beta,ny,flip(dzdy),flip(d2zdy2),bc_top);
 
-% Find d99 for filtering purposes
-k = find(U(:,i)<=0.99*max(U(:,i)),1,'first');   
-d99(i)=StabGrid.y(k);
+% Find d99 for eigenvalue filtering
+k = find(U(:,i) <= 0.99*max(U(:,i)), 1, 'first');
+d99 = StabGrid.y(k);
 
 % Filter eigenfunctions for correct eigenvalue
-[alpha,index]   = EVfilter(eig,v,StabGrid.y,omega,beta,d99);
+[alpha, index] = EVfilter(eig, v, StabGrid.y, omega, beta, d99);
 
 %% Normalize output by max(u)
-
-% Calculate new maximum amplitude after spline interpolation
-% Select correct u
 u                 = u(:,index);
-
-% % Calculate amplitude
-y_mdInt           = linspace(StabGrid.y(1),StabGrid.y(end),4000);
-u1int             = interp1(StabGrid.y,abs(u),y_mdInt,'spline');
+y_mdInt           = linspace(StabGrid.y(1), StabGrid.y(end), 4000);
+u1int             = interp1(StabGrid.y, abs(u), y_mdInt, 'spline');
 [ampltd, ~]       = max(abs(u1int));
- 
-% Normalize result by u_max
+
 StabRes.u(j,:,i)  = u/ampltd;
 StabRes.v(j,:,i)  = v(:,index)/ampltd;
 StabRes.w(j,:,i)  = w(:,index)/ampltd;

@@ -89,11 +89,11 @@ function [EV,u,v,w,p]=ILST_solver(Re,Ur,Wr,dyUr,dyWr,omega,beta,N_LST,dzdy,d2zdy
     AA(2,2) = 1;  AA(3,3) = 1;  AA(4,4) = 1;
     BB(2:4,:) = 0;
 
-    % Farfield BCs — Dirichlet (u=v=w=0) or Neumann (d/dz=0) at y=H
-    if ~exist('bc_top','var'); bc_top = 'dirichlet'; end
+    % Farfield BCs — H_DR (u=v=w=0) or H_NM (d/dy=0) at y=H
+    if ~exist('bc_top','var'); bc_top = 'H_DR'; end
     AA(n4-2:n4,:) = 0;
     BB(n4-2:n4,:) = 0;
-    if strcmpi(bc_top,'neumann')
+    if strcmpi(bc_top,'H_NM')
         % d/dz = 0 at freestream: use the corresponding rows of Total_Dn
         AA(n4-2,:) = Total_Dn(n4-2,:);
         AA(n4-1,:) = Total_Dn(n4-1,:);

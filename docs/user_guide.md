@@ -164,12 +164,29 @@ Stab.bct(1,:,j_conj) = conj(Stab.bct(1,:,j_fund));
 
 ### Freestream BC type
 
+`Opt.bc_top` is a cell array specifying the BC type per velocity component {u, v, w}:
+
 ```matlab
-Opt.bc_top = 'dirichlet';  % u=v=w=0 at y=H (default; requires tall domain)
-Opt.bc_top = 'neumann';    % d/dy=0  at y=H (use for truncated domains)
+Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};   % default: all zero at y=H
+
+% BC types:
+%   'H_DR'  = homogeneous Dirichlet  (q = 0)
+%   'IH_DR' = inhomogeneous Dirichlet (q = bct value, requires Stab.bct)
+%   'H_NM'  = homogeneous Neumann    (dq/dy = 0)
 ```
 
-The same BC is applied in the ILST inflow computation.
+Pressure has no BC at the freestream (determined by the equations). The MFD `v` component is always free at the freestream (displacement velocity).
+
+**Receptivity example** — acoustic wave forcing v at freestream:
+```matlab
+Opt.bc_top = {'H_DR', 'IH_DR', 'H_DR'};  % u=0, v=forced, w=0
+Stab.bct(2,:,j_fund) = 1e-4 * ones(1, numel(x_dom));
+Stab.bct(2,:,j_conj) = conj(Stab.bct(2,:,j_fund));
+```
+
+For backward compatibility, scalar strings `'dirichlet'` and `'neumann'` are auto-converted to `{'H_DR','H_DR','H_DR'}` and `{'H_NM','H_NM','H_NM'}` respectively.
+
+The ILST inflow computation uses the same BC type.
 
 ---
 
@@ -320,4 +337,4 @@ plot_stability(StabGrid, StabRes, Opt);
 | Solver does not converge | Amplitude too high, too few modes | Reduce `Stab.A0`, increase `Stab.M` |
 | Memory error | Large `nx × ny`, `lu_mode = 'full'` | Use `lu_mode = 'auto'` with `lu_max_cache`; disable `parfor` to avoid worker copies |
 | Results differ from PSE | Buffer too short, nonlinear effects | Increase `Opt.xb`, check `Stab.M` |
-| Freestream BC oscillations | Domain truncated, Dirichlet BC | Switch to `Opt.bc_top = 'neumann'` |
+| Freestream BC oscillations | Domain truncated, Dirichlet BC | Use `'H_NM'` on affected components: e.g. `Opt.bc_top = {'H_NM','H_NM','H_NM'}` |

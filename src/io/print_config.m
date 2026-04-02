@@ -24,7 +24,7 @@ else
 end
 fprintf('  Solver\n');
 fprintf('    Buffer: %s from %d%%,  Conv: %.1e\n', Opt.buffer, Opt.xb, Opt.Conv);
-fprintf('    BC top: %s\n', Opt.bc_top);
+fprintf('    BC top: u=%s, v=%s, w=%s\n', Opt.bc_top{1}, Opt.bc_top{2}, Opt.bc_top{3});
 fprintf('    LU mode: %s\n', Opt.lu_mode);
 if isfield(Opt,'parfor') && strcmpi(Opt.parfor,'on')
     fprintf('    Parfor: on\n');

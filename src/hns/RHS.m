@@ -23,8 +23,12 @@ function [R] = RHS(Bound,Grid,Mode,Opt,StabRes,j)
         i_vec = 2:Grid.nx;
         base  = 4*ny*(i_vec - 1);   % 1 x (nx-1) base offsets
         for k = 1:3
-            R(base + (k-1)*ny + 1) = Bound.bct(k, i_vec, j);  % freestream (index 1)
-            R(base + k*ny)          = Bound.bcw(k, i_vec, j);  % wall       (index ny)
+            % Freestream: only inject for IH_DR (inhomogeneous Dirichlet)
+            if strcmpi(Opt.bc_top{k}, 'IH_DR')
+                R(base + (k-1)*ny + 1) = Bound.bct(k, i_vec, j);  % freestream
+            end
+            % Wall: always inject (wall BCs are always Dirichlet)
+            R(base + k*ny) = Bound.bcw(k, i_vec, j);              % wall
         end
     end
 end

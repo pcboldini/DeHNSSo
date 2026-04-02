@@ -37,7 +37,7 @@ cell_i4    = cell(nx,1);  cell_j4    = cell(nx,1);  cell_s4    = cell(nx,1);
 bc_top     = [1, ny+1, 2*ny+1];
 bc_top_mfd = [1, 2*ny+1];
 bc_wall    = [ny, 2*ny, 3*ny];
-neumann_top = isfield(Opt,'bc_top') && strcmpi(Opt.bc_top,'neumann');
+bc_top_type = Opt.bc_top;  % cell array {'H_DR','H_DR','H_DR'} per component (u,v,w)
 
 iu  = Init.iu;
 D1  = Grid.D1;
@@ -70,7 +70,7 @@ if strcmpi(Opt.parfor, 'on')
     parfor i = 2:nx
         [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4] = ...
             lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, dxi, ...
-                        bc_top, bc_top_mfd, bc_wall, neumann_top);
+                        bc_top, bc_top_mfd, bc_wall, bc_top_type);
         cell_i1MFD{i}=ci1MFD; cell_j1MFD{i}=cj1MFD; cell_s1MFD{i}=cs1MFD;
         cell_i1{i}=ci1;       cell_j1{i}=cj1;       cell_s1{i}=cs1;
         cell_i2{i}=ci2;       cell_j2{i}=cj2;       cell_s2{i}=cs2;
@@ -84,7 +84,7 @@ else
     for i = 2:nx
         [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4] = ...
             lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, dxi, ...
-                        bc_top, bc_top_mfd, bc_wall, neumann_top);
+                        bc_top, bc_top_mfd, bc_wall, bc_top_type);
         cell_i1MFD{i}=ci1MFD; cell_j1MFD{i}=cj1MFD; cell_s1MFD{i}=cs1MFD;
         cell_i1{i}=ci1;       cell_j1{i}=cj1;       cell_s1{i}=cs1;
         cell_i2{i}=ci2;       cell_j2{i}=cj2;       cell_s2{i}=cs2;
@@ -133,7 +133,7 @@ end
 %% Local function: assemble triplets for one station i (i >= 2)
 function [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4] = ...
     lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, dxi, ...
-                bc_top, bc_top_mfd, bc_wall, neumann_top)
+                bc_top, bc_top_mfd, bc_wall, bc_top_type)
 
 % Base flow diagonal matrices
 if use_full
@@ -255,24 +255,25 @@ blk2(:, cur_off+1:cur_off+bsize) = Bi*bufc_i;
 blk3(:, cur_off+1:cur_off+bsize) = Ci*bufc_i;
 blk4(:, cur_off+1:cur_off+bsize) = Di*bufc_i;
 
-% Apply freestream BCs (zero rows, then set BC)
+% Apply freestream BCs per component (u, v, w)
 blk1MFD(bc_top_mfd,:) = 0;
 blk1(bc_top,:)   = 0;
 blk2(bc_top,:)   = 0;
 blk3(bc_top,:)   = 0;
 blk4(bc_top,:)   = 0;
 
-if neumann_top
-    for k = 1:3
-        r  = (k-1)*ny + 1;
+for k = 1:3
+    r  = (k-1)*ny + 1;
+    is_mfd = ismember(r, bc_top_mfd);
+    if strcmpi(bc_top_type{k}, 'H_NM')
         cs = cur_off + (k-1)*ny + 1;
         ce = cur_off + k*ny;
         blk1(r, cs:ce) = D1f(1,:);
-        if k ~= 2; blk1MFD(r, cs:ce) = D1f(1,:); end
+        if is_mfd; blk1MFD(r, cs:ce) = D1f(1,:); end
+    else  % H_DR or IH_DR
+        blk1(r, cur_off+r) = 1;
+        if is_mfd; blk1MFD(r, cur_off+r) = 1; end
     end
-else
-    for r = bc_top_mfd;  blk1MFD(r, cur_off+r) = 1;  end
-    for r = bc_top;      blk1(r,    cur_off+r) = 1;  end
 end
 
 % Apply wall BCs

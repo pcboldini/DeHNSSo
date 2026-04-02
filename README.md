@@ -9,14 +9,19 @@ This is an extended and refactored version of [DeHNSSo](https://doi.org/10.1016/
 ## New features in v2
 
 ### Geometry and mesh
+- **Grid generation pipeline** (`gridgen/`) — builds structured Malik-Chebyshev stability grids and interpolates base-flow data; supports flat-plate similarity solutions, curvilinear body-fitted meshes, and external CFD imports (e.g., OpenFOAM)
 - **Curvilinear coordinates** — perturbation equations formulated in general body-fitted coordinates (ξ, η) with numerically computed first- and second-order inverse metric tensors
-- **Interpolation pipeline** — automated conversion of base-flow data from external CFD solvers (e.g., OpenFOAM) onto structured Malik–Chebyshev grids (`interpolation/`)
 - **Elliptic mesh smoother** — Laplace-based grid smoothing via successive over-relaxation, enabling body-fitted meshes on concave surfaces without grid folding
 
 ### Boundary conditions
+- **Per-component freestream BC** — `Opt.bc_top` is a cell array `{'H_DR', 'H_DR', 'H_DR'}` specifying the BC type for each velocity component (u, v, w) independently:
+  - `'H_DR'` — homogeneous Dirichlet (q = 0, default)
+  - `'IH_DR'` — inhomogeneous Dirichlet (q = value from `Stab.bct`)
+  - `'H_NM'` — homogeneous Neumann (dq/dy = 0)
 - **Wall actuation** — inhomogeneous Dirichlet BC at the wall (blowing/suction, streamwise or spanwise forcing) via `Stab.bcw`
-- **Freestream forcing** — inhomogeneous Dirichlet BC at `y = H` (acoustic waves, free-stream turbulence) via `Stab.bct`
-- **Dirichlet/Neumann freestream BC** — selectable via `Opt.bc_top`; Neumann (`d/dy = 0`) recommended for truncated domains; applied consistently in both the HNS solver and the ILST inflow computation
+- **Freestream forcing** — inhomogeneous Dirichlet BC at `y = H` (acoustic waves, free-stream turbulence) via `Stab.bct`; requires `'IH_DR'` on the forced component
+- **Mixed BCs** — different BC types per component enable receptivity studies (e.g., `{'H_DR', 'IH_DR', 'H_DR'}` forces v at freestream while u and w decay to zero)
+- **Backward compatible** — scalar `'dirichlet'` / `'neumann'` strings are auto-converted to the per-component format
 
 ### Inflow
 - **Phase reference** — inflow eigenfunction phase can be referenced to wall pressure (`'pwall'`) or streamwise velocity maximum (`'umax'`) via `Stab.phaseRef`
@@ -24,7 +29,6 @@ This is an extended and refactored version of [DeHNSSo](https://doi.org/10.1016/
 
 ### Spectral content
 - **3D support** — spanwise wavenumber modes (N > 0) fully supported for cross-flow instability analysis; beta-dependent LHS terms assembled as separate matrices (MLA3, MLA4) and combined at solve time
-- **Single oblique mode** — set `N = 0` with `beta_0 > 0` to track a single oblique wave; `betavec` is constructed with `beta_0 * sign(Mvec)` for conjugate symmetry
 
 ### Solver modes
 - **Linear mode** — `Opt.linear = 'on'` disables nonlinear terms (NLT) and converges in a single iteration; equivalent to linear PSE. Default is `'off'` (nonlinear)
@@ -33,14 +37,13 @@ This is an extended and refactored version of [DeHNSSo](https://doi.org/10.1016/
 - **LHS matrix reuse** — pass the assembled LHS back across calls via `Opt.rerun = 'on'`; avoids full matrix reassembly for parameter sweeps (amplitude, actuation, frequency)
 - **LU factorisation cache** — factorisations are cached per mode and reused across iterations; reused across runs when `omega`/`beta` are unchanged (`Opt.lu_mode`: `'full'`, `'auto'`, `'none'`)
 - **Parallel assembly and solve** — `Opt.parfor = 'on'` parallelises LHS station assembly and mode solve (auto-detected; requires Parallel Computing Toolbox)
-- **GPU acceleration** — `Opt.gpu = 'on'` solves on GPU via `gpuArray \`; beneficial for ny ≥ 80 on NVIDIA GPUs (auto-detected; requires PCT)
-- **Vectorised BC assembly** — boundary condition rows applied with precomputed index vectors, eliminating redundant loops in the LHS assembly
+- **GPU acceleration** — `Opt.gpu = 'on'` solves on GPU via `gpuArray \`; beneficial for ny >= 80 on NVIDIA GPUs (auto-detected; requires PCT)
 - **MFD_diff compression** — the mean-flow distortion LHS is stored as a difference matrix, reducing stored memory by 49%
 - **7.7x speedup** over the heritage version (Blasius test case, nx=800, ny=40, M=1)
 
 ### Code quality
 - **Modular structure** — refactored from a monolithic 900-line function into ~15 focused files organised by functionality (`src/init`, `src/hns`, `src/convergence`, `src/plot`, `src/math`)
-- **Documented caller** — `callers/example_BlasiusBL.m` is organised into labelled sections with inline documentation for all parameters
+- **Documented caller** — `callers/example_BlasiusBL.m` is organised into labelled sections (spectral content, inflow, boundary conditions, buffer, solver options, performance, run, post-processing)
 
 ## Directory structure
 
@@ -49,7 +52,7 @@ DeHNSSo/
 ├── callers/
 │   └── example_BlasiusBL.m      — Example: TS waves in Blasius BL
 ├── stability/
-│   ├── DeHNSSo_input.mat        — Stability grid input (generated by interpolation/)
+│   ├── DeHNSSo_input.mat        — Stability grid input (generated by gridgen/)
 │   └── literature/              — Reference data (PSE, DNS, LPSE)
 ├── src/                         — Solver source code
 │   ├── main.m                   — Main solver entry point
@@ -59,29 +62,55 @@ DeHNSSo/
 │   ├── io/                      — Post-processing, configuration printing
 │   ├── plot/                    — Intermediate, convergence, and final amplitude plots
 │   └── math/                    — Finite differences, Chebyshev operators
-├── interpolation/               — Interpolation pipeline for curvilinear meshes
-│   ├── main_interpol.m          — Pipeline entry point
-│   ├── config.m                 — User configuration
-│   └── src/                    — Mesh generation, metrics, elliptic smoother
-├── baseflow/                    — Boundary-layer solver (Blasius, Falkner–Skan–Cooke)
+├── gridgen/                     — Grid generation and base-flow preprocessing
+│   ├── main_gridgen.m           — Pipeline entry point
+│   ├── config.m                 — User configuration (Re, nx, ny, H, y_i)
+│   └── src/                     — Mesh generation, metric computation, elliptic smoother
+├── baseflow/                    — Boundary-layer solver (Blasius, Falkner-Skan-Cooke)
 └── docs/                        — User guide and developer guide
 ```
 
-## Quick start
+## Workflow
 
-### 1. Generate base flow (Blasius flat plate)
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                                                                     │
+│   1. BASE FLOW              2. GRID GENERATION      3. STABILITY   │
+│                                                                     │
+│   baseflow/                 gridgen/                 callers/       │
+│   ┌──────────────┐         ┌───────────────┐        ┌────────────┐ │
+│   │ caller.m     │         │ config.m      │        │ example_   │ │
+│   │              │──BF──>  │ main_gridgen.m│──MAT─> │ BlasiusBL  │ │
+│   │ (BL solver)  │  .mat   │               │  .mat  │            │ │
+│   └──────────────┘         │ (mesh + BF    │        │ main()     │ │
+│                             │  onto grid)   │        │ (HNS solve)│ │
+│   OR: external CFD ──────> └───────────────┘        └────────────┘ │
+│   (OpenFOAM, DNS, ...)                                     │       │
+│                                                             v       │
+│                                                      StabRes       │
+│                                                   (amplitudes,     │
+│                                                    eigenfunctions, │
+│                                                    N-factors)      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Generate base flow
 
 ```matlab
 cd baseflow/
 caller          % generates BF_Blasius.mat in baseflow/output/
 ```
 
+Or provide base-flow data from an external CFD solver (OpenFOAM, DNS, COMSOL, ...).
+
 ### 2. Build stability grid
 
+The `gridgen/` pipeline builds the stability grid (Malik-Chebyshev wall-normal, FD streamwise) and interpolates the base flow onto it.
+
 ```matlab
-cd interpolation/
+cd gridgen/
 edit config.m   % set grid parameters, Re, domain height
-main_interpol   % reads ../baseflow/output/, saves DeHNSSo_input.mat to ../stability/
+main_gridgen    % reads ../baseflow/output/, saves DeHNSSo_input.mat to ../stability/
 ```
 
 ### 3. Run stability analysis
@@ -90,10 +119,6 @@ main_interpol   % reads ../baseflow/output/, saves DeHNSSo_input.mat to ../stabi
 cd callers/
 example_BlasiusBL   % runs DeHNSSo, plots amplitude development
 ```
-
-### Curvilinear mesh (e.g., from OpenFOAM)
-
-> **Under development.** Contact P.C.Boldini@tudelft.nl for the current status.
 
 ## Key solver options
 
@@ -105,33 +130,20 @@ Set in the caller before calling `main()`:
 | `Stab.N` | — | Spectral truncation: spanwise modes |
 | `Stab.omega_0` | — | Fundamental angular frequency |
 | `Stab.beta_0` | — | Fundamental spanwise wavenumber |
-| `Stab.IC` | `'ILST'` | Inflow method |
-| `Stab.A0_fund` | — | Fundamental mode amplitude (scalar; builds full A0 automatically) |
-| `Opt.bc_top` | `'dirichlet'` | Freestream BC: `'dirichlet'` or `'neumann'` |
-| `Opt.buffer` | `'on'` | Buffer zone type: `'on'`, `'para'`, `'off'` |
-| `Opt.xb` | 85 | Buffer start (% of domain length) |
+| `Stab.IC` | `'ILST'` | Inflow method: `'ILST'` or `'LOAD'` |
+| `Stab.A0_fund` | — | Fundamental mode amplitude (scalar) |
+| `Opt.bc_top` | `{'H_DR','H_DR','H_DR'}` | Freestream BC per component {u, v, w} |
+| `Opt.buffer` | `'on'` | Buffer type: `'on'`, `'para'`, `'off'` |
+| `Opt.xb` | 85 | Buffer start (% of domain) |
 | `Opt.Conv` | `1e-4` | Convergence criterion |
-| `Opt.lu_mode` | `'full'` | LU cache strategy: `'full'`, `'auto'`, `'none'` |
-| `Opt.rerun` | `'off'` | Reuse LHS from previous run: `'on'` or `'off'` |
-| `Opt.parfor` | auto | Parallel LHS/solve: `'on'` or `'off'` (auto-detected) |
-| `Opt.gpu` | auto | GPU solve via gpuArray: `'on'` or `'off'` (auto-detected) |
-| `Opt.linear` | `'off'` | Linear mode (no NLT, 1 iteration): `'on'` or `'off'` |
-| `Opt.plot` | `'on'` | Intermediate plots: `'on'` or `'off'` |
+| `Opt.lu_mode` | `'full'` | LU cache: `'full'`, `'auto'`, `'none'` |
+| `Opt.rerun` | `'off'` | Reuse LHS: `'on'` or `'off'` |
+| `Opt.parfor` | auto | Parallel: `'on'` or `'off'` |
+| `Opt.gpu` | auto | GPU solve: `'on'` or `'off'` |
+| `Opt.linear` | `'off'` | Linear mode: `'on'` or `'off'` |
+| `Opt.plot` | `'on'` | Plots: `'on'` or `'off'` |
 
 See [docs/user_guide.md](docs/user_guide.md) for a full parameter reference.
-
-## Figures
-
-During a run, the solver produces:
-
-| Figure | Content |
-|---|---|
-| 1 | Inflow: base flow profiles, eigenvalue spectrum, shape function |
-| 2 | Amplitude evolution during convergence iterations |
-| 3 | Convergence history (relative error per mode, log scale) |
-| 4 | Final amplitude development (with optional PSE/DNS reference overlay) |
-| 5 | N-factor, growth rates, wavenumber, phase speed (via `plot_stability`) |
-| 6 | Eigenfunctions at selected streamwise stations (via `plot_stability`) |
 
 ## Performance
 
@@ -143,11 +155,7 @@ Blasius BL test case (nx=800, ny=40, M=1, sequential):
 | LHS stored memory | 224.4 MB | 115.4 MB (**49% less**) |
 | Non-LHS memory | 54.4 MB | 10.6 MB (**5.1x less**) |
 
-For the nonlinear case (M=5): heritage 785.8 s → v2 88.5 s (**8.8x faster**).
-
-Optional acceleration (requires Parallel Computing Toolbox):
-- `Opt.parfor = 'on'` — parallelises LHS station assembly and mode solve; effective for ny ≥ 80 or many modes
-- `Opt.gpu = 'on'` — GPU solve via `gpuArray \`; effective for ny ≥ 80 on NVIDIA GPUs
+For the nonlinear case (M=5): heritage 785.8 s -> v2 88.5 s (**8.8x faster**).
 
 ## Documentation
 
@@ -156,13 +164,11 @@ Optional acceleration (requires Parallel Computing Toolbox):
 
 ## Roadmap
 
-Features planned for future releases:
+- **Grid generation** — curvilinear meshes from external CFD solvers (in progress)
+- **Discrete adjoint** — receptivity and sensitivity analysis (in progress)
+- **Compressible extension** — (rho, u, v, w, T) for high-speed boundary layers (planned)
 
-- **Curvilinear mesh pipeline** — full interpolation from external CFD solvers (OpenFOAM, etc.) onto body-fitted Malik–Chebyshev grids (in progress)
-- **Discrete adjoint** — receptivity and sensitivity analysis via the adjoint HNS operator (Carpenter et al., AIAA 2010-378); receptivity maps and optimal wall actuation (in progress)
-- **Compressible extension** — compressible HNS with (ρ, u, v, w, T) variables for high-speed boundary layers (planned)
-
-If you are interested in contributing or collaborating, contact P.C.Boldini@tudelft.nl.
+Contact P.C.Boldini@tudelft.nl if interested in contributing.
 
 ## References
 
