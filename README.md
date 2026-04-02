@@ -73,30 +73,39 @@ DeHNSSo/
 ## Workflow
 
 ```mermaid
-graph LR
-    subgraph "1. Base Flow"
-        BL["baseflow/<br/>caller.m<br/><i>Blasius, FSC</i>"]
-        EXT["External CFD<br/><i>OpenFOAM, DNS, ...</i>"]
+flowchart TD
+    subgraph INPUT ["① Base Flow"]
+        direction LR
+        BL("🔧 <b>baseflow/</b><br/><code>caller.m</code><br/>Blasius · FSC")
+        OF("🌀 <b>OpenFOAM</b>")
+        DNS("💻 <b>DNS / COMSOL</b>")
     end
 
-    subgraph "2. Grid Generation"
-        GG["gridgen/<br/>config.m<br/>main_gridgen.m<br/><i>Malik-Chebyshev grid<br/>+ base-flow interpolation</i>"]
+    subgraph GRID ["② Grid Generation"]
+        GG("📐 <b>gridgen/</b><br/><code>config.m</code> → <code>main_gridgen.m</code><br/>Malik-Chebyshev grid · metric tensors · base-flow interpolation")
     end
 
-    subgraph "3. Stability Analysis"
-        HNS["callers/<br/>example_BlasiusBL.m<br/><b>main()</b><br/><i>HNS solver</i>"]
+    subgraph SOLVE ["③ Stability Analysis"]
+        HNS("⚡ <b>callers/</b><br/><code>example_BlasiusBL.m</code> → <code>main()</code><br/>Harmonic Navier-Stokes solver")
     end
 
-    BL -- ".mat" --> GG
-    EXT -- ".mat" --> GG
-    GG -- "DeHNSSo_input.mat" --> HNS
-    HNS --> RES["<b>StabRes</b><br/>amplitudes A(x)<br/>eigenfunctions<br/>N-factors<br/>wavenumbers α(x)"]
+    BL -. ".mat" .-> GG
+    OF -. ".csv" .-> GG
+    DNS -. ".mat / .csv" .-> GG
+    GG == "DeHNSSo_input.mat" ==> HNS
+    HNS ==> RES
 
-    style BL fill:#e8f4fd,stroke:#0aa6d6
-    style EXT fill:#e8f4fd,stroke:#0aa6d6
-    style GG fill:#fff3e0,stroke:#f5a623
-    style HNS fill:#e8f5e9,stroke:#4caf50
-    style RES fill:#f3e5f5,stroke:#9c27b0
+    RES("📊 <b>StabRes</b><br/>amplitudes · eigenfunctions · N-factors · wavenumbers")
+
+    style INPUT fill:none,stroke:#0aa6d6,stroke-width:2px
+    style GRID fill:none,stroke:#f5a623,stroke-width:2px
+    style SOLVE fill:none,stroke:#4caf50,stroke-width:2px
+    style BL fill:#e8f4fd,stroke:#0aa6d6,color:#333
+    style OF fill:#e8f4fd,stroke:#0aa6d6,color:#333
+    style DNS fill:#e8f4fd,stroke:#0aa6d6,color:#333
+    style GG fill:#fff3e0,stroke:#f5a623,color:#333
+    style HNS fill:#e8f5e9,stroke:#4caf50,color:#333
+    style RES fill:#f3e5f5,stroke:#9c27b0,color:#333,stroke-width:2px
 ```
 
 ### 1. Generate base flow
