@@ -35,18 +35,22 @@ etay = Grid.etay;
 etax = Grid.etax;
 xiy  = Grid.xiy;
 xix  = Grid.xix;
-dxi  = Grid.x(2) - Grid.x(1);
+
+% ξ-derivatives via sparse non-uniform FD matrix (built once in init.m).
+% On a uniform grid this reduces to classical 4th-order coefficients; on
+% xrefined / curvilinear grids it correctly accounts for variable Δξ.
+D_xi = Grid.D_xi;
 
 %% Calculate derivative fields (batched over modes)
 
-% xi-derivatives: apply FD to each active mode's 2D field
+% xi-derivatives: apply the sparse D_xi matrix along rows (streamwise)
 dudxi = zeros(nf, ny, nx);
 dvdxi = zeros(nf, ny, nx);
 dwdxi = zeros(nf, ny, nx);
 for j = RunJ
-    dudxi(j,:,:) = -FD1d4o(squeeze(StabRes.u(j,:,:)), dxi);
-    dvdxi(j,:,:) = -FD1d4o(squeeze(StabRes.v(j,:,:)), dxi);
-    dwdxi(j,:,:) = -FD1d4o(squeeze(StabRes.w(j,:,:)), dxi);
+    dudxi(j,:,:) = squeeze(StabRes.u(j,:,:)) * D_xi.';
+    dvdxi(j,:,:) = squeeze(StabRes.v(j,:,:)) * D_xi.';
+    dwdxi(j,:,:) = squeeze(StabRes.w(j,:,:)) * D_xi.';
 end
 
 % eta-derivatives: apply D1 to all stations at once per mode

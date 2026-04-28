@@ -35,13 +35,9 @@ NE = length(EV);    % length of eigenspectrum
 V = V./repmat(Vmax,NC,1); % Normalize
 V(isnan(V))=0+0*sqrt(-1);% replace NaN with zeros
 
-% Combined wavenumbers of alpha and beta
-% Balakumar & Malik (1992) - Discrete modes and continuous spectra, eqs. (3.7) & (2.19)
+% Combined wavenumber from α and β (Balakumar & Malik 1992, eqs. 3.7, 2.19;
+% assumes Pr = 3/4 and Re >> 1).
 wavenumber = real(sqrt(EV.^2 + beta^2 - (EV-omega).^2 * Mach^2))';
-% the former result is derived by Balakumar & Malik (1992) - Discrete modes
-% and continuous spectra in supersonic boundary layers, eqs. (3.7) & (2.19)
-% note that it is assumed that Pr = 3/4 and Re >> 1, in other cases,
-% implement equation (2.22)
 
 % Loop over eigenvalues (and functions)
 Error = inf(1,NE);
@@ -50,8 +46,13 @@ Switches = zeros(1,NE);
 y_top = zeros(1,NE);
 y_bulge = zeros(1,NE);
 for n = 1:NE
-    % Skip clearly unphysical eigenvalues early
-    if real(EV(n)) < -0.1 || abs(real(EV(n))) > 1.0 || wavenumber(n) < 1e-10
+    % Skip clearly unphysical eigenvalues early.
+    % The α_r range allows negative values: stationary CFI on a swept BL
+    % gives α_r = -β·W_edge/U_edge < 0 when W_edge and β have the same sign.
+    % The exponential-decay tests below use wavenumber = sqrt(α_r²+β²) which
+    % is sign-independent, so the rest of the filter handles negative α_r
+    % correctly.
+    if abs(real(EV(n))) > 1.0 || wavenumber(n) < 1e-10
         continue
     end
 

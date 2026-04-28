@@ -10,9 +10,10 @@ iu = sqrt(-1);
 Opt.k2 = Opt.k2 + 1;
 Opt.AF(Opt.k2) = Opt.AF;
 
-% Compute du/dxi
+% Compute du/dxi on the (possibly non-uniform) ξ grid
+D_xi = StabGrid.D_xi;
 for j = Mode.RunJ
-    dux(j,:,:) = -FD1d4o(squeeze(StabRes.u(j,:,:)), StabGrid.dxi);
+    dux(j,:,:) = squeeze(StabRes.u(j,:,:)) * D_xi.';
 end
 
 yinteg = linspace(0, max(StabGrid.y), 4000);

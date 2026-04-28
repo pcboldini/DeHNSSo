@@ -15,7 +15,7 @@ function [StabRes] = ILST(j,i,StabGrid,StabRes,bc_top,Opt)
 
 %% pre define some values from inputs
 
-Re = StabGrid.x(1);
+Re = StabGrid.Re;
 U = StabGrid.U(:,i);
 W = StabGrid.W(:,i);
 dyU = StabGrid.dyU(:,i);
@@ -32,22 +32,48 @@ d2zdy2 = StabGrid.d2zdy2;
 % Solve local eigenvalue problem ILST
 if ~exist('bc_top','var'); bc_top = 'H_DR'; end
 if ~exist('Opt','var');   Opt.plot = 'on'; end
-fprintf(' Calculating IC for nonzero modes with ILST: ')
-[eig,u,v,w,p] = ILST_solver(Re,flip(U),flip(W),flip(dyU),flip(dyW),omega,beta,ny,flip(dzdy),flip(d2zdy2),bc_top);
+if ~isfield(Opt,'verbose'); Opt.verbose = 'on'; end
 
-% Find d99 for eigenvalue filtering
-k = find(U(:,i) <= 0.99*max(U(:,i)), 1, 'first');
-d99 = StabGrid.y(k);
+alpha_shift = [];
+if isfield(Opt,'alpha_shift') && ~isempty(Opt.alpha_shift)
+    alpha_shift = Opt.alpha_shift;
+end
 
-% Filter eigenfunctions for correct eigenvalue
-[alpha, index] = EVfilter(eig, v, StabGrid.y, omega, beta, d99);
+if strcmpi(Opt.verbose,'on')
+    fprintf(' Calculating IC for nonzero modes with ILST: ')
+end
+[eig,u,v,w,p] = ILST_solver(Re,flip(U),flip(W),flip(dyU),flip(dyW),omega,beta,ny,flip(dzdy),flip(d2zdy2),bc_top,alpha_shift);
+
+% Find d99 for filtering purposes
+k = find(U<=0.99*max(U),1,'first');
+d99(i) = StabGrid.y(k);
+
+% Select eigenvalue: EVfilter for full spectrum, direct for eigs shift
+if isempty(alpha_shift)
+    [alpha, index] = EVfilter(eig, v, StabGrid.y, omega, beta, d99);
+else
+    alpha = eig;   % scalar from eigs
+    index = 1;
+end
+
+if strcmpi(Opt.verbose,'on')
+    fprintf('alpha = %.6f %+.6fi\n', real(alpha), imag(alpha));
+end
 
 %% Normalize output by max(u)
-u                 = u(:,index);
-y_mdInt           = linspace(StabGrid.y(1), StabGrid.y(end), 4000);
-u1int             = interp1(StabGrid.y, abs(u), y_mdInt, 'spline');
-[ampltd, ~]       = max(abs(u1int));
 
+StabRes.alpha(j,i) = alpha;
+
+% Calculate new maximum amplitude after spline interpolation
+% Select correct u
+u                 = u(:,index);
+
+% % Calculate amplitude
+y_mdInt           = linspace(StabGrid.y(1),StabGrid.y(end),4000);
+u1int             = interp1(StabGrid.y,abs(u),y_mdInt,'spline');
+[ampltd, ~]       = max(abs(u1int));
+ 
+% Normalize result by u_max
 StabRes.u(j,:,i)  = u/ampltd;
 StabRes.v(j,:,i)  = v(:,index)/ampltd;
 StabRes.w(j,:,i)  = w(:,index)/ampltd;

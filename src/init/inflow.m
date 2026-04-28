@@ -29,10 +29,16 @@ StabRes.w      = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
 StabRes.p      = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
 
 % Determine ILST freestream BC from per-component Opt.bc_top.
+% ILST uses a single flag: 'H_DR' or 'H_NM'.
+% If any component is Neumann, use Neumann for ILST.
 if ~exist('Opt','var') || ~isfield(Opt,'bc_top')
     bc_top = 'H_DR';
 elseif iscell(Opt.bc_top)
-    if any(strcmpi(Opt.bc_top, 'H_NM')); bc_top = 'H_NM'; else; bc_top = 'H_DR'; end
+    if any(strcmpi(Opt.bc_top, 'H_NM'))
+        bc_top = 'H_NM';
+    else
+        bc_top = 'H_DR';
+    end
 else
     bc_top = Opt.bc_top;
 end
@@ -70,11 +76,41 @@ if Stab.IC=="LOAD"
         assert(size(SR.u,1) == Mode.nf && size(SR.u,2) == StabGrid.ny, ...
             'Loaded StabRes.u size [%d x %d x ...] does not match expected [%d x %d x ...].', ...
             size(SR.u,1), size(SR.u,2), Mode.nf, StabGrid.ny);
-        for j = 1:Mode.nf
-            StabRes.u(j,:,1) = SR.u(j,:,1);
-            StabRes.v(j,:,1) = SR.v(j,:,1);
-            StabRes.w(j,:,1) = SR.w(j,:,1);
-            StabRes.p(j,:,1) = SR.p(j,:,1);
+        % Full-domain warm-start if the saved StabRes has the whole domain
+        % (third dim matches StabGrid.nx). Otherwise fall back to station-1
+        % only (original behaviour — inflow BC only).
+        if size(SR.u,3) == StabGrid.nx
+            % Amplitude scaling for continuation: if the saved run used a
+            % different Stab.A0_fund, rescale the warm-start linearly so the
+            % downstream saturation level is consistent with the new A0. The
+            % nonlinear fixed point will shift slightly from this estimate, but
+            % it's a far better initial guess than the raw saved values.
+            scale = 1;
+            if isfield(loaded,'Stab') && isfield(loaded.Stab,'A0_fund') ...
+                    && isfield(Stab,'A0_fund') && loaded.Stab.A0_fund > 0
+                scale = Stab.A0_fund / loaded.Stab.A0_fund;
+            end
+            for j = 1:Mode.nf
+                StabRes.u(j,:,:) = scale * SR.u(j,:,:);
+                StabRes.v(j,:,:) = scale * SR.v(j,:,:);
+                StabRes.w(j,:,:) = scale * SR.w(j,:,:);
+                StabRes.p(j,:,:) = scale * SR.p(j,:,:);
+            end
+            % Also seed StabRes.q (the flat solution vector Picard iterates on)
+            % so the first Picard step sees the warm-start, not zeros.
+            if isfield(SR,'q') && isequal(size(SR.q), [Mode.nf, 4*StabGrid.ny*StabGrid.nx])
+                StabRes.q = scale * SR.q;
+            end
+            fprintf('  LOAD: full-domain warm-start (%d x %d x %d), A0 scale = %.3f\n', ...
+                    size(SR.u,1), size(SR.u,2), size(SR.u,3), scale);
+        else
+            for j = 1:Mode.nf
+                StabRes.u(j,:,1) = SR.u(j,:,1);
+                StabRes.v(j,:,1) = SR.v(j,:,1);
+                StabRes.w(j,:,1) = SR.w(j,:,1);
+                StabRes.p(j,:,1) = SR.p(j,:,1);
+            end
+            fprintf('  LOAD: inflow-only (station 1) — no downstream warm-start\n');
         end
 
     else

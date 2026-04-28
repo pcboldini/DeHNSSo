@@ -5,10 +5,10 @@
 *.mlx
 
 # Input/output data files
-stability/*.mat
-!stability/literature/
-baseflow/output/
-interpolation/output/
+input/*.mat
+baseflow/output/*
+!baseflow/output/benchmark/
+gridgen/output/
 
 # Figures
 *.fig

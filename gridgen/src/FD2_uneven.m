@@ -1,4 +1,4 @@
-function DD = FD2_uneven(x, y, order)
+function DD = FD2d_uneven(x, y, order)
 %% Description
 % Computes second derivatives on a non-uniform grid using finite differences.
 % Derivative is taken along columns.
@@ -12,7 +12,7 @@ function DD = FD2_uneven(x, y, order)
 %   DD - Second derivative of y with respect to x
 %
 % Example:
-%   d2fdx2 = FD2_uneven(x, f, 4);
+%   d2fdx2 = FD2d_uneven(x, f, 4);
 
 %% Default order
 if nargin < 3
@@ -20,7 +20,7 @@ if nargin < 3
 end
 
 %% Input validation
-nrows = size(y, 1);
+[nrows, ncols] = size(y);
 
 switch order
     case 2

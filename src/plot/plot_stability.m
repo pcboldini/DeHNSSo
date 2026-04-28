@@ -7,6 +7,10 @@ x  = StabGrid.xun;
 nx = StabGrid.nx;
 nf = size(StabRes.A, 1);
 
+% R = sqrt(Re_x) = sqrt(x_norm * R0), with R0 = sqrt(x_norm(1))
+R0 = sqrt(x(1));
+R  = sqrt(x) * R0;
+
 % Exclude buffer region from plots
 if nargin >= 3 && isfield(Opt, 'xb')
     i_buf = round(nx * Opt.xb / 100);
@@ -42,10 +46,10 @@ for j = 1:nf
     if (m == 0 && n == 0) || ~has_valid_alpha(j); continue; end
     alpha_i = -imag(StabRes.alpha(j,:));
     N_fac = cumtrapz(x, alpha_i);
-    plot(x(xr), N_fac(xr), 'LineWidth', 1.5, 'Color', colors(j,:), ...
+    plot(R(xr), N_fac(xr), 'LineWidth', 1.5, 'Color', colors(j,:), ...
         'DisplayName', sprintf('(%d,%d)', m, n));
 end
-xlabel('$x$', 'Interpreter', 'latex', 'FontSize', 12)
+xlabel('$R = \sqrt{Re_x}$', 'Interpreter', 'latex', 'FontSize', 12)
 ylabel('$N$', 'Interpreter', 'latex', 'FontSize', 12)
 title('N-factor', 'FontSize', 13)
 if nf > 2; legend('Location', 'best'); end
@@ -57,11 +61,11 @@ for j = 1:nf
     [m, n] = mode_mn(j, omega_vec, beta_vec, omega_f, beta_f);
     if m == 0 && n == 0; continue; end
     alpha_i = -imag(StabRes.alpha(j,:));
-    plot(x(xr), alpha_i(xr), 'LineWidth', 1.2, 'Color', colors(j,:), ...
+    plot(R(xr), alpha_i(xr), 'LineWidth', 1.2, 'Color', colors(j,:), ...
         'DisplayName', sprintf('(%d,%d)', m, n));
 end
 yline(0, 'k--', 'HandleVisibility', 'off');
-xlabel('$x$', 'Interpreter', 'latex', 'FontSize', 12)
+xlabel('$R = \sqrt{Re_x}$', 'Interpreter', 'latex', 'FontSize', 12)
 ylabel('$-\alpha_i$', 'Interpreter', 'latex', 'FontSize', 12)
 title('Spatial growth rate', 'FontSize', 13)
 if nf > 2; legend('Location', 'best'); end
@@ -76,10 +80,10 @@ for j = 1:nf
     [m, n] = mode_mn(j, omega_vec, beta_vec, omega_f, beta_f);
     if m == 0 && n == 0; continue; end
     alpha_r = real(StabRes.alpha(j,:));
-    plot(x(xr), alpha_r(xr), 'LineWidth', 1.2, 'Color', colors(j,:), ...
+    plot(R(xr), alpha_r(xr), 'LineWidth', 1.2, 'Color', colors(j,:), ...
         'DisplayName', sprintf('(%d,%d)', m, n));
 end
-xlabel('$x$', 'Interpreter', 'latex', 'FontSize', 12)
+xlabel('$R = \sqrt{Re_x}$', 'Interpreter', 'latex', 'FontSize', 12)
 ylabel('$\alpha_r$', 'Interpreter', 'latex', 'FontSize', 12)
 title('Streamwise wavenumber', 'FontSize', 13)
 if nf > 2; legend('Location', 'best'); end
@@ -94,10 +98,10 @@ for j = 1:nf
     alpha_r = real(StabRes.alpha(j,:));
     c_ph = omega ./ alpha_r;
     c_ph(abs(alpha_r) < 1e-12) = NaN;
-    plot(x(xr), c_ph(xr), 'LineWidth', 1.2, 'Color', colors(j,:), ...
+    plot(R(xr), c_ph(xr), 'LineWidth', 1.2, 'Color', colors(j,:), ...
         'DisplayName', sprintf('(%d,%d)', m, n));
 end
-xlabel('$x$', 'Interpreter', 'latex', 'FontSize', 12)
+xlabel('$R = \sqrt{Re_x}$', 'Interpreter', 'latex', 'FontSize', 12)
 ylabel('$c = \omega / \alpha_r$', 'Interpreter', 'latex', 'FontSize', 12)
 title('Phase speed', 'FontSize', 13)
 if nf > 2; legend('Location', 'best'); end

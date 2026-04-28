@@ -4,13 +4,20 @@ function print_config(StabGrid, Stab, Opt)
 fprintf('  --------------------------------------------\n');
 fprintf('  Grid\n');
 fprintf('    nx = %d,  ny = %d,  DOF = %d\n', StabGrid.nx, StabGrid.ny, 4*StabGrid.ny*StabGrid.nx);
-fprintf('    Re_x = [%.2f, %.2f],  dxi = %.4f\n', StabGrid.x(1), StabGrid.x(end), StabGrid.dxi);
+R_in  = sqrt(StabGrid.x(1)  * StabGrid.x(1));   % R = sqrt(x*R0); R0 = sqrt(x_inflow)
+R_out = sqrt(StabGrid.x(end) * StabGrid.x(1));
+fprintf('    x = [%.2f, %.2f],  dxi = %.4f\n', StabGrid.x(1), StabGrid.x(end), StabGrid.dxi);
+fprintf('    R = [%.2f, %.2f]   (sqrt(Re_x), local Blasius Reynolds)\n', R_in, R_out);
 fprintf('  Spectral content\n');
 n_phys = Stab.M * (2*Stab.N+1);
 fprintf('    M = %d,  N = %d  (%d mode%s)\n', Stab.M, Stab.N, n_phys, plural(n_phys));
 fprintf('    omega_0 = %.6f,  beta_0 = %.6f\n', Stab.omega_0, Stab.beta_0);
 fprintf('  Inflow\n');
-fprintf('    IC: %s,  phase ref: %s,  A0 = %.4e\n', Stab.IC, Stab.phaseRef, max(Stab.A0));
+a0_tag = '';
+if isfield(Opt,'linear') && strcmpi(Opt.linear,'on')
+    a0_tag = ' [linear-mode auto-rescale; physical A0_fund irrelevant]';
+end
+fprintf('    IC: %s,  phase ref: %s,  A0 = %.4e%s\n', Stab.IC, Stab.phaseRef, max(Stab.A0), a0_tag);
 if isfield(Stab,'bcw') && any(Stab.bcw(:))
     fprintf('    Wall actuation: ON\n');
 end
@@ -37,7 +44,6 @@ if isfield(Opt,'gpu') && strcmpi(Opt.gpu,'on')
         fprintf('    GPU: on (device info unavailable)\n');
     end
 end
-
 % Memory estimates
 nx = StabGrid.nx;  ny = StabGrid.ny;  bsize = 4*ny;
 N_dof = bsize * nx;

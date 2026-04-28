@@ -63,5 +63,6 @@ BF.ddyW  = BL.DDw*(BF.lref)^2/BF.Uref;
 
 %% Save
 
-if ~exist('output', 'dir'); mkdir('output'); end
-save('output/BF_Blasius.mat', 'BF');
+out_dir = fullfile('..', 'output');
+if ~exist(out_dir, 'dir'); mkdir(out_dir); end
+save(fullfile(out_dir, 'bf_blasius.mat'), 'BF');

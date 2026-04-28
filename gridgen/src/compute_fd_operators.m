@@ -1,4 +1,4 @@
-function Grid = compute_FD_operators(Grid)
+function Grid = compute_fd_operators(Grid)
 %COMPUTE_FD_OPERATORS  Sparse FD D1, D2 on a non-uniform wall-normal grid.
 %
 %   Builds sparse differentiation matrices using Fornberg weights on the

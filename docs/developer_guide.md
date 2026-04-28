@@ -7,41 +7,54 @@
 ## 1. Repository layout
 
 ```
-DeHNSSo_test_refactor/
-├── caller_BL.m              — Example caller (Blasius BL, TS waves)
-├── input/                   — Input .mat files (base flow + stability grid)
+DeHNSSo/
+├── callers/
+│   └── benchmark/                  — Per-case stability callers (identical structure)
+│       ├── blasius.m               — TS waves in Blasius BL
+│       ├── sweptwing_flat.m        — Stationary CFI on flat-plate swept BL
+│       ├── sweptwing_hump.m        — Stationary CFI over a hump on swept BL
+│       └── m3j.m                   — Stationary CFI on M3J curved swept-wing BL
+├── input/                          — DeHNSSo_input.mat (gridgen → solver handoff, gitignored)
+├── literature/                     — Committed reference data (auto-loaded by callers/benchmark/<case>.m via ref_file)
+│   ├── StabRes_Blasius_NPSE.mat        — NPSE for Blasius TS (Fig. 8)
+│   ├── StabRes_Blasius_LPSE.mat        — LPSE for Blasius TS (linear PSE)
+│   ├── StabRes_SweptWing_flat_NPSE.mat — NPSE for swept-wing flat CFI (Fig. 9)
+│   └── StabRes_SweptWing_Hump_AHLNS.mat — AHLNS for swept-wing hump CFI (Fig. 10)
 ├── src/
-│   ├── main.m               — Main entry point (convergence loop)
-│   ├── init/                — Initialisation
-│   │   ├── init.m           — Defaults, mode numbering, grid setup
-│   │   ├── inflow.m         — Inflow BC dispatch (ILST or LOAD)
-│   │   ├── ILST.m           — Calls ILST_solver, selects/normalises eigenfunction
-│   │   ├── ILST_solver.m    — Orr-Sommerfeld/Squire generalised eigenvalue problem
-│   │   └── boundary.m       — Interpolates Stab.bcw/bct onto numerical grid
-│   ├── hns/                 — Core HNS equations
-│   │   ├── LHS.m            — Assemble global LHS sparse matrix (per mode)
-│   │   ├── RHS.m            — Assemble RHS vector (inflow IC + actuation BCs)
-│   │   ├── solve_modes.m    — Mode-by-mode solve with LU cache
-│   │   ├── NLT.m            — Nonlinear forcing (mode-to-mode interaction)
-│   │   └── AVAL.m           — Inflow amplitude damping
+│   ├── main.m                      — Main entry point (convergence loop)
+│   ├── init/                       — Initialisation
+│   │   ├── init.m                  — Defaults, mode numbering, grid setup
+│   │   ├── inflow.m                — Inflow BC dispatch (ILST or LOAD)
+│   │   ├── ILST.m                  — Calls ILST_solver, selects/normalises eigenfunction
+│   │   ├── ILST_solver.m           — Orr-Sommerfeld/Squire generalised eigenvalue problem
+│   │   └── boundary.m              — Interpolates Stab.bcw/bct onto numerical grid
+│   ├── hns/                        — Core HNS equations
+│   │   ├── LHS.m                   — Assemble global LHS sparse matrix (per mode)
+│   │   ├── RHS.m                   — Assemble RHS vector (inflow IC + actuation BCs)
+│   │   ├── solve_modes.m           — Mode-by-mode solve with LU cache
+│   │   ├── NLT.m                   — Nonlinear forcing (mode-to-mode interaction)
+│   │   └── AVAL.m                  — Inflow amplitude damping
 │   ├── convergence/
-│   │   ├── check_convergence.m  — Convergence criterion, amplitude ramping
-│   │   └── update_modes.m       — Update u/v/w/p, amplitudes, active mode set
+│   │   ├── check_convergence.m     — Convergence criterion, amplitude ramping
+│   │   └── update_modes.m          — Update u/v/w/p, amplitudes, active mode set
 │   ├── postprocess/
-│   │   ├── postprocess.m    — Normalise shape functions, compute wavenumbers
+│   │   ├── postprocess.m           — Normalise shape functions, compute wavenumbers
 │   │   └── ModeToModeNumber.m
 │   ├── plot/
-│   │   ├── plot_amplitudes.m    — Final amplitude vs x (with optional reference)
-│   │   ├── plot_stability.m     — N-factor, growth rates, wavenumber, phase speed, eigenfunctions
-│   │   ├── plot_intermediate.m  — Amplitude during iteration (Figure 2)
-│   │   └── plot_convergence.m   — Convergence history (Figure 3, log scale)
+│   │   ├── plot_amplitudes.m       — Final amplitude vs x (with optional reference)
+│   │   ├── plot_stability.m        — N-factor, growth rates, wavenumber, phase speed, eigenfunctions
+│   │   ├── plot_intermediate.m     — Amplitude during iteration (Figure 2)
+│   │   └── plot_convergence.m      — Convergence history (Figure 3, log scale)
 │   └── math/
-│       ├── chebDiff.m       — Chebyshev differentiation matrix
-│       └── FD*.m            — Finite-difference operators (2nd/4th order)
-├── BL/                      — Boundary-layer solver (Blasius, FSC)
-├── Interpol/                — Interpolation pipeline (curvilinear meshes)
-├── benchmark/               — Timing and memory benchmarks
-└── paper/                   — CPC manuscript (LaTeX)
+│       ├── chebDiff.m              — Chebyshev differentiation matrix
+│       └── FD*.m                   — Finite-difference operators (2nd/4th order)
+├── gridgen/                        — Grid generation and base-flow preprocessing
+│   ├── main_gridgen.m              — Pipeline entry point (function called by per-case scripts)
+│   ├── benchmark/                  — Per-case grid-gen scripts (blasius, sweptwing_flat, ...)
+│   └── src/                        — Mesh generation, metric tensors, scattered/structured resampling
+└── baseflow/                       — Boundary-layer solvers
+    ├── IBL/                        — Incompressible BL (Blasius, Falkner-Skan-Cooke)
+    └── output/benchmark/           — Committed reference base flows (bf_*.mat, bf_m3j.csv)
 ```
 
 ---
@@ -147,7 +160,7 @@ Interpolated BC arrays (set by `boundary.m`).
 ## 3. Call flow
 
 ```
-caller_BL.m
+callers/benchmark/<case>.m   (blasius / sweptwing_flat / sweptwing_hump / m3j)
 └── main(Stab, StabGrid, Opt [, LHS])
     ├── init(StabGrid, Opt, Stab)          % defaults, mode numbering
     ├── inflow(Mode, Stab, StabGrid, StabRes, Opt)
@@ -253,7 +266,7 @@ To add a method beyond `'ILST'`:
 
 ## 9. v1.2 changes relative to heritage version
 
-The heritage version is at `../DeHNSSo_original/Tools/Stability/HNS/DeHNSSo.m` (monolithic function).
+The heritage version is the published DeHNSSo monolithic function (Westerbeek et al., CPC 2024).
 
 | Feature | Heritage | v1.2 |
 |---|---|---|
@@ -276,13 +289,15 @@ The heritage version is at `../DeHNSSo_original/Tools/Stability/HNS/DeHNSSo.m` (
 
 ---
 
-## 10. Testing and benchmarks
+## 10. Reference cases
 
-```matlab
-cd benchmark/
-benchmark         % end-to-end timing (heritage vs refactored)
-benchmark_memory  % memory analysis
-compare           % numerical comparison against heritage output
-```
+Per-case stability runs live in `callers/benchmark/`. All four scripts share an identical layout (Setup → Spectral content → Inflow → BCs → Buffer → Solver options → Performance → Nonlinear solver choice → Adjoint → Run → Post-processing) and differ only in case-specific parameter values:
 
-Results are saved to `benchmark/output/`. Expected speedup: ~7.7x for the Blasius test case.
+| Case | `Stab.M` | `Stab.N` | `Stab.omega_0` | `Stab.beta_0` | `Stab.phaseRef` | `Opt.buffer` |
+|---|---|---|---|---|---|---|
+| `blasius` | 1 | 0 | 0.034576 | 0 | `'pwall'` | `'para'` |
+| `sweptwing_flat` | 0 | 1 | 0 | `2π·lref/7.5e-3` | `'umax'` | `'para'` |
+| `sweptwing_hump` | 0 | 1 | 0 | `2π·lref/7.5e-3` | `'umax'` | `'para'` |
+| `m3j` | 0 | 1 | 0 | 0.40 | `'umax'` | `'on'` |
+
+The corresponding base flows are produced by `gridgen/benchmark/<case>.m` (which writes `input/DeHNSSo_input.mat`).

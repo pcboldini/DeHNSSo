@@ -26,38 +26,40 @@ The equations are the incompressible Navier-Stokes equations, written for pertur
 For a Blasius flat-plate boundary layer:
 
 ```matlab
-cd BL/
-caller        % produces BF_Blasius.mat
+cd baseflow/IBL/
+caller        % produces bf_blasius.mat in baseflow/output/
 ```
 
-Then convert to DeHNSSo format:
+Then build the stability grid via the per-case script in `gridgen/benchmark/`:
 
 ```matlab
-cd Interpol/
-edit config.m   % set Re, grid size, domain height
-main_interpol   % produces DeHNSSo_input.mat
-copyfile('Interpol/output/DeHNSSo_input.mat', 'input/')
+cd gridgen/benchmark/
+blasius       % reads bf_blasius.mat from baseflow/output/benchmark/, writes DeHNSSo_input.mat
 ```
 
-For a curvilinear geometry (e.g., from OpenFOAM): see [README.md](../README.md).
+For other supported cases (`sweptwing_flat`, `sweptwing_hump`, `m3j` / OpenFOAM): see [README.md](../README.md).
 
 ### Step 2 — Configure and run
 
-Open `caller_BL.m`. The file is organized into sections:
+Per-case stability scripts live in `callers/benchmark/` (`blasius.m`, `sweptwing_flat.m`, `sweptwing_hump.m`, `m3j.m`). All four share an identical sectioned layout — only case-specific values differ:
 
 | Section | What to set |
 |---|---|
 | **Spectral content** | `Stab.M`, `Stab.N`, `Stab.omega_0`, `Stab.beta_0` |
-| **Inflow conditions** | `Stab.IC`, `Stab.A0`, `Stab.phaseRef` |
-| **Boundary conditions** | Wall actuation (`Stab.bcw`) or freestream forcing (`Stab.bct`) |
-| **Solver options** | Buffer, convergence criteria, LU cache, freestream BC type |
+| **Inflow conditions** | `Stab.IC`, `Stab.phaseRef`, `Opt.linear`, `Stab.A0_fund` |
+| **Boundary conditions** | `Opt.bc_top`; optional `Stab.bcw`/`Stab.bct` for actuation/forcing |
+| **Buffer** | `Opt.buffer` (`'on'`/`'para'`/`'off'`), `Opt.xb` |
+| **Solver options** | `Opt.plot`, `Opt.Conv`, `Opt.TH` |
+| **Performance** | `Opt.lu_mode`, `Opt.parfor`, `Opt.gpu` |
+| **Nonlinear solver choice** | `Opt.solver` (`'picard'`/`'newton'`) |
 | **Run** | `Opt.rerun`, call to `main()` |
-| **Post-processing** | Amplitude plots, reference data overlay |
+| **Post-processing** | `plot_amplitudes`, `plot_stability` |
 
-Run the caller from the MATLAB command window:
+Run a caller from the MATLAB command window:
 
 ```matlab
-caller_BL
+cd callers/benchmark/
+blasius           % or sweptwing_flat / sweptwing_hump / m3j
 ```
 
 ---
@@ -197,7 +199,7 @@ Opt.linear = 'on';   % linear: NLT off, single iteration, AF = 1
 Opt.linear = 'off';  % nonlinear (default): iterative solve with NLT
 ```
 
-In linear mode the solver converges in one iteration (equivalent to linear PSE). Use this for parametric sweeps, N-factor computations, or adjoint analysis where nonlinear interactions are not needed.
+In linear mode the solver converges in one iteration (equivalent to linear PSE). Use this for parametric sweeps, N-factor computations, or any analysis where nonlinear interactions are not needed.
 
 ---
 
@@ -318,14 +320,32 @@ Index convention: `y=1` is the freestream (`y=H`), `y=ny` is the wall (`y=0`).
 
 ### Post-processing
 
-```matlab
-% Amplitude plot (with optional reference for nonlinear runs)
-ref = struct('file', 'stability/literature/StabRes_Blasius_NPSE.mat', 'label', 'NPSE');
-plot_amplitudes(StabGrid, StabRes, ref);
+The unified callers in `callers/benchmark/` already wire post-processing for you:
 
-% Stability diagnostics (N-factor, growth rates, eigenfunctions)
-plot_stability(StabGrid, StabRes, Opt);
+```matlab
+% Reference for overlay (set ref_file = [] to skip)
+ref_file  = fullfile(rootdir, 'literature', 'StabRes_<case>_<METHOD>.mat');
+ref_label = '<METHOD>';
+
+if strcmpi(Opt.plot, 'on')
+    if ~isempty(ref_file) && isfile(ref_file)
+        plot_amplitudes(StabGrid, StabRes, struct('file', ref_file, 'label', ref_label));
+    else
+        plot_amplitudes(StabGrid, StabRes);
+    end
+    plot_stability(StabGrid, StabRes, Opt);
+end
 ```
+
+Reference data shipped in `literature/`:
+
+| File | Used by | Source |
+|---|---|---|
+| `StabRes_Blasius_NPSE.mat` | `blasius.m` | NPSE reference (Westerbeek 2024 Fig. 8) |
+| `StabRes_SweptWing_flat_NPSE.mat` | `sweptwing_flat.m` | NPSE reference (Westerbeek 2024 Fig. 9) |
+| `StabRes_SweptWing_Hump_AHLNS.mat` | `sweptwing_hump.m` | AHLNS reference (Westerbeek 2024 Fig. 10) |
+
+To overlay a different reference, point `ref_file` at any `.mat` file with a `StabRes` struct in the format that `plot_amplitudes` expects (see `src/plot/plot_amplitudes.m`).
 
 ---
 

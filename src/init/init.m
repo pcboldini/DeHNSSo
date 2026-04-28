@@ -21,27 +21,37 @@ assert(isfield(Grid,'Re') && ~isempty(Grid.Re),      'Grid.Re (Reynolds number) 
 if ~isfield(Stab,'bcx'); Stab.bcx = linspace(Grid.S,Grid.S+Grid.L,10); end
 if ~isfield(Stab,'bcw'); Stab.bcw = zeros(3,10,(2*Stab.N+1)*(2*Stab.M+1)); end
 if ~isfield(Stab,'bct'); Stab.bct = zeros(3,10,(2*Stab.N+1)*(2*Stab.M+1)); end
-% Build A0 from A0_fund if user provided the simplified scalar form
+% Build A0 from A0_fund if user provided the simplified scalar form.
+% Fundamental mode is picked automatically from (M, N, omega_0, beta_0):
+%   TS         (M>=1, omega_0~=0, N=0, beta_0=0)      -> (m=1, n=0)
+%   CFI        (M=0 or omega_0=0, N>=1, beta_0~=0)    -> (m=0, n=1)
+%   Oblique    (M>=1, N>=1, both wavenumbers ~=0)     -> (m=1, n=1)
+%   Single-oblique-mode (N=0, beta_0~=0; beta encoded via sign(m) in init)
+%                                                     -> (m=1, n=0)
 if isfield(Stab,'A0_fund') && ~isfield(Stab,'A0')
     nf = (2*Stab.N+1)*(2*Stab.M+1);
     Stab.A0 = zeros(1, nf);
-    if isfield(Opt,'linear') && strcmpi(Opt.linear,'on')
-        % Linear mode: small amplitude keeps NLT inactive (1 iteration)
-        Stab.A0(ModeToModeNumber( 1, 0, Stab.M, Stab.N)) = 1e-10;
-        Stab.A0(ModeToModeNumber(-1, 0, Stab.M, Stab.N)) = 1e-10;
-    else
-        Stab.A0(ModeToModeNumber( 1, 0, Stab.M, Stab.N)) = Stab.A0_fund;
-        Stab.A0(ModeToModeNumber(-1, 0, Stab.M, Stab.N)) = Stab.A0_fund;
+
+    m_fund = double( Stab.M >= 1 && (Stab.omega_0 ~= 0 || Stab.N == 0) );
+    n_fund = double( Stab.N >= 1 && Stab.beta_0  ~= 0 );
+    if m_fund == 0 && n_fund == 0
+        error(['A0_fund: no fundamental mode — set omega_0~=0 (with M>=1) ' ...
+               'or beta_0~=0 (with N>=1), or set Stab.A0 explicitly.']);
     end
+
+    if isfield(Opt,'linear') && strcmpi(Opt.linear,'on')
+        A_val = 1e-10;   % small amplitude keeps NLT inactive (1 iteration)
+    else
+        A_val = Stab.A0_fund;
+    end
+    Stab.A0(ModeToModeNumber( m_fund,  n_fund, Stab.M, Stab.N)) = A_val;
+    Stab.A0(ModeToModeNumber(-m_fund, -n_fund, Stab.M, Stab.N)) = A_val;
 end
 if ~isfield(Stab,'A0');  Stab.A0 = []; end
 
 % % Grid: Straight geometry without streamwise refinement by default
-if ~isfield(Grid,'StepType'),   Grid.StepType = "FLAT"; end
 if ~isfield(Grid,'ytype'),      Grid.ytype ="malik"; end
 if ~isfield(Grid,'xtype'),      Grid.xtype ="equidistant"; end
-if ~isfield(Grid,'StepX'),      Grid.StepX = 0; end
-if ~isfield(Grid,'StepH'),      Grid.StepH = 0; end
 if ~isfield(Grid,'mug'),        Grid.mug = 0; end
 if ~isfield(Grid,'sig'),        Grid.sig = 1; end
 if ~isfield(Grid,'ag'),         Grid.ag = 0; end
@@ -60,6 +70,11 @@ if ~isfield(Opt,'AMAX');        Opt.AMAX = 0.1; end
 if ~isfield(Opt,'ConvF');       Opt.ConvF = 100; end
 if ~isfield(Opt,'plot');        Opt.plot = 'on'; end
 if ~isfield(Opt,'buffer');     Opt.buffer = 'on'; end     % 'on', 'para', or 'off'
+% Freestream BC: per-component type for u, v, w.
+%   'H_DR'  = homogeneous Dirichlet  (q̂ = 0)
+%   'IH_DR' = inhomogeneous Dirichlet (q̂ = bct value)
+%   'H_NM'  = homogeneous Neumann    (∂q̂/∂y = 0)
+% Backward compatibility: scalar 'dirichlet'/'neumann' expands to all 3.
 if ~isfield(Opt,'bc_top')
     Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};
 elseif ischar(Opt.bc_top) || isstring(Opt.bc_top)
@@ -113,18 +128,21 @@ Mode.Aactive = zeros(size(Mode.L));       % Active mode registrer
 Stab.I      = eye(Grid.ny);
 Stab.Z      = zeros(Grid.ny);
 
-% Allocate LHS matrix blocks 1-4 and seperately for MFD
-Stab.ML1MFD = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,4*(3*Grid.ny^2+4*Grid.ny)+7*Grid.ny^2+4*Grid.ny);  % LHS preallocate sparse matrix per i station. !!! dependent on formulation of finite differences
-Stab.ML1 =    spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,4*(3*Grid.ny^2+4*Grid.ny)+7*Grid.ny^2+4*Grid.ny);  % LHS preallocate sparse matrix per i station. !!! dependent on formulation of finite differences
-Stab.ML2 = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,3*Grid.ny);  % LHS preallocate sparse matrix per i station. !!! dependent on formulation of finite differences
-Stab.ML3 = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,5*Grid.ny);  % LHS preallocate sparse matrix per i station. !!! dependent on formulation of finite differences
-Stab.ML4 = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,3*Grid.ny);  % LHS preallocate sparse matrix per i station. !!! dependent on formulation of finite differences
+% Allocate LHS matrix blocks 1-4 and separately for MFD.
+% Sparsity estimates assume 4th-order FD; revisit if FD order changes.
+Stab.ML1MFD = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,4*(3*Grid.ny^2+4*Grid.ny)+7*Grid.ny^2+4*Grid.ny);
+Stab.ML1    = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,4*(3*Grid.ny^2+4*Grid.ny)+7*Grid.ny^2+4*Grid.ny);
+Stab.ML2    = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,3*Grid.ny);
+Stab.ML3    = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,5*Grid.ny);
+Stab.ML4    = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,3*Grid.ny);
 
 StabRes.R=zeros(4*Grid.nx*Grid.ny,1);  % Initiate RHS vector
 Stab.f=zeros(Mode.nf,4*Grid.ny*Grid.nx);
 
-% xi step size dxi is constant
-Stab.dxi  =   Grid.x(1,2) - Grid.x(1,1);
+% Streamwise FD: dxi is the scalar first-spacing; D_xi is the sparse
+% 4th-order FD matrix valid on non-uniform ξ grids.
+Stab.dxi   = Grid.x(1,2) - Grid.x(1,1);
+Grid.D_xi  = fd1_matrix_nonuniform(Grid.x(:));
 
 %% Initialization of nonlinear convergence loop
 

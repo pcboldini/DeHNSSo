@@ -1,36 +1,36 @@
 %% DeHNSSo — Blasius boundary layer (TS waves)
-%  TS wave growth in a zero-pressure-gradient flat-plate BL.
+%  Base flow: bf_blasius.mat (see gridgen/benchmark/blasius.m)
 
 %% Setup
 clear all; close all; clc
 restoredefaultpath
-root = fileparts(mfilename('fullpath'));
-addpath(genpath(fullfile(root, '..', 'src')))
+rootdir = fullfile(fileparts(mfilename('fullpath')), '..', '..');
+addpath(genpath(fullfile(rootdir, 'src')))
 
-stability_folder = fullfile(root, '..', 'stability');
-load(fullfile(stability_folder, 'DeHNSSo_input.mat'));
+% Base flow: generate first by running gridgen/benchmark/blasius.m
+input.folder = fullfile(rootdir, 'input');
+load(fullfile(input.folder, 'DeHNSSo_input.mat'));   % provides StabGrid
 
 % =========================================================================
 %% Spectral content
 % =========================================================================
+%  total modes: (2M+1)(2N+1), including conjugates
 
-Stab.M = 1;                % number of omega (temporal) modes
-Stab.N = 0;                % number of beta (spanwise) modes
-                            % total modes: (2M+1)(2N+1), including conjugates
-Stab.omega_0 = 0.034576;   % fundamental angular frequency
-Stab.beta_0  = 0;          % fundamental spanwise wavenumber (0 = 2D)
+Stab.M = 1;                 % number of omega (temporal) modes
+Stab.N = 0;                 % number of beta (spanwise) modes
+Stab.omega_0 = 0.034576;    % fundamental angular frequency
+Stab.beta_0  = 0;           % fundamental spanwise wavenumber (0 = 2D)
 
 % =========================================================================
 %% Inflow conditions
 % =========================================================================
 
-Stab.IC       = 'ILST';    % 'ILST' (local stability) or 'LOAD' (from file)
-Stab.phaseRef = 'pwall';   % phase reference: 'pwall' (wall pressure) or 'umax'
-% Stab.ICfile = fullfile(stability_folder, 'StabRes_previous.mat');  % required for LOAD
+Stab.IC       = 'ILST';     % 'ILST' (local stability) or 'LOAD' (from file)
+Stab.phaseRef = 'pwall';    % 'pwall' (TS) or 'umax' (CFI)
+% Stab.ICfile = fullfile(input.folder, 'StabRes_previous.mat');  % required for LOAD
 
-% Fundamental disturbance amplitude.
-Opt.linear  = 'on';        % 'on' linear (NLT off, 1 iter) | 'off' nonlinear
-Stab.A0_fund = 0.00125*sqrt(2);
+Opt.linear   = 'on';        % 'on' linear (NLT off, 1 iter) | 'off' nonlinear
+Stab.A0_fund = 0.00125*sqrt(2);   % fundamental disturbance amplitude
 
 % =========================================================================
 %% Boundary conditions
@@ -42,35 +42,12 @@ Stab.A0_fund = 0.00125*sqrt(2);
 %
 % Freestream (y=H): per-component BC type.
 %   Opt.bc_top{k} — type for component k=1 u, k=2 v, k=3 w.
-%     'H_DR'  = homogeneous Dirichlet  (q = 0, default)
+%     'H_DR'  = homogeneous Dirichlet   (q = 0, default)
 %     'IH_DR' = inhomogeneous Dirichlet (q = bct value, requires Stab.bct)
-%     'H_NM'  = homogeneous Neumann    (dq/dy = 0)
+%     'H_NM'  = homogeneous Neumann     (dq/dy = 0)
 %   Pressure: no BC at freestream (determined by the equations).
-%
-% Stab.bcx (1 x nx_bc) — x-locations on which bcw/bct are defined.
-%   Profiles are interpolated onto the solver grid automatically.
-%
-% Both bcw and bct must be set on the same bcx. Always set conjugate modes.
 
 Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};
-
-% --- Example 1: wall blowing/suction slot ---
-% j_fund = ModeToModeNumber( 1, 0, Stab.M, Stab.N);
-% j_conj = ModeToModeNumber(-1, 0, Stab.M, Stab.N);
-% x_dom  = StabGrid.xun;
-% x0     = x_dom(1) + 0.30*(x_dom(end) - x_dom(1));
-% sig    = 0.01*(x_dom(end) - x_dom(1));
-% Stab.bcx             = x_dom;
-% Stab.bcw             = zeros(3, numel(x_dom), (2*Stab.N+1)*(2*Stab.M+1));
-% Stab.bcw(2,:,j_fund) = 1e-4 * exp(-(x_dom - x0).^2 / sig^2);
-% Stab.bcw(2,:,j_conj) = conj(Stab.bcw(2,:,j_fund));
-
-% --- Example 2: acoustic wave (v at freestream) ---
-% Opt.bc_top           = {'H_DR', 'IH_DR', 'H_DR'};
-% Stab.bcx             = x_dom;
-% Stab.bct             = zeros(3, numel(x_dom), (2*Stab.N+1)*(2*Stab.M+1));
-% Stab.bct(2,:,j_fund) = 1e-4 * ones(1, numel(x_dom));
-% Stab.bct(2,:,j_conj) = conj(Stab.bct(2,:,j_fund));
 
 % =========================================================================
 %% Buffer — outflow treatment
@@ -78,16 +55,17 @@ Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};
 %   'on'   = amplitude damping (scales solution -> 0 near outflow)
 %   'para' = parabolisation (removes d2/dx2 in buffer -> no upstream reflections)
 %   'off'  = no buffer
-Opt.buffer  = 'para';
-Opt.xb      = 85;             % buffer start [% of domain]
+
+Opt.buffer = 'para';
+Opt.xb     = 85;            % buffer start [% of domain]
 
 % =========================================================================
 %% Solver options
 % =========================================================================
 
-Opt.plot    = 'on';         % 'on' | 'off'
-% Opt.Conv  = 1e-4;         % convergence criterion
-% Opt.TH    = 1e-11;        % NLT activation threshold
+Opt.plot   = 'on';          % 'on' | 'off'
+% Opt.Conv = 1e-4;          % final convergence criterion
+% Opt.TH   = 1e-11;         % NLT activation threshold
 
 % =========================================================================
 %% Performance
@@ -98,8 +76,18 @@ Opt.parfor  = 'off';        % parallel assembly/solve: 'on' | 'off'
 Opt.gpu     = 'off';        % GPU sparse solve: 'on' | 'off'
 
 % =========================================================================
+%% Nonlinear solver choice
+% =========================================================================
+% 'picard' — Picard with AF ramping + mode activation (default)
+% 'newton' — JFNK with per-mode preconditioner
+
+Opt.solver = 'picard';      % 'picard' (+ Newton fallback) | 'newton'
+% Opt.newton_tol = 1e-10;
+
+% =========================================================================
 %% Run
 % =========================================================================
+% Opt.rerun = 'on' reuses LHS from a previous run (skips matrix assembly).
 
 Opt.rerun = 'off';
 
@@ -121,11 +109,18 @@ fprintf('========================================\n');
 % =========================================================================
 close all
 
-if strcmpi(Opt.linear, 'on')
-    plot_amplitudes(StabGrid, StabRes);
-else
-    ref = struct('file', fullfile(stability_folder, 'literature', 'StabRes_Blasius_NPSE.mat'), 'label', 'NPSE');
-    plot_amplitudes(StabGrid, StabRes, ref);
-end
+% Reference for overlay (set ref_file = [] to skip)
+ref_file  = fullfile(rootdir, 'literature', 'StabRes_Blasius_NPSE.mat');
+ref_label = 'NPSE';
 
-plot_stability(StabGrid, StabRes, Opt);
+if strcmpi(Opt.plot, 'on')
+    if ~isempty(ref_file) && isfile(ref_file)
+        plot_amplitudes(StabGrid, StabRes, struct('file', ref_file, 'label', ref_label));
+    else
+        if ~isempty(ref_file)
+            fprintf('  [ref overlay skipped — file not found: %s]\n', ref_file);
+        end
+        plot_amplitudes(StabGrid, StabRes);
+    end
+    plot_stability(StabGrid, StabRes, Opt);
+end

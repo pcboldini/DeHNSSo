@@ -7,6 +7,7 @@ function [R] = RHS(Bound,Grid,Mode,Opt,StabRes,j)
 %     - Station 1: inflow shape function (phiIC), scaled by amplitude factor AF.
 %     - Stations 2..nx: inhomogeneous wall/freestream BCs from Bound.bcw/bct.
 %       Grid convention: index 1 = freestream (y=H), index ny = wall (y=0).
+%       Freestream values injected only for IH_DR components (Opt.bc_top).
 %
 %   Output: R [N x 1] — RHS vector for the global linear system ML * q = R.
 

@@ -44,8 +44,31 @@ D1  = Grid.D1;
 D2  = Grid.D2;
 I   = Stab.I;
 Z   = Stab.Z;
-dxi = Grid.dxi;
 Re  = BF.Re;
+
+% Per-station Fornberg weights for ξ derivatives (1st and 2nd order).
+% Reduces to classical 4th-order coefficients on uniform grids; on
+% non-uniform grids it stays consistent. Boundary stencils are one-sided
+% (5/4/3 points at i = 2 / nx-1 / nx).
+x_xi = Grid.x(:);
+W1 = zeros(nx, 5);
+W2 = zeros(nx, 5);
+if nx >= 5
+    c = fornberg_weights(x_xi(2), x_xi(1:5), 2);
+    W1(2, 1:5) = c(:, 2).';
+    W2(2, 1:5) = c(:, 3).';
+    for ii = 3 : nx-2
+        c = fornberg_weights(x_xi(ii), x_xi(ii-2:ii+2), 2);
+        W1(ii, 1:5) = c(:, 2).';
+        W2(ii, 1:5) = c(:, 3).';
+    end
+    c = fornberg_weights(x_xi(nx-1), x_xi(nx-3:nx), 2);
+    W1(nx-1, 1:4) = c(:, 2).';
+    W2(nx-1, 1:4) = c(:, 3).';
+    c = fornberg_weights(x_xi(nx), x_xi(nx-2:nx), 2);
+    W1(nx, 1:3) = c(:, 2).';
+    W2(nx, 1:3) = c(:, 3).';
+end
 
 % Use full (dense) arithmetic for large Chebyshev operators
 D1_is_sparse = issparse(Grid.D1) && (nnz(Grid.D1) < 0.2 * ny^2);
@@ -69,8 +92,8 @@ if strcmpi(Opt.parfor, 'on')
     fprintf('   LHS: assembling stations 2:%d in parallel ...\n', nx);
     parfor i = 2:nx
         [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4] = ...
-            lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, dxi, ...
-                        bc_top, bc_top_mfd, bc_wall, bc_top_type);
+            lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, ...
+                        W1(i,:), W2(i,:), bc_top, bc_top_mfd, bc_wall, bc_top_type);
         cell_i1MFD{i}=ci1MFD; cell_j1MFD{i}=cj1MFD; cell_s1MFD{i}=cs1MFD;
         cell_i1{i}=ci1;       cell_j1{i}=cj1;       cell_s1{i}=cs1;
         cell_i2{i}=ci2;       cell_j2{i}=cj2;       cell_s2{i}=cs2;
@@ -83,8 +106,8 @@ else
     lastPerc = 0;
     for i = 2:nx
         [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4] = ...
-            lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, dxi, ...
-                        bc_top, bc_top_mfd, bc_wall, bc_top_type);
+            lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, ...
+                        W1(i,:), W2(i,:), bc_top, bc_top_mfd, bc_wall, bc_top_type);
         cell_i1MFD{i}=ci1MFD; cell_j1MFD{i}=cj1MFD; cell_s1MFD{i}=cs1MFD;
         cell_i1{i}=ci1;       cell_j1{i}=cj1;       cell_s1{i}=cs1;
         cell_i2{i}=ci2;       cell_j2{i}=cj2;       cell_s2{i}=cs2;
@@ -132,8 +155,8 @@ end
 
 %% Local function: assemble triplets for one station i (i >= 2)
 function [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4] = ...
-    lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, dxi, ...
-                bc_top, bc_top_mfd, bc_wall, bc_top_type)
+    lhs_station(i, nx, bsize, ny, BF, Grid, Bound, use_full, D1f, D2f, If, Zf, Re, iu, ...
+                w1, w2, bc_top, bc_top_mfd, bc_wall, bc_top_type)
 
 % Base flow diagonal matrices
 if use_full
@@ -201,46 +224,55 @@ else
     Pres = If.*(1-bufsp_i) + spdiags(-1*(1-Bound.bufsp(2:end,i)), -1, ny, ny);
 end
 
-Gi = [If.*(1-bufs_i)+If.*Bound.bufs(:,end)*(1-bufc_i)  Zf  Zf  Zf
-       Zf  If.*(1-bufs_i)  Zf  Zf
-       Zf  Zf  If.*(1-bufs_i)+If.*Bound.bufs(:,end)*(1-bufc_i)  Zf
-       Zf  Zf  Zf  Pres];
+% Build Gi: identity rows for masked points
+Gi_u = If.*(1-bufs_i) + If.*Bound.bufs(:,end)*(1-bufc_i);
+Gi_v = If.*(1-bufs_i);
+Gi_w = If.*(1-bufs_i) + If.*Bound.bufs(:,end)*(1-bufc_i);
+
+Gi = [Gi_u  Zf   Zf   Zf
+       Zf   Gi_v  Zf   Zf
+       Zf   Zf   Gi_w  Zf
+       Zf   Zf   Zf   Pres];
 
 % Determine stencil: stenr = global column indices, cur_blk = 1-index of current station
 sten = bsize*(i-1)+1 : bsize*i;   % global row (= global col of diagonal block)
 
+% Per-station FD stencil weights (w1, w2) are precomputed in the parent
+% function using Fornberg's algorithm on Grid.x, so xrefined / non-uniform
+% streamwise grids are handled correctly. On a uniform grid these reduce
+% to the classical 4th-order coefficients.
 if i == 2
     stenr   = [sten-bsize, sten, sten+bsize, sten+2*bsize, sten+3*bsize];
     cur_blk = 2;
-    blk1MFD = [-3*Ei/(12*dxi)+11*Fi/(12*dxi^2), ...
-               (Ai-10*Ei/(12*dxi)-20*Fi/(12*dxi^2))+Gi/bufc_i, ...
-                18*Ei/(12*dxi)+ 6*Fi/(12*dxi^2), ...
-               - 6*Ei/(12*dxi)+ 4*Fi/(12*dxi^2), ...
-                   Ei/(12*dxi)- 1*Fi/(12*dxi^2)]*bufc_i;
+    blk1MFD = [ Ei*w1(1) + Fi*w2(1), ...
+              (Ai + Ei*w1(2) + Fi*w2(2)) + Gi/bufc_i, ...
+                Ei*w1(3) + Fi*w2(3), ...
+                Ei*w1(4) + Fi*w2(4), ...
+                Ei*w1(5) + Fi*w2(5)] * bufc_i;
 
 elseif i == nx-1
     stenr   = [sten-2*bsize, sten-bsize, sten, sten+bsize];
     cur_blk = 3;
-    blk1MFD = [   Ei/(6*dxi), ...
-               -6*Ei/(6*dxi)+  Fi/(dxi^2), ...
-               (Ai+3*Ei/(6*dxi)-2*Fi/(dxi^2))+Gi/bufc_i, ...
-                2*Ei/(6*dxi)+  Fi/(dxi^2)]*bufc_i;
+    blk1MFD = [ Ei*w1(1) + Fi*w2(1), ...
+                Ei*w1(2) + Fi*w2(2), ...
+              (Ai + Ei*w1(3) + Fi*w2(3)) + Gi/bufc_i, ...
+                Ei*w1(4) + Fi*w2(4)] * bufc_i;
 
 elseif i == nx
     stenr   = [sten-2*bsize, sten-bsize, sten];
     cur_blk = 3;
-    blk1MFD = [   Ei/(2*dxi)+  Fi/(dxi^2), ...
-               -4*Ei/(2*dxi)-2*Fi/(dxi^2), ...
-               (Ai+3*Ei/(2*dxi)+  Fi/(dxi^2))+Gi/bufc_i]*bufc_i;
+    blk1MFD = [ Ei*w1(1) + Fi*w2(1), ...
+                Ei*w1(2) + Fi*w2(2), ...
+              (Ai + Ei*w1(3) + Fi*w2(3)) + Gi/bufc_i] * bufc_i;
 
-else   % interior
+else   % interior (centred 5-point)
     stenr   = [sten-2*bsize, sten-bsize, sten, sten+bsize, sten+2*bsize];
     cur_blk = 3;
-    blk1MFD = [ Ei/(12*dxi)- 1*Fi/(12*dxi^2), ...
-               -8*Ei/(12*dxi)+16*Fi/(12*dxi^2), ...
-               (Ai             -30*Fi/(12*dxi^2))+Gi/bufc_i, ...
-                8*Ei/(12*dxi)+16*Fi/(12*dxi^2), ...
-               -  Ei/(12*dxi)- 1*Fi/(12*dxi^2)]*bufc_i;
+    blk1MFD = [ Ei*w1(1) + Fi*w2(1), ...
+                Ei*w1(2) + Fi*w2(2), ...
+              (Ai + Ei*w1(3) + Fi*w2(3)) + Gi/bufc_i, ...
+                Ei*w1(4) + Fi*w2(4), ...
+                Ei*w1(5) + Fi*w2(5)] * bufc_i;
 end
 
 ncols     = numel(stenr);          % = nblocks * bsize
@@ -256,6 +288,8 @@ blk3(:, cur_off+1:cur_off+bsize) = Ci*bufc_i;
 blk4(:, cur_off+1:cur_off+bsize) = Di*bufc_i;
 
 % Apply freestream BCs per component (u, v, w)
+%   'H_DR' / 'IH_DR' → identity row (Dirichlet)
+%   'H_NM'            → D1 row (Neumann: ∂/∂y = 0)
 blk1MFD(bc_top_mfd,:) = 0;
 blk1(bc_top,:)   = 0;
 blk2(bc_top,:)   = 0;
@@ -270,7 +304,7 @@ for k = 1:3
         ce = cur_off + k*ny;
         blk1(r, cs:ce) = D1f(1,:);
         if is_mfd; blk1MFD(r, cs:ce) = D1f(1,:); end
-    else  % H_DR or IH_DR
+    else  % H_DR or IH_DR → identity row
         blk1(r, cur_off+r) = 1;
         if is_mfd; blk1MFD(r, cur_off+r) = 1; end
     end

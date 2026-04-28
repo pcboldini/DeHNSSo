@@ -1,11 +1,10 @@
 function [Bound]=boundary(Grid,Opt,Stab)
-%BOUNDARY  Set up outflow buffer zone and embedded boundary conditions.
+%BOUNDARY  Set up outflow buffer zone and inhomogeneous boundary conditions.
 %
 %   Bound = boundary(Grid, Opt, Stab)
 %
-%   Constructs the buffer region (smooth damping towards the outflow) and
-%   embedded boundary method (EBM) for step geometries. The buffer uses a
-%   polynomial ramp controlled by Opt.xb (start %) and Opt.kappa (strength).
+%   Constructs the buffer region (smooth damping towards the outflow). The
+%   buffer uses a polynomial ramp controlled by Opt.xb (start %) and Opt.kappa.
 %   Also interpolates inhomogeneous wall/freestream BCs (Stab.bcw, Stab.bct)
 %   onto the numerical grid and stores them in Bound.bcw, Bound.bct.
 %
@@ -55,35 +54,10 @@ case 'off'
     fprintf(' Buffer: off\n');
 end
 
-%% EBM
-if strcmpi(Grid.StepType,"FFS")
-    % Forward-facing step
-    Bound.bufs =1-(repmat(StabGrid.xun,Grid.ny,1)>Grid.StepX-0.00001).*(repmat(StabGrid.yun,1,Grid.nx)<=Grid.StepH); %=0 velocity buffer under step and at step surface
-    Bound.bufsp =1-(repmat(StabGrid.xun,Grid.ny,1)>Grid.StepX+0.00001).*(repmat(StabGrid.yun,1,Grid.nx)<Grid.StepH-0.001); %=0 pressure buffer under step
-
-    [~,stepi] = min(abs(StabGrid.x(end,:)-Grid.StepX)); % streamwise station of the step face
-    [~,yi] = min(abs(StabGrid.y(:,stepi)-Grid.StepH)); % collocation point of the step corner
-    
-    Bound.bufsp(end,stepi)= 0; % pressure buffer value =0 at the inner corner exactly
-
-    fprintf(' Buffer region implemented under the surface post-step. \n')
-elseif strcmpi(Grid.StepType,"BFS")  % Backward Facing Step
-    % Not yet implemented
-
-elseif strcmpi(Grid.StepType,"GAP")  % Gap
-    % Not yet implemented
-
-elseif strcmpi(Grid.StepType,"SHUMP")% Sharp hump
-    % Not yet implemented
-
-else %No sharp features
-    if Grid.StepH==0 % If no step is present, all values should be 1
-        Bound.bufs = ones(Grid.ny,Grid.nx);
-        Bound.bufsp =ones(Grid.ny,Grid.nx);
-        Bound.stepi = 0;
-        yi = 1;
-    end
-end
+%% Wall masks (no sharp features supported in this release)
+Bound.bufs  = ones(Grid.ny, Grid.nx);
+Bound.bufsp = ones(Grid.ny, Grid.nx);
+Bound.stepi = 0;
 
 %% Inhomogeneous BCs: interpolate Stab.bcw / Stab.bct onto numerical grid
 nf = size(Stab.bcw, 3);

@@ -1,4 +1,4 @@
-function [EV,u,v,w,p]=ILST_solver(Re,Ur,Wr,dyUr,dyWr,omega,beta,N_LST,dzdy,d2zdy2,bc_top)
+function [EV,u,v,w,p]=ILST_solver(Re,Ur,Wr,dyUr,dyWr,omega,beta,N_LST,dzdy,d2zdy2,bc_top,alpha_shift)
 %ILST_SOLVER  Solve the local stability eigenvalue problem (Orr-Sommerfeld/Squire).
 %
 %   [EV, u, v, w, p] = ILST_solver(Re, Ur, Wr, dyUr, dyWr, omega, beta, N_LST, dzdy, d2zdy2)
@@ -104,8 +104,18 @@ function [EV,u,v,w,p]=ILST_solver(Re,Ur,Wr,dyUr,dyWr,omega,beta,N_LST,dzdy,d2zdy
     end
 
     % Solve generalised eigenvalue problem
-    [Evec, P] = eig(AA, BB);
-    EV = diag(P);
+    if exist('alpha_shift','var') && ~isempty(alpha_shift)
+        % Mode continuation: eigs with shift (fast, one EV)
+        opts_eigs.tol   = 1e-10;
+        opts_eigs.maxit = 300;
+        opts_eigs.v0    = ones(n4, 1);
+        [Evec_s, EV_s] = eigs(AA, BB, 1, alpha_shift, opts_eigs);
+        EV   = EV_s;
+        Evec = Evec_s;
+    else
+        [Evec, P] = eig(AA, BB);
+        EV = diag(P);
+    end
 
     % Extract eigenvectors
     p = flip(Evec(1:4:end,:));

@@ -12,7 +12,7 @@ function DD = FD1_uneven(x, y, order)
 %   DD - First derivative of y with respect to x
 %
 % Example:
-%   dfdx = FD1_uneven(x, f, 4);
+%   dfdx = FD1d_uneven(x, f, 4);
 
 %% Default order
 if nargin < 3
@@ -20,19 +20,25 @@ if nargin < 3
 end
 
 %% Input validation
-nrows = size(y, 1);
+[nrows, ~] = size(y);
 
 switch order
-    case 2;  minRows = 3;
-    case 4;  minRows = 5;
-    case 6;  minRows = 7;
+    case 2
+        minRows = 3;
+        nStencil = 3;
+    case 4
+        minRows = 5;
+        nStencil = 5;
+    case 6
+        minRows = 7;
+        nStencil = 7;
     otherwise
-        error('FD1_uneven:invalidOrder', ...
+        error('FD1d_uneven:invalidOrder', ...
             'Order must be 2, 4, or 6. Got %d', order);
 end
 
 if nrows < minRows
-    error('FD1_uneven:insufficientPoints', ...
+    error('FD1d_uneven:insufficientPoints', ...
         'Order %d requires at least %d rows, got %d', order, minRows, nrows);
 end
 

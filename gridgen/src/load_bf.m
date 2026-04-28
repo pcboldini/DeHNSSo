@@ -1,16 +1,10 @@
-function [BF] = load_input(input)
-%LOAD_INPUT  Load base-flow data from file.
+function [BF] = load_bf(input)
+%LOAD_BF  Load a base-flow struct from .mat, .bin, or .csv.
 %
-%   BF = load_input(input)
-%
-%   Reads base-flow data from .mat, .csv, or external CFD output.
-%   The input struct must contain:
-%     input.folder   — directory containing the data file
-%     input.format   — file format: 'mat', 'csv'
-%     input.filename — (optional) specific file; auto-detects if empty
-%
-%   Output: BF struct with fields X, Y, U, V, W (and derivatives if available).
-%   Field names from OpenFOAM-style CSV ('x','y','U:0') are auto-renamed.
+%   BF = load_bf(input) reads the BF data specified by input.folder and
+%   input.filename (format controlled by input.format). Returns a struct
+%   with fields X, Y, U, V, W and any other scalars in the source file
+%   (Re, lref, Uref, nu when present).
 if isfield(input, 'filename') && ~isempty(input.filename)
     filepath = fullfile(input.folder, input.filename);
 else
@@ -26,7 +20,7 @@ switch lower(input.format)
     case 'mat'
         load(filepath, 'BF');   % assumes BF is stored in the .mat file
     case 'bin'
-        error('load_input:unsupported', 'Binary format not yet implemented.');
+        [BF, ~] = read_BF_bin(filepath);
     case 'csv'
         warning('off', 'MATLAB:table:ModifiedAndSavedVarnames');
         BF = table2struct(readtable(filepath), 'ToScalar', true);
@@ -47,9 +41,7 @@ if ~isempty(z_field)
     else
         z_target = min(z_vals);
     end
-    z_tol = 1e-6 * max(abs(z_vals(:)));  % relative tolerance for z-slice
-    if z_tol == 0; z_tol = 1e-10; end
-    keep = abs(z_vals - z_target) < z_tol;
+    keep = abs(z_vals - z_target) < 1e-10;
     fnames = fieldnames(BF);
     for i = 1:numel(fnames)
         BF.(fnames{i}) = BF.(fnames{i})(keep);

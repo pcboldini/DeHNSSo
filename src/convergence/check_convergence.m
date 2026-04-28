@@ -2,18 +2,15 @@ function [Opt, Stab, StabRes] = check_convergence(StabGrid, Bound, Mode, Opt, St
 %CHECK_CONVERGENCE  Evaluate convergence, ramp amplitude, extrapolate forcing.
 
 %% Convergence measure
+ib = min(Bound.ibuf, StabGrid.nx);  % 'off' buffer sets ibuf = nx+1 as sentinel
 for j = Mode.RunJ
-    Opt.dal(j) = sum(abs(StabRes.A(j,1:Bound.ibuf) - StabRes.Aold(j,1:Bound.ibuf))) ...
-               / max(StabRes.A(j,1:Bound.ibuf)) / StabGrid.nx;
+    numerator = abs(StabRes.A(j,1:ib) - StabRes.Aold(j,1:ib));
+    numerator(numerator < 1e-14) = 0;   % absolute floor (paper Eq. 21)
+    Opt.dal(j) = sum(numerator) / max(StabRes.A(j,1:ib)) / StabGrid.nx;
 end
 
 % Linear simulation: force convergence after first iteration
 if length(Mode.RunJ) == 1
-    Opt.dal = zeros(size(Opt.dal));
-end
-
-% Divergence check
-if Opt.AVAL >= 2 && Opt.k1 ~= 0
     Opt.dal = zeros(size(Opt.dal));
 end
 

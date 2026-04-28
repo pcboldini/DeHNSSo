@@ -1,5 +1,5 @@
-function Grid = generate_mesh(BF, Grid)
-%GENERATE_MESH  Build all quantities required by DeHNSSo.
+function Grid = build_stab_grid(BF, Grid)
+%BUILD_STAB_GRID  Build the DeHNSSo StabGrid struct from a resampled BF.
 %
 %   For a Cartesian mesh (default):
 %     BF must have: BF.X [1 x nx], BF.Y [ny x 1], BF.U/V/W [ny x nx]
@@ -7,7 +7,7 @@ function Grid = generate_mesh(BF, Grid)
 %     Metric tensors are set analytically (identity transform).
 %
 %   For a curvilinear mesh (BF.mesh_type = 'curvilinear'):
-%     BF must be the output of create_ctype_mesh.
+%     BF must be the output of resample_curvilinear or resample_unstructured.
 %     Metric tensors are computed via finite differences.
 
 curvilinear = isfield(BF, 'mesh_type') && strcmp(BF.mesh_type, 'curvilinear');
@@ -16,7 +16,15 @@ curvilinear = isfield(BF, 'mesh_type') && strcmp(BF.mesh_type, 'curvilinear');
 if isfield(BF, 'Re') && ~isempty(BF.Re)
     Grid.Re = BF.Re;
 elseif ~isfield(Grid, 'Re') || isempty(Grid.Re)
-    error('generate_mesh: Reynolds number not provided. Set ctype_params.Re or BF.Re.');
+    error('build_stab_grid: Reynolds number not provided. Set ctype_params.Re or BF.Re.');
+end
+
+% Pass through reference scales if present (needed by downstream callers
+% to convert physical λ, f into non-dim β_0, ω_0).
+for f_name = {'lref','Uref','nu'}
+    if isfield(BF, f_name{1}) && ~isempty(BF.(f_name{1}))
+        Grid.(f_name{1}) = BF.(f_name{1});
+    end
 end
 
 %% Dimensions and Malik parameters
@@ -62,7 +70,7 @@ if use_fd
         Grid.FD_eta_order = 4;
     end
     fprintf('Wall-normal method: FD (order %d, sparse)\n', Grid.FD_eta_order);
-    Grid = compute_FD_operators(Grid);
+    Grid = compute_fd_operators(Grid);
     fprintf('D1/D2 sparsity: %.1f%% nonzeros\n', 100 * nnz(Grid.D1) / numel(Grid.D1));
 else
     fprintf('Wall-normal method: Chebyshev (spectral, dense)\n');
@@ -74,6 +82,11 @@ if curvilinear
     xi_2d = repmat(Grid.x, Grid.ny, 1);
     X = BF.X;
     Y = BF.Y;
+
+    % Persist the 2-D physical coordinates (useful for post-processing /
+    % debug plots). Cartesian case keeps the 1-D Grid.x, Grid.y only.
+    Grid.X = X;
+    Grid.Y = Y;
 
     % First derivatives of forward mapping (xi,eta) -> (x,y)
     % xi-direction: FD along rows (streamwise)
@@ -89,7 +102,7 @@ if curvilinear
 
     J = xxi .* yeta - xeta .* yxi;
     if any(abs(J(:)) < eps)
-        warning('generate_mesh: near-zero Jacobian detected');
+        warning('build_stab_grid: near-zero Jacobian detected');
     end
 
     % First-order inverse metrics
@@ -140,7 +153,7 @@ end
 Grid.U = BF.U;
 Grid.V = BF.V;
 Grid.W = BF.W;
-Grid = compute_BF_derivatives(Grid);
+Grid = compute_bf_derivatives(Grid);
 
 if curvilinear
     fprintf('Curvilinear grid ready: %d streamwise x %d wall-normal\n', Grid.nx, Grid.ny);
