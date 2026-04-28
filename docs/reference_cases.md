@@ -1,4 +1,4 @@
-u# Reference cases
+# Reference cases
 
 Three reference cases ship with the repository. Each reproduces a published validation in Westerbeek et al., *DeHNSSo: The Delft Harmonic Navier-Stokes Solver for nonlinear stability problems with complex geometric features*, **Comput. Phys. Commun. 302 (2024) 109250** ([DOI](https://doi.org/10.1016/j.cpc.2024.109250)).
 
@@ -9,6 +9,10 @@ Three reference cases ship with the repository. Each reproduces a published vali
 | Swept-wing CFI hump — linear | §6.3 | Fig. 10 | `callers/benchmark/sweptwing_hump.m` | `bf_sweptwing_hump.mat` |
 
 The base flows are committed in `baseflow/output/benchmark/`. Both the gridgen and stability scripts read from there directly, so no manual file copying is required.
+
+> **Defaults vs paper-faithful.** The unified callers in `callers/benchmark/` ship with **fast smoke** defaults (linear, single fundamental mode, medium grid). To reproduce the Westerbeek 2024 paper figures exactly, edit the spectral content (`Stab.M`, `Stab.N`), set `Opt.linear = 'off'`, and where noted regenerate the base flow at finer resolution. Each case below has a "To reproduce Fig. X" callout listing the specific changes.
+
+> **Amplitude convention.** `Stab.A0_fund` is the amplitude of the **fundamental mode only**; `init.m` mirrors it onto the conjugate. The peak `u'` in the paper therefore corresponds to `2 · Stab.A0_fund` for a single-fundamental case.
 
 ## Workflow (all three cases)
 
@@ -27,9 +31,9 @@ cd ../../callers/benchmark/
 
 ---
 
-## Case 1 — Blasius TS waves (nonlinear)
+## Case 1 — Blasius TS waves
 
-Nonlinear development of Tollmien-Schlichting waves in a flat-plate Blasius boundary layer with zero pressure gradient. Reproduces Westerbeek et al. 2024, **Fig. 8** (page 12).
+Tollmien-Schlichting waves in a flat-plate Blasius boundary layer with zero pressure gradient. Reproduces Westerbeek et al. 2024, **Fig. 8** (page 12).
 
 ### Physical parameters (paper §6.1)
 
@@ -45,21 +49,23 @@ Nonlinear development of Tollmien-Schlichting waves in a flat-plate Blasius boun
 
 ### Numerical setup
 
-| Knob | Value |
-|---|---|
-| Spectral truncation `(M, N)` | `(5, 0)` — 5 frequency harmonics + MFD |
-| Inflow amplitude `A0_fund` | `0.0025·√2` |
-| Streamwise grid `nx` | 2674 (≈ 65 points / λ for fundamental) |
-| Wall-normal grid `ny` | 100 Chebyshev (median collocation `y_i = 4.95`) |
-| Domain | `x ∈ [400, 2854]`, `H = 99` |
-| Buffer | `Opt.buffer = 'para'`, starts at 85% of domain |
-| Solver | `Opt.solver = 'picard'` (with Newton fallback if needed) |
+| Knob | Default (shipped) | Paper (Fig. 8) |
+|---|---|---|
+| Spectral truncation `(M, N)` | `(1, 0)` — linear single TS wave | `(5, 0)` — 5 harmonics + MFD |
+| `Opt.linear` | `'on'` | `'off'` |
+| `Stab.A0_fund` | `0.00125·√2` (paper A0 = `2·A0_fund` = `0.0025·√2`) | `0.00125·√2` |
+| Streamwise grid `nx` | 800 (medium, from `bf_blasius.mat`) | 2674 (refined) or 800 (medium) |
+| Wall-normal grid `ny` | 40 (medium) | 100 (refined) or 40 (medium) |
+| Buffer | `Opt.buffer = 'para'`, starts at 85% | same |
 
-### Expected output
+### To reproduce Fig. 8 (M=5 nonlinear, medium grid)
+
+In `callers/benchmark/blasius.m`: set `Stab.M = 5` and `Opt.linear = 'off'`. For the refined paper grid, regenerate `bf_blasius.mat` at `nx=2674`, `ny=100` via `baseflow/IBL/caller.m`.
+
+### Expected output (paper-faithful run)
 
 - Amplitude evolution of modes (1,0) through (5,0) plus the (0,0) mean-flow distortion, matching the NPSE reference within line thickness.
 - Visible kink in the MFD curve near `x ≈ 1700` where its peak amplitude switches between two local maxima — physical, present in NPSE too.
-- Linear envelope of (1,0) reaches `≈ 10⁻²`; harmonics decay below `10⁻⁵` after `x ≈ 700`.
 
 ### Runtime
 
@@ -73,9 +79,9 @@ Nonlinear development of Tollmien-Schlichting waves in a flat-plate Blasius boun
 
 ---
 
-## Case 2 — Swept-wing CFI on a flat plate (nonlinear)
+## Case 2 — Swept-wing CFI on a flat plate
 
-Nonlinear development of stationary crossflow instabilities (CFI) in a swept-wing boundary layer with favorable pressure gradient. Reproduces Westerbeek et al. 2024, **Fig. 9** (page 13). Equivalent to *Case A* in Casacuberta et al. (J. Fluid Mech. 2022).
+Stationary crossflow instabilities (CFI) in a swept-wing boundary layer with favorable pressure gradient. Reproduces Westerbeek et al. 2024, **Fig. 9** (page 13). Equivalent to *Case A* in Casacuberta et al. (J. Fluid Mech. 2022).
 
 ### Physical parameters (paper §6.2)
 
@@ -88,30 +94,34 @@ Nonlinear development of stationary crossflow instabilities (CFI) in a swept-win
 | Spanwise external velocity `W_e` | -1.24 (constant) |
 | Streamwise external velocity `U_e(x)` | polynomial fit, eq. (26) of paper |
 | Fundamental frequency `ω₀` | 0 (stationary) |
-| Spanwise wavenumber `β₀` | 0.18 (λ = 7.5 mm) |
+| Spanwise wavenumber `β₀` | `2π·lref / 7.5e-3` (λ = 7.5 mm) ≈ 0.18 |
 
 ### Numerical setup
 
-| Knob | Value |
-|---|---|
-| Spectral truncation `(M, N)` | `(0, 5)` — 5 spanwise harmonics + MFD |
-| Inflow amplitude `A0_fund` | `3.5×10⁻³` |
-| Streamwise grid `nx` | 1272 (≈ 35 points / λ for fundamental) |
-| Wall-normal grid `ny` | 100 Chebyshev (median collocation `y_i = 4.5`) |
-| Domain | `x ∈ [220, 1560]`, `H = 89` |
-| Buffer | `Opt.buffer = 'para'`, starts at `x = 1360` |
-| Amplitude ramp | required: cold-start `A0 = 2.6×10⁻⁴`, ramp by `γ = 1.10` per iteration |
+| Knob | Default (shipped) | Paper (Fig. 9) |
+|---|---|---|
+| Spectral truncation `(M, N)` | `(0, 1)` — fundamental + conjugate + MFD | `(0, 5)` — 5 harmonics + MFD |
+| `Opt.linear` | `'on'` | `'off'` |
+| `Stab.A0_fund` | `1.75×10⁻³` (= `3.5e-3 / 2`) | `1.75×10⁻³` |
+| Streamwise grid `nx` | 1200 (after gridgen Cartesian resample) | 1272 |
+| Wall-normal grid `ny` | 60 (Chebyshev) | 100 |
+| Buffer | `Opt.buffer = 'para'`, starts at 85% | same |
+| Amplitude ramp | `Opt.linear = 'on'` skips it; for nonlinear runs, cold-start at `A0 ≈ 2.6×10⁻⁴` and ramp by `γ = 1.10` per iteration |
 
-### Expected output
+### To reproduce Fig. 9 (N=5 nonlinear)
 
-- Amplitude evolution of modes (0,1) through (0,5) plus MFD, matching DNS (INCA) and NPSE references within line thickness across the entire physical domain `x ∈ [220, 1400]`.
+In `callers/benchmark/sweptwing_flat.m`: set `Stab.N = 5` and `Opt.linear = 'off'`. For the paper's wall-normal resolution, increase `params.n_eta_new = 100` in `gridgen/benchmark/sweptwing_flat.m` and re-run gridgen.
+
+### Expected output (paper-faithful run)
+
+- Amplitude evolution of modes (0,1) through (0,5) plus MFD, matching DNS (INCA) and NPSE references within line thickness across `x ∈ [220, 1400]`.
 - Fundamental mode (0,1) saturates at `u'_max ≈ 0.3` (CFI saturation level); secondary lobe in eigenfunction at `x ≈ 1359` (Fig. 9f) is captured.
 
 ### Runtime
 
 - Refined grid (2544×100): ~4 days on workstation
 - Medium grid (1200×40): ~1.3 h
-- v2 single-thread on a 32 GB Apple Silicon laptop: **303 s, 65 Picard iterations, peak 15.1 GB** — ~15× faster than the heritage v1 numbers in Westerbeek 2024 Table A.1 (4644 s on 8-core / 32 GB)
+- v2 single-thread on a 32 GB Apple Silicon laptop: **303 s, 65 Picard iterations, peak 15.1 GB** — ~15× faster than heritage v1 (Westerbeek 2024 Table A.1: 4644 s on 8-core / 32 GB)
 
 ---
 
@@ -134,16 +144,17 @@ The hump is shallow enough to avoid flow separation; the base flow is taken from
 
 ### Numerical setup
 
-| Knob | Value |
+| Knob | Default (shipped, matches paper) |
 |---|---|
-| Spectral truncation `(M, N)` | `(0, 1)` — fundamental + conjugate, no MFD harmonics |
+| Spectral truncation `(M, N)` | `(0, 1)` — fundamental + conjugate + MFD (3 modes; MFD inactive in linear mode) |
 | `Opt.linear` | `'on'` (linear analysis only) |
-| Inflow amplitude `A0_fund` | `1.75×10⁻³` (linear regime — value sets only the absolute scale) |
-| Streamwise grid `nx` | 2000 (≈ 48 points / λ) |
-| Wall-normal grid `ny` | 100 Chebyshev, `y_i = 4.45` |
-| Domain | `x ∈ [220, 2165]`, `H = 89`, `β₀ = 0.18` |
-| Buffer | `Opt.buffer = 'para'`, starts at `x = 1873` |
+| `Stab.A0_fund` | `1.75×10⁻³` (linear regime — value sets only the absolute scale) |
+| Streamwise grid `nx` | 1200 (curvilinear, Gaussian-clustered around `x_m = 859`) |
+| Wall-normal grid `ny` | 80 (FD, 4th-order, sparse) |
+| Buffer | `Opt.buffer = 'para'`, starts at 85% |
 | Mesh | grid is **conformal** to the hump (`η`-axis follows the wall) — handled automatically by `gridgen/benchmark/sweptwing_hump.m` |
+
+The shipped defaults match the paper configuration; no edits needed to reproduce Fig. 10.
 
 ### Expected output
 
