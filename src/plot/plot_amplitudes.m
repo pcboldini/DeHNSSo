@@ -98,8 +98,13 @@ if nargin >= 3 && ~isempty(ref_data) && isfile(ref_data.file)
             end
             lbl = mode_label(lbl_prefix, m, n);
 
-            R0_ref    = sqrt(ref_grid.xun(1));
-            R_vec_ref = sqrt(ref_grid.xun) * R0_ref;
+            if isfield(ref_grid, 'xun')
+                xun_ref = ref_grid.xun;
+            else
+                xun_ref = ref_grid.x;
+            end
+            R0_ref    = sqrt(xun_ref(1));
+            R_vec_ref = sqrt(xun_ref) * R0_ref;
             if m == 0 && n == 0
                 h = semilogy(R_vec_ref, Aj, 'r--', 'LineWidth', 1.5);
             else
@@ -208,14 +213,16 @@ end
 
 function [res, grid] = find_stab_structs(S)
 %FIND_STAB_STRUCTS  Find StabRes and StabGrid in a loaded .mat struct.
+%   Accepts both modern schema (StabRes.A/alpha, StabGrid.xun) and legacy
+%   NPSE exports that only carry StabRes.A and StabGrid.x.
     res = []; grid = [];
     fnames = fieldnames(S);
     for k = 1:numel(fnames)
         v = S.(fnames{k});
-        if isstruct(v) && isfield(v, 'A') && isfield(v, 'alpha')
+        if isstruct(v) && isfield(v, 'A')
             res = v;
         end
-        if isstruct(v) && isfield(v, 'xun')
+        if isstruct(v) && (isfield(v, 'xun') || isfield(v, 'x'))
             grid = v;
         end
     end
