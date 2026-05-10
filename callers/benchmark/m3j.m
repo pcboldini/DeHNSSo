@@ -63,7 +63,8 @@ Opt.xb     = 85;            % buffer start [% of domain]
 %% Solver options
 % =========================================================================
 
-Opt.plot   = 'on';          % 'on' | 'off'
+Opt.plot        = 'on';     % 'on' | 'off'
+Opt.plot_metric = 'umax';   % 'umax' | 'urms' | 'energy'
 % Opt.Conv = 1e-4;          % final convergence criterion
 % Opt.TH   = 1e-11;         % NLT activation threshold
 
@@ -115,12 +116,12 @@ ref_label = '';
 
 if strcmpi(Opt.plot, 'on')
     if ~isempty(ref_file) && isfile(ref_file)
-        plot_amplitudes(StabGrid, StabRes, struct('file', ref_file, 'label', ref_label));
+        plot_amplitudes(StabGrid, StabRes, struct('file', ref_file, 'label', ref_label), [], Opt.plot_metric);
     else
         if ~isempty(ref_file)
             fprintf('  [ref overlay skipped — file not found: %s]\n', ref_file);
         end
-        plot_amplitudes(StabGrid, StabRes);
+        plot_amplitudes(StabGrid, StabRes, [], [], Opt.plot_metric);
     end
     plot_stability(StabGrid, StabRes, Opt);
 end

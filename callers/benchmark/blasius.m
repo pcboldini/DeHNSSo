@@ -16,7 +16,7 @@ load(fullfile(input.folder, 'DeHNSSo_input.mat'));   % provides StabGrid
 % =========================================================================
 %  total modes: (2M+1)(2N+1), including conjugates
 
-Stab.M = 1;                 % number of omega (temporal) modes
+Stab.M = 5;                 % number of omega (temporal) modes
 Stab.N = 0;                 % number of beta (spanwise) modes
 Stab.omega_0 = 0.034576;    % fundamental angular frequency
 Stab.beta_0  = 0;           % fundamental spanwise wavenumber (0 = 2D)
@@ -29,7 +29,7 @@ Stab.IC       = 'ILST';     % 'ILST' (local stability) or 'LOAD' (from file)
 Stab.phaseRef = 'pwall';    % 'pwall' (TS) or 'umax' (CFI)
 % Stab.ICfile = fullfile(input.folder, 'StabRes_previous.mat');  % required for LOAD
 
-Opt.linear   = 'on';        % 'on' linear (NLT off, 1 iter) | 'off' nonlinear
+Opt.linear   = 'off';        % 'on' linear (NLT off, 1 iter) | 'off' nonlinear
 Stab.A0_fund = 0.00125*sqrt(2);   % fundamental disturbance amplitude
 
 % =========================================================================
@@ -63,7 +63,8 @@ Opt.xb     = 85;            % buffer start [% of domain]
 %% Solver options
 % =========================================================================
 
-Opt.plot   = 'on';          % 'on' | 'off'
+Opt.plot        = 'on';     % 'on' | 'off'
+Opt.plot_metric = 'umax';   % 'umax' | 'urms' | 'energy'
 % Opt.Conv = 1e-4;          % final convergence criterion
 % Opt.TH   = 1e-11;         % NLT activation threshold
 
@@ -115,12 +116,12 @@ ref_label = 'NPSE';
 
 if strcmpi(Opt.plot, 'on')
     if ~isempty(ref_file) && isfile(ref_file)
-        plot_amplitudes(StabGrid, StabRes, struct('file', ref_file, 'label', ref_label));
+        plot_amplitudes(StabGrid, StabRes, struct('file', ref_file, 'label', ref_label), [], Opt.plot_metric);
     else
         if ~isempty(ref_file)
             fprintf('  [ref overlay skipped — file not found: %s]\n', ref_file);
         end
-        plot_amplitudes(StabGrid, StabRes);
+        plot_amplitudes(StabGrid, StabRes, [], [], Opt.plot_metric);
     end
     plot_stability(StabGrid, StabRes, Opt);
 end

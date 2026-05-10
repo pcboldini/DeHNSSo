@@ -1,22 +1,46 @@
-function plot_amplitudes(StabGrid, StabRes, ref_data, scholten_csv)
+function plot_amplitudes(StabGrid, StabRes, ref_data, scholten_csv, plot_metric)
 %PLOT_AMPLITUDES  Final amplitude development plot.
 %
 %   plot_amplitudes(StabGrid, StabRes)
 %   plot_amplitudes(StabGrid, StabRes, ref_data)
 %   plot_amplitudes(StabGrid, StabRes, ref_data, scholten_csv)
+%   plot_amplitudes(StabGrid, StabRes, ref_data, scholten_csv, plot_metric)
 %
 %   ref_data (optional) struct with:
 %     .file   — path to .mat file with reference StabRes/StabGrid
 %     .label  — legend prefix (e.g. 'NPSE', 'LPSE', 'DNS')
 %
 %   scholten_csv (optional) — set to true (or a path string) to overlay the
-%   digitised Scholten Fig. 1a data from a combined CSV with columns
-%       R_00, urms_00, R_10, urms_10, R_20, urms_20, R_30, urms_30
-%   If `true`, defaults to input/literature/Scholten_0.002_combined.csv.
-%   Pass [] or omit to skip.
+%   digitised Scholten Fig. 1a data. Pass [] or omit to skip.
 %
-%   Mode labels use StabRes.omegavec/betavec to determine (m,n) indices,
-%   so 3D cases (N>0) are labelled correctly.
+%   plot_metric (optional, default 'umax'):
+%     'umax'   — peak |u'|        (StabRes.A directly)
+%     'urms'   — RMS u'           (StabRes.A / sqrt(2))
+%     'energy' — sqrt(E_kin)      (sqrt(StabRes.E))
+%
+%   Mode labels use StabRes.omegavec/betavec to determine (m,n) indices.
+
+if nargin < 5 || isempty(plot_metric); plot_metric = 'umax'; end
+switch lower(plot_metric)
+    case 'umax'
+        A_get  = @(SR, j) SR.A(j, :);
+        sqrt2  = 1;     % no /sqrt(2) for ref overlay
+        ylab   = '$\max|u''|$';
+    case 'urms'
+        A_get  = @(SR, j) SR.A(j, :) / sqrt(2);
+        sqrt2  = sqrt(2);
+        ylab   = '$u''_{\mathrm{rms}}$';
+    case 'energy'
+        A_get  = @(SR, j) sqrt(max(SR.E(j, :), 0));
+        sqrt2  = NaN;   % energy: ref overlay only if ref has .E (rare); skipped otherwise
+        ylab   = '$\sqrt{E_{\mathrm{kin}}}$';
+    otherwise
+        error('plot_amplitudes:unknown_metric', 'Unknown plot_metric: %s', plot_metric);
+end
+
+if strcmpi(plot_metric, 'energy') && ~isfield(StabRes, 'E')
+    error('plot_amplitudes:no_E', 'plot_metric=''energy'' requires StabRes.E (run postprocess).');
+end
 
 figure(4); clf; set(gcf, 'Position', [100 100 900 500]); hold on;
 
@@ -37,11 +61,11 @@ beta_f  = min(beta_vec(beta_vec > 0));    % fundamental wavenumber
 
 A_all = [];  % collect all plotted amplitudes for auto ylim
 
-% HNS modes (black) — plot StabRes.A directly (peak |u'|, German eq. 4.7b)
+% HNS modes (black) — selected metric via A_get
 mk_count = 0;
 for j = 1:size(StabRes.A, 1)
     if ~any(StabRes.A(j,:)); continue; end
-    Aj = StabRes.A(j,:);
+    Aj = A_get(StabRes, j);
     A_all = [A_all, Aj(Aj > 0)]; %#ok<AGROW>
 
     if ~isempty(omega_f); m = round(omega_vec(j)/omega_f); else; m = 0; end
@@ -83,7 +107,15 @@ if nargin >= 3 && ~isempty(ref_data) && isfile(ref_data.file)
         mk_count_r = 0;
         for j = 1:size(ref_res.A, 1)
             if ~any(ref_res.A(j,:)); continue; end
-            Aj = ref_res.A(j,:);
+            % Apply same metric to ref. For 'energy' fall back to peak if ref
+            % lacks .E (heritage refs don't store energy).
+            if strcmpi(plot_metric, 'energy') && isfield(ref_res, 'E')
+                Aj = sqrt(max(ref_res.E(j, :), 0));
+            elseif strcmpi(plot_metric, 'energy')
+                Aj = ref_res.A(j, :);   % fall back
+            else
+                Aj = ref_res.A(j, :) / sqrt2;
+            end
             A_all = [A_all, Aj(Aj > 0)]; %#ok<AGROW>
 
             if ~isempty(ref_of) && numel(ref_ov) >= j
@@ -98,13 +130,8 @@ if nargin >= 3 && ~isempty(ref_data) && isfile(ref_data.file)
             end
             lbl = mode_label(lbl_prefix, m, n);
 
-            if isfield(ref_grid, 'xun')
-                xun_ref = ref_grid.xun;
-            else
-                xun_ref = ref_grid.x;
-            end
-            R0_ref    = sqrt(xun_ref(1));
-            R_vec_ref = sqrt(xun_ref) * R0_ref;
+            R0_ref    = sqrt(ref_grid.xun(1));
+            R_vec_ref = sqrt(ref_grid.xun) * R0_ref;
             if m == 0 && n == 0
                 h = semilogy(R_vec_ref, Aj, 'r--', 'LineWidth', 1.5);
             else
@@ -144,15 +171,16 @@ if nargin >= 4 && ~isempty(scholten_csv)
             T = readmatrix(scholten_path);   % cols: R_00 urms_00 R_10 urms_10 ...
             n_pairs = floor(size(T,2) / 2);
             tags = {'00','10','20','30','40','50'};
-            % Convert Scholten u_rms -> peak amplitude on the German convention:
-            %   non-MFD modes (eq. 4.7b/c): peak = sqrt(2) * u_rms
-            %   MFD (0,0) (eq. 4.7a):       peak = u_rms        (factor 1, no doubling)
-            for kk = 1:n_pairs
-                tag = tags{kk};
-                if strcmp(tag, '00')
-                    continue   % MFD: leave as-is
+            % Scholten data is u_rms. Convert per metric:
+            %   'umax':   non-MFD multiplied by sqrt(2) -> peak; MFD as-is
+            %   'urms':   keep as u_rms
+            %   'energy': u_rms is not directly comparable to sqrt(E_kin); leave
+            %             as-is (interpret with caution)
+            if strcmpi(plot_metric, 'umax')
+                for kk = 1:n_pairs
+                    if strcmp(tags{kk}, '00'); continue; end   % MFD: leave as-is
+                    T(:, 2*kk) = T(:, 2*kk) * sqrt(2);
                 end
-                T(:, 2*kk) = T(:, 2*kk) * sqrt(2);
             end
             mk_count_s = 0;
             for k = 1:n_pairs
@@ -192,7 +220,7 @@ if ~isempty(A_all)
     ylim([max(ymin, 1e-12), min(ymax, 1)]);
 end
 xlabel('$R = \sqrt{Re_x}$', 'Interpreter', 'latex', 'FontSize', 12)
-ylabel('$\max|u''|$', 'Interpreter', 'latex', 'FontSize', 12)
+ylabel(ylab, 'Interpreter', 'latex', 'FontSize', 12)
 title('Amplitude development', 'FontSize', 13)
 if ~isempty(h_list)
     legend(h_list, legs, 'Location', 'EastOutside', 'FontSize', 8)
@@ -213,16 +241,14 @@ end
 
 function [res, grid] = find_stab_structs(S)
 %FIND_STAB_STRUCTS  Find StabRes and StabGrid in a loaded .mat struct.
-%   Accepts both modern schema (StabRes.A/alpha, StabGrid.xun) and legacy
-%   NPSE exports that only carry StabRes.A and StabGrid.x.
     res = []; grid = [];
     fnames = fieldnames(S);
     for k = 1:numel(fnames)
         v = S.(fnames{k});
-        if isstruct(v) && isfield(v, 'A')
+        if isstruct(v) && isfield(v, 'A') && isfield(v, 'alpha')
             res = v;
         end
-        if isstruct(v) && (isfield(v, 'xun') || isfield(v, 'x'))
+        if isstruct(v) && isfield(v, 'xun')
             grid = v;
         end
     end

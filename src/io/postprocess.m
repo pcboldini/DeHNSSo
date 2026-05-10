@@ -71,11 +71,30 @@ for j = Mode.RunJ
     end
 end
 
+%% Kinetic energy per mode: E(x) = 0.5 * ∫ (|u|² + |v|² + |w|²) dη
+% Computed on the rescaled (full) field — shape functions are normalized to
+% |u_max|=1, so multiply by the per-mode amplitude (A or A/2) before integration.
+StabRes.E = zeros(size(StabRes.A));
+half_nf = round(Mode.nf/2);
+for j = Mode.RunJ
+    if j == half_nf
+        scale = StabRes.A(j, :);          % MFD: A = |u_max|
+    else
+        scale = StabRes.A(j, :) / 2;      % non-MFD: A = 2|u_max|
+    end
+    u_full = squeeze(StabRes.u(j, :, :)) .* scale;
+    v_full = squeeze(StabRes.v(j, :, :)) .* scale;
+    w_full = squeeze(StabRes.w(j, :, :)) .* scale;
+    integrand = abs(u_full).^2 + abs(v_full).^2 + abs(w_full).^2;
+    StabRes.E(j, :) = 0.5 * trapz(StabGrid.y, integrand, 1);
+end
+
 %% Delete conjugates
 half = round(Mode.nf/2);
 StabRes.omegavec(:, 1:half-1) = [];
 StabRes.betavec(:, 1:half-1)  = [];
 StabRes.A(1:half-1, :)        = [];
+StabRes.E(1:half-1, :)        = [];
 StabRes.alpha(1:half-1, :)    = [];
 StabRes.u(1:half-1, :, :)     = [];
 StabRes.v(1:half-1, :, :)     = [];
