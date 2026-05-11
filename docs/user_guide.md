@@ -37,7 +37,71 @@ cd gridgen/benchmark/
 blasius       % reads bf_blasius.mat from baseflow/output/benchmark/, writes DeHNSSo_input.mat
 ```
 
-For other supported cases (`sweptwing_flat`, `sweptwing_hump`, `m3j` / OpenFOAM): see [README.md](../README.md).
+For other supported cases (`blasius_csv`, `sweptwing_flat`, `sweptwing_hump`, `m3j` / OpenFOAM): see [README.md](../README.md).
+
+### Step 1b — Optional streamwise clustering (curvilinear cases)
+
+By default the gridgen scripts distribute `nx` stations uniformly along the wall arc length. For cases with a localized geometric feature (hump, leading-edge curvature, roughness element) you can cluster stations around one or more centres via a Gaussian step-size modulation. Configured in the per-case gridgen script via three `params` fields:
+
+| Parameter | Meaning |
+|---|---|
+| `params.mug` | Hump centre(s) in physical x (scalar or vector for multiple humps) |
+| `params.sig` | Gaussian width as a fraction of the half-domain (default 0.2). Scalar broadcasts to all humps; vector must match `mug` length |
+| `params.ag` | Step-size modulation at the peak: `<1` denser, `=1` no refinement, `>1` sparser (default 1). Scalar or vector |
+
+Algorithm (consumed by `gridgen/src/resample_curvilinear.m`):
+
+1. Map each `mug` into normalized ξ ∈ [-1, 1].
+2. At every candidate ξ, compute `G_k(ξ) = exp(−½·((ξ − μ_n)/σ)²)` for each hump `k`.
+3. Local modulation: `fg(ξ) = 1 − (1 − ag) · max_k G_k(ξ)` → `fg = ag` at each peak.
+4. Build the new ξ grid by integrating `∫ dξ / fg` and renormalizing — denser where `fg` is small.
+
+Example (heritage `sweptwing_hump.m`):
+
+```matlab
+x_m = 0.1837410879 / 2.1394e-4;   % physical hump centre / lref ≈ 859
+params.mug = [x_m];               % single hump
+params.sig = [0.2];               % Gaussian half-width fraction
+params.ag  = [0.5];               % step size halved at the peak
+```
+
+Multi-hump example:
+
+```matlab
+params.mug = [x_m1, x_m2];        % two humps
+params.sig = [0.2, 0.15];         % per-hump widths
+params.ag  = [0.5, 0.7];          % per-hump strengths
+```
+
+Leave `params.mug = []` or `params.ag = 1` everywhere to fall back to uniform wall-arc-length spacing.
+
+### Step 1c — Cartesian / OpenFOAM CSV input
+
+The cartesian path (`gridgen/src/resample_cartesian.m`) reads either a heritage `.mat` (e.g. `bf_blasius.mat`) or a flat-lattice CSV from a CFD code (e.g. OpenFOAM `midPlane_*.csv`). For CSV input a few extra `params` fields are usually needed in the gridgen script:
+
+| Parameter | Meaning |
+|---|---|
+| `params.rescale` | `true` if the CSV is dimensional (m, m/s). When set, X/Y are divided by `lref` and U/V/W by `Uref` before resampling |
+| `params.Uref`, `params.lref` | Required when `rescale = true`. Together with kinematic viscosity ν they fix `params.Re = Uref·lref/ν` |
+| `params.interp_method` | `interp2` method used on the rescaled grid. Default `'makima'` — Modified Akima, handles non-uniform wall-clustered CFD spacing without overshoot. Alternatives: `'spline'` (smoother interior but boundary ringing), `'linear'` (safest, lowest order), `'cubic'` (silently falls back to spline on non-uniform grids) |
+| `params.xi_trim_inflow` | Fraction (0–1) of the x-span to drop at the inflow before resampling. Useful for CFD sources with noisy inflow BCs |
+| `params.xi_trim_outflow` | Same at the outflow |
+
+The path detects whether the CSV is structured (`X`, `Y` are 2-D arrays) or a flat lattice scatter (`X`, `Y` are paired column vectors of length `nx·ny`). The reshape from flat scatter to canonical `(ny × nx)` form is automatic — no manual preprocessing needed.
+
+Example (heritage `blasius_csv.m`):
+
+```matlab
+params.rescale      = true;
+params.Uref         = 20.9;                    % m/s
+params.lref         = 2.688803650654011e-04;   % m
+params.Re           = 3.719126161394363e+02;   % Uref·lref/ν_air
+% params.interp_method   = 'makima';   % default; uncomment to override
+% params.xi_trim_inflow  = 0.02;       % drop first 2% of x
+% params.xi_trim_outflow = 0.0;
+```
+
+Leaving `params.n_eta_new` / `params.n_xi_new` empty keeps the source resolution. Setting them resamples to the requested size.
 
 ### Step 2 — Configure and run
 
@@ -223,6 +287,37 @@ Opt.AFg   = 1.1;    % amplitude factor growth rate
 Opt.AMAX  = 0.1;    % maximum amplitude factor
 Opt.TH    = 1e-11;  % nonlinear term activation threshold
 ```
+
+### Picard acceleration & Newton fallback
+
+The nonlinear convergence loop is Picard iteration with AF (amplitude factor) continuation. Two optional accelerators speed it up; a JFNK Newton fallback handles cases where Picard stalls.
+
+**Anderson acceleration** (Walker & Ni, 2011). A least-squares fixed-point accelerator that combines the last `m` Picard iterates to produce a faster update.
+
+```matlab
+Opt.anderson = 0;   % off (default — plain Picard)
+Opt.anderson = m;   % history depth m (typical: 3-6)
+```
+
+How it behaves:
+
+- Maintains a rolling buffer of the last `m` `(q_old, residual)` pairs.
+- At each iteration, solves a small `m × m` least-squares problem (Tikhonov-regularised so it degrades gracefully when residuals are nearly parallel near saturation) and forms an accelerated step from the difference history.
+- Safety fallback: if the accelerated step diverges (magnitude > 1.5× plain Picard), the iteration keeps the plain Picard step instead.
+- The history is reset automatically when `AF` changes or the set of active modes changes (the fixed point itself has moved).
+
+Often turns the linear convergence of plain Picard into a superlinear one near saturation, halving the iteration count on M=5 nonlinear cases.
+
+**Newton takeover** (`Opt.newton_takeover`). When Picard stalls at AF < 1 (typically near saturation), DeHNSSo switches to a JFNK Newton solver to push to AF = 1.
+
+```matlab
+Opt.newton_takeover = 'on';   % default — auto-switch when Picard stalls
+Opt.newton_takeover = 'off';  % stay in Picard regardless
+Opt.newton_tol      = 1e-10;  % Newton convergence tolerance on ‖F‖
+Opt.newton_precond  = 'block'; % 'block' | 'full'
+```
+
+The stall heuristic triggers when `dal` stops decreasing for ≥ 5 iters, or when `picard_af_count ≥ 15` at one AF, or on amplitude blow-up. Newton then converges the current AF using the existing LU cache as preconditioner and ramps further.
 
 ### LU factorisation cache
 

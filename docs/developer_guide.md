@@ -50,8 +50,16 @@ DeHNSSo/
 │       └── FD*.m                   — Finite-difference operators (2nd/4th order)
 ├── gridgen/                        — Grid generation and base-flow preprocessing
 │   ├── main_gridgen.m              — Pipeline entry point (function called by per-case scripts)
-│   ├── benchmark/                  — Per-case grid-gen scripts (blasius, sweptwing_flat, ...)
-│   └── src/                        — Mesh generation, metric tensors, scattered/structured resampling
+│   ├── benchmark/                  — Per-case grid-gen scripts
+│   │   ├── blasius.m, blasius_csv.m, sweptwing_flat.m, sweptwing_hump.m, m3j.m
+│   └── src/
+│       ├── classify_input.m        — Auto-detect cartesian / curvilinear_structured / unstructured
+│       ├── resample_cartesian.m    — Malik-Cheb resample for structured + flat-lattice CSV input
+│       ├── resample_curvilinear.m  — Body-fitted structured input (e.g. SweptWing)
+│       ├── resample_unstructured.m — Boundary-detected wall + body-fitted columns (CFD scatter)
+│       ├── build_stab_grid.m       — Final StabGrid assembly with metrics and FD/Cheb operators
+│       ├── plot_raw_bf.m, plot_resampled_bf.m — Diagnostic figures
+│       └── get_opt.m, resolve_trim.m — Shared helpers
 └── baseflow/                       — Boundary-layer solvers
     ├── IBL/                        — Incompressible BL (Blasius, Falkner-Skan-Cooke)
     └── output/benchmark/           — Committed reference base flows (bf_*.mat, bf_m3j.csv)
@@ -63,7 +71,7 @@ DeHNSSo/
 
 ### StabGrid
 
-The stability grid, assembled by the Interpol pipeline and stored in the input `.mat` file.
+The stability grid, assembled by the gridgen pipeline and stored in the input `.mat` file.
 
 | Field | Size | Description |
 |---|---|---|

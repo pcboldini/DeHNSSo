@@ -21,6 +21,17 @@ params.n_xi_new  = [];
 params.rescale   = false;    % already non-dim
 params.plot      = false;
 
+%% Optional: streamwise trim & interpolation method (cartesian path)
+% Drop fractions of the x-span at inflow / outflow before resampling.
+% params.xi_trim_inflow  = 0.02;     % drop first 2% of x
+% params.xi_trim_outflow = 0.0;      % keep full outflow
+
+% interp2 method used by resample_cartesian.
+% Default 'makima' (handles non-uniform CFD spacing, no overshoot).
+% 'spline' is smoother in the interior but can overshoot at boundaries.
+% 'cubic' silently falls back to 'spline' on non-uniform grids.
+% params.interp_method = 'makima';  % 'makima' | 'spline' | 'linear' | 'cubic'
+
 %% Grid-generation options
 params.FD1_order    = 4;
 params.FD2_order    = 2;

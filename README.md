@@ -74,7 +74,7 @@ DeHNSSo/
 │   └── math/                    — Finite differences, Chebyshev operators
 ├── gridgen/                     — Grid generation and base-flow preprocessing
 │   ├── main_gridgen.m           — Pipeline entry point (function called by per-case scripts)
-│   ├── benchmark/               — Per-case scripts: blasius.m, sweptwing_flat.m, sweptwing_hump.m, m3j.m
+│   ├── benchmark/               — Per-case scripts: blasius.m, blasius_csv.m, sweptwing_flat.m, sweptwing_hump.m, m3j.m
 │   └── src/                     — Mesh generation, metric tensors, scattered/structured resampling, elliptic smoother
 ├── baseflow/                    — Boundary-layer solvers
 │   ├── IBL/                     — Incompressible BL (Blasius, Falkner-Skan-Cooke)
@@ -135,11 +135,14 @@ The `gridgen/` pipeline builds the stability grid (Malik-Chebyshev wall-normal, 
 
 ```matlab
 cd gridgen/benchmark/
-blasius           % Cartesian Blasius BL
+blasius           % Cartesian Blasius BL (.mat)
+blasius_csv       % Cartesian Blasius BL from OpenFOAM CSV (flat-lattice scatter)
 sweptwing_flat    % curvilinear flat-plate swept BL
 sweptwing_hump    % curvilinear swept BL over a Gaussian hump
 m3j               % unstructured OpenFOAM scatter (M3J curved wall)
 ```
+
+For dimensional CFD imports (e.g. OpenFOAM CSV) the cartesian path supports `params.rescale = true` with `Uref`/`lref` (X/Y divided by `lref`, U/V/W by `Uref` before interpolation), `params.interp_method` (`'makima'` default — handles non-uniform wall-clustered spacing without overshoot), and `params.xi_trim_inflow`/`xi_trim_outflow` for trimming noisy CFD BC regions. See [docs/user_guide.md](docs/user_guide.md) §1c.
 
 Reference base-flow data lives in `baseflow/output/benchmark/` (committed; the rest of `baseflow/output/` stays a scratch area for `baseflow/IBL/caller.m` runs).
 

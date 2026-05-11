@@ -51,13 +51,10 @@ end
 
 switch class
     case 'cartesian'
-        if isfield(params,'n_eta_new') && ~isempty(params.n_eta_new)
-            BF_rs = resample_cartesian(BF, params);
-        else
-            % Pass-through: BF is already at the DeHNSSo resolution.
-            BF_rs = BF;
-            BF_rs.BC_mask = false;
-        end
+        % resample_cartesian handles both gridded and flat-scatter inputs,
+        % and defaults to source resolution when n_eta_new / n_xi_new are
+        % empty (effective no-op resample → just canonicalises shape).
+        BF_rs = resample_cartesian(BF, params);
 
     case 'curvilinear_structured'
         BF_rs = resample_curvilinear(BF, params);
@@ -66,15 +63,14 @@ switch class
         BF_rs = resample_unstructured(BF, params);
 
     otherwise
-        error('interpol: unknown input class ''%s''.', class);
+        error('gridgen: unknown input class ''%s''.', class);
 end
 
 %% 3. Guarantee Re/lref/Uref/nu are on BF_rs before build_stab_grid sees it
 BF_rs = ensure_metadata(BF, BF_rs, params);
 
 %% 4. Optional plot of the resampled BF
-if isfield(params, 'plot') && params.plot && isfield(BF_rs, 'mesh_type') && ...
-        strcmp(BF_rs.mesh_type, 'curvilinear')
+if isfield(params, 'plot') && params.plot
     plot_opts = struct();
     if isfield(params, 'plot_opts');  plot_opts = params.plot_opts;  end
     plot_resampled_bf(BF_rs, plot_opts);

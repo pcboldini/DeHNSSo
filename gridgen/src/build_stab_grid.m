@@ -49,7 +49,14 @@ else
         Grid.y_i = Grid.H / 20;
     end
     Grid.x = BF.X(:)';
-    Grid.y = BF.Y(:);
+    % Use the computational η (wall-distance, starts at 0) if BF carries it
+    % — this is what the Malik mapping in compute_cheb_operators expects.
+    % Fall back to BF.Y for legacy cartesian inputs where Y already starts at 0.
+    if isfield(BF, 'eta1D') && ~isempty(BF.eta1D)
+        Grid.y = BF.eta1D(:);
+    else
+        Grid.y = BF.Y(:);
+    end
 end
 
 Grid.xi1D    = Grid.x;

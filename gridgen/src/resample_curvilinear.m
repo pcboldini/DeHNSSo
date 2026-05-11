@@ -5,7 +5,7 @@ function BF_new = resample_curvilinear(BF, params)
 %
 %   For BF data on a curvilinear *structured* mesh where X and Y are 2-D
 %   arrays of the same shape, but Y is not constant along a row (e.g. a
-%   hump-following grid such as bf_sweptwing_hump.mat). The wall is
+%   hump-following grid such as BF_SweptWing_hump.mat). The wall is
 %   trivially the last row of the grid — no polygon detection is needed.
 %
 %   Required inputs (params):
@@ -94,7 +94,8 @@ n_eta_new = numel(eta_cheb);
 
 %% --- 6. ξ stations along the wall ---------------------------------------
 % Default: uniform wall arc-length (linspace).
-% Optional: Gaussian-weighted clustering around one or more hump centres.
+% Optional: Gaussian-weighted clustering around one or more hump centres,
+% generalising heritage's "xrefined" to multiple humps.
 %
 %     params.mug : scalar or vector of hump centres (physical x)
 %     params.sig : Gaussian width per hump (fraction of half-domain);
@@ -137,7 +138,8 @@ else
     assert(numel(sig) == numel(mug) && numel(ag) == numel(mug), ...
         'params.mug/sig/ag must be scalars or same-length vectors.');
 
-    % Map each hump centre (physical x) into the normalised [-1, 1] axis.
+    % Map each hump centre (physical x) into the normalised [-1, 1] axis,
+    % consistent with heritage grid_gen.m (line 95).
     x_lo_p = interp1(s_wall, X_wall, s_lo, 'pchip');
     x_hi_p = interp1(s_wall, X_wall, s_hi, 'pchip');
     mug_n  = 2 * (mug - x_lo_p) / (x_hi_p - x_lo_p) - 1;
@@ -249,21 +251,16 @@ BF_new.H          = H;
 BF_new.y_i        = y_i;
 BF_new.mesh_type  = 'curvilinear';
 
-fprintf('Curvilinear resample done: %d ξ × %d η  (H=%.4f, y_i=%.4f)\n', ...
-        n_xi_new, n_eta_new, H, y_i);
+fprintf('Curvilinear resample done: %d η × %d ξ  (H=%.4f, y_i=%.4f)\n', ...
+        n_eta_new, n_xi_new, H, y_i);
 end
 
-
-% =========================================================================
-%  Helpers
-% =========================================================================
 
 function [X, Y, U, V, W, ny, nx] = orient_structured_grid(BF)
 % Ensure the grid is [ny × nx] with the wall at the last row.
 
 X = BF.X; Y = BF.Y; U = BF.U; V = BF.V; W = BF.W;
 
-% Is streamwise along dim 2 (columns)? True when X varies faster along dim 2.
 if range(X(1, :)) < range(X(:, 1))
     X = X.'; Y = Y.'; U = U.'; V = V.'; W = W.';
     fprintf('Input transposed so streamwise is dim 2.\n');
@@ -271,42 +268,11 @@ end
 
 [ny, nx] = size(X);
 
-% Wall should be at the row with lower mean velocity magnitude (no-slip).
+% Wall = row with lower mean velocity magnitude (no-slip).
 vel_top = mean(abs(U(1,   :)) + abs(V(1,   :)) + abs(W(1,   :)));
 vel_bot = mean(abs(U(end, :)) + abs(V(end, :)) + abs(W(end, :)));
 if vel_top < vel_bot
     X = flipud(X); Y = flipud(Y); U = flipud(U); V = flipud(V); W = flipud(W);
     fprintf('Grid flipped so wall is at row end (DeHNSSo convention).\n');
 end
-end
-
-
-function v = get_opt(opts, name, default)
-% Fetch opts.(name) if set and non-empty, otherwise return default.
-if isfield(opts, name) && ~isempty(opts.(name))
-    v = opts.(name);
-else
-    v = default;
-end
-end
-
-
-function n = resolve_trim(params, fname, n_total)
-% Convert params.<fname> to an integer station count.
-%   []          -> 0
-%   integer ≥ 1 -> that many stations
-%   0 < x < 1   -> round(x * n_total)
-    n = 0;
-    if ~isfield(params, fname) || isempty(params.(fname));  return;  end
-    v = params.(fname);
-    if ~isscalar(v) || ~isnumeric(v) || v < 0
-        error('%s must be a non-negative scalar.', fname);
-    end
-    if v == 0
-        n = 0;
-    elseif v < 1
-        n = round(v * n_total);
-    else
-        n = round(v);
-    end
 end

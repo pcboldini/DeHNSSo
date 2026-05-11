@@ -2,7 +2,7 @@ function [BF_new] = resample_unstructured(BF, params)
 %RESAMPLE_UNSTRUCTURED  Build a HNS-ready body-fitted grid from unstructured scatter.
 %
 %   For BF data that comes in as a flat point cloud (e.g. OpenFOAM CSV
-%   exports, m3j.csv). No grid structure is assumed — the wall
+%   exports, M3J midPlane.csv). No grid structure is assumed — the wall
 %   is detected from the boundary polygon using the velocity field, then
 %   smoothed, parameterised, and used to launch wall-normal columns.
 %
@@ -85,19 +85,43 @@ seg        = mod(seg - 1, n_bnd) + 1;
 
 wall_idx = bnd(seg);
 
-% Trim first/last points where boundary polygon clusters at domain corners.
-% Detect cluster: consecutive points closer than 10% of median spacing.
-X_wi = X_flat(wall_idx);  Y_wi = Y_flat(wall_idx);
-d_wi = sqrt(diff(X_wi).^2 + diff(Y_wi).^2);
-d_med = median(d_wi);
-trim_lo = find(d_wi > 0.1 * d_med, 1, 'first');
-trim_hi = find(d_wi > 0.1 * d_med, 1, 'last') + 1;
-wall_idx = wall_idx(trim_lo+2 : trim_hi-2);
+% Peel endpoints where the boundary polygon detours along an inflow/outflow
+% face: either tightly clustered points (small Euclidean spacing) or
+% perpendicular excursions (small projection onto the local wall tangent).
+X_wi  = X_flat(wall_idx);  Y_wi = Y_flat(wall_idx);
+dx_wi = diff(X_wi);
+dy_wi = diff(Y_wi);
+d_wi  = hypot(dx_wi, dy_wi);
+n_seg = numel(d_wi);
+
+robust_med = @(v) median(v(max(1,round(0.10*numel(v))) : ...
+                          max(round(0.10*numel(v))+1, round(0.90*numel(v)))));
+d_ref = robust_med(sort(d_wi));
+
+% Reference wall tangent: median segment vector over the interior 60%
+i_lo_t  = max(1, round(0.20 * n_seg));
+i_hi_t  = min(n_seg, round(0.80 * n_seg));
+t_ref_x = median(dx_wi(i_lo_t:i_hi_t));
+t_ref_y = median(dy_wi(i_lo_t:i_hi_t));
+t_ref_n = max(eps, hypot(t_ref_x, t_ref_y));
+
+proj = @(i) (dx_wi(i)*t_ref_x + dy_wi(i)*t_ref_y) / t_ref_n;
+ok_seg = @(i) d_wi(i)    > 0.3*d_ref && d_wi(i) < 3*d_ref ...
+           && abs(proj(i)) > 0.3*d_ref;
+
+lo = 1;  hi = numel(wall_idx);
+while lo < hi - 1 && ~ok_seg(lo)
+    lo = lo + 1;
+end
+while hi > lo + 1 && ~ok_seg(hi - 1)
+    hi = hi - 1;
+end
+wall_idx = wall_idx(lo:hi);
 n_wall   = numel(wall_idx);
 if isempty(n_xi_new)
     n_xi_new = n_wall;
 end
-fprintf('Wall detection: %d boundary points (trimmed corners)\n', n_wall);
+fprintf('Wall detection: %d boundary points (after inflow/outflow trim)\n', n_wall);
 
 X_wall = X_flat(wall_idx);
 Y_wall = Y_flat(wall_idx);
@@ -345,23 +369,16 @@ end
 %% =====================================================================
 %  7. 2-D scattered interpolation onto the body-fitted target grid
 %  =====================================================================
-% Delaunay-based scatteredInterpolant handles local density variations in
-% the raw CFD mesh cleanly — no ad-hoc tangential band, no per-station
-% weighted averaging. A single triangulation is built once over the raw
-% (X_flat, Y_flat) cloud and reused for U, V, W at every target node.
-%
-% Note: cell-centred CFD exports (e.g. OpenFOAM CSV) do not include the
-% wall itself — the lowest data row sits half a cell above the wall.
-% Wall detection picks that first cell-centre row, so our "wall" target
-% row coincides with it and the natural interpolated value (small but
-% non-zero) is the correct cell-centre quantity. Do NOT force U=0 here:
-% the resulting step would be amplified by the near-wall stencil into a
-% spurious O(10) wall shear. The stability operator enforces u'=0 at the
-% wall (perturbation no-slip) independently, which remains consistent.
+% Cell-centred CFD exports (e.g. OpenFOAM CSV) do not include the wall
+% itself — the lowest data row sits half a cell above it. We pick that row
+% as our "wall" target and let the natural cell-centre values stand. Do
+% NOT force U=0: the resulting step would be amplified by the near-wall
+% stencil into a spurious O(10) wall shear. u'=0 is enforced by the
+% stability operator independently.
 
 F_U = scatteredInterpolant(X_flat, Y_flat, U_flat, 'linear', 'nearest');
-F_V = F_U;  F_V.Values = V_flat;
-F_W = F_U;  F_W.Values = W_flat;    % reuse triangulation, swap values
+F_V = F_U;  F_V.Values = V_flat;    % reuse triangulation, swap values
+F_W = F_U;  F_W.Values = W_flat;
 
 U_new = reshape(F_U(X_target(:), Y_target(:)), n_eta_new, n_xi_new);
 V_new = reshape(F_V(X_target(:), Y_target(:)), n_eta_new, n_xi_new);
@@ -374,7 +391,8 @@ fprintf('max U interpolated: %.6f\n', max(abs(U_new(:))));
 %  8. Diagnostic plots
 %  =====================================================================
 
-% --- Fig: wall-normal profiles at selected stations ---
+% --- Fig: wall-normal profiles with raw-data overlay (sanity check) ---
+if isfield(params, 'plot') && params.plot
 if isfield(params, 'plot_opts') && isfield(params.plot_opts, 'xi_slices')
     xi_fracs = params.plot_opts.xi_slices;
 else
@@ -382,7 +400,7 @@ else
 end
 j_slices = max(1, min(n_xi_new, round(xi_fracs * n_xi_new)));
 
-figure('Name', 'Wall-normal profiles');
+figure('Name', 'Wall-normal profiles with raw overlay');
 colors_p = lines(numel(j_slices));
 h_lines  = gobjects(numel(j_slices), 1);
 leg_str  = cell(numel(j_slices), 1);
@@ -422,6 +440,7 @@ subplot(1,3,1); xlabel('\eta'); ylabel('U'); title('U profiles');
 legend(h_lines, leg_str, 'Location', 'best');
 subplot(1,3,2); xlabel('\eta'); ylabel('V'); title('V profiles');
 subplot(1,3,3); xlabel('\eta'); ylabel('W'); title('W profiles');
+end
 
 % --- Fig: interpolated mesh and velocity ---
 if isfield(params, 'plot') && params.plot
@@ -444,7 +463,7 @@ if isfield(params, 'plot') && params.plot
     plot(X_target', Y_target', 'b-', 'LineWidth', 0.3);
     daspect([1 1 1]);
     legend('input', 'wall', 'target mesh', 'Location', 'best');
-    title(sprintf('Target mesh: %d \\xi x %d \\eta', n_xi_new, n_eta_new));
+    title(sprintf('Target mesh: %d \\eta \\times %d \\xi', n_eta_new, n_xi_new));
 end
 
 %% =====================================================================
@@ -463,26 +482,6 @@ BF_new.H         = H;
 BF_new.y_i       = y_i;
 BF_new.mesh_type = 'curvilinear';
 
-fprintf('Unstructured resample done: %d ξ × %d η  (H=%.4f, y_i=%.4f)\n', ...
-    n_xi_new, n_eta_new, H, y_i);
-end
-
-function n = resolve_trim(params, fname, n_total)
-% Resolve xi_trim_{inflow,outflow} to an integer station count.
-%   []         -> 0
-%   integer>=1 -> that many stations
-%   0<x<1      -> round(x * n_total) stations
-    n = 0;
-    if ~isfield(params, fname) || isempty(params.(fname)); return; end
-    v = params.(fname);
-    if ~isscalar(v) || ~isnumeric(v) || v < 0
-        error('%s must be a non-negative scalar.', fname);
-    end
-    if v == 0
-        n = 0;
-    elseif v < 1
-        n = round(v * n_total);
-    else
-        n = round(v);
-    end
+fprintf('Unstructured resample done: %d η × %d ξ  (H=%.4f, y_i=%.4f)\n', ...
+    n_eta_new, n_xi_new, H, y_i);
 end
