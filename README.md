@@ -10,7 +10,7 @@ This is an extended and refactored version of [DeHNSSo](https://doi.org/10.1016/
 
 ## Recent updates (2026-05-12)
 
-- **Compressible mode** — full (u, v, w, ρ, T) HNS path (Scholten 2024). Validated against the Zanus/Bertolotti 2017 PSE M=0.5 benchmark
+- **Compressible mode** — full (u, v, w, ρ, T) HNS path (Scholten 2024). Validated against incompressible LST in the Ma → 0 limit (Bertolotti) and against the Zanus/Bertolotti 2017 PSE benchmarks at Ma=0.5, 1.6, and 4.5 (Ma=0.5 case shipped as `blasius_compressible`)
 - **CBL solver** — compressible Falkner-Skan-Cooke similarity; new `baseflow/caller/` layout splits IBL and CBL entry points
 - **Compressible callers** — `gridgen/benchmark/blasius_compressible.m` + `callers/benchmark/blasius_compressible.m` with built-in HNS vs Zanus/Bertolotti PSE plot
 - **`lapack_band` LU mode** — LAPACK banded LU MEX (`src/hns/dgbsv_solve.c`), ~3× faster than `seq` on compressible TS. Build via `src/hns/mexbuild_dgbsv.m`
@@ -54,7 +54,7 @@ This is an extended and refactored version of [DeHNSSo](https://doi.org/10.1016/
 - **Linear mode** — `Opt.linear = 'on'` disables nonlinear terms (NLT) and converges in a single iteration; equivalent to linear PSE. Default is `'off'` (nonlinear)
 
 ### Compressible mode
-- **Compressible HNS** — `Opt.compressible = 'on'` activates the full (u, v, w, ρ, T) path (Scholten et al. 2024 density formulation). Pressure perturbation eliminated via the EOS; ρ is a direct state variable. Validated end-to-end against the Zanus/Bertolotti 2017 PSE benchmark at Ma=0.5
+- **Compressible HNS** — `Opt.compressible = 'on'` activates the full (u, v, w, ρ, T) path (Scholten et al. 2024 density formulation). Pressure perturbation eliminated via the EOS; ρ is a direct state variable. Validated against incompressible LST (Bertolotti) in the Ma → 0 limit and against the Zanus/Bertolotti 2017 PSE M=0.5 benchmark; additional sanity tests at Ma=1.6 and Ma=4.5
 - **Compressible base flow** — `baseflow/CBL/compressibleFSC.m` solves the compressible Falkner-Skan-Cooke similarity problem (adiabatic or isothermal walls, Sutherland viscosity)
 - **Compressible inflow** — CLST eigenvalue solver with Mack F/S mode selection (`Opt.mode_select = 'slow' | 'fast'`) and continuous-spectrum branch rejection
 - **Chu/Mack disturbance energy** — `Opt.plot_metric = 'energy'` plots √E with the compressible energy norm
@@ -62,9 +62,9 @@ This is an extended and refactored version of [DeHNSSo](https://doi.org/10.1016/
 ### Computational efficiency
 - **LHS matrix reuse** — pass the assembled LHS back across calls via `Opt.rerun = 'on'`; avoids full matrix reassembly for parameter sweeps (amplitude, actuation, frequency)
 - **LU mode selection** — `Opt.lu_mode` picks the linear-solver strategy:
-  - `'lapack_band'` — LAPACK `zgbsv`/`dgbsv` MEX (banded LU with partial pivoting); ~3× faster than `seq`. Build once via `src/hns/mexbuild_dgbsv.m`
   - `'full'` — cache every LU factorisation (fastest reuse, unbounded memory)
   - `'auto'` — LRU cache bounded by `Opt.lu_max_cache` (default for nonlinear runs)
+  - `'lapack_band'` — LAPACK `zgbsv`/`dgbsv` MEX (banded LU with partial pivoting); ~3× faster than `seq`. Build once via `src/hns/mexbuild_dgbsv.m`
   - `'seq'` — one LU per mode group, discard after solve (low memory; required for compressible 5-var on tight RAM)
   - `'none'` — backslash each time (reference / debug)
 - **Parallel assembly and solve** — `Opt.parfor = 'on'` parallelises LHS station assembly and mode solve (auto-detected; requires Parallel Computing Toolbox)

@@ -85,11 +85,11 @@ Opt.plot_metric = 'umax';       % 'umax' | 'urms' | 'energy'
 % =========================================================================
 
 % LU mode (Opt.lu_mode):
+%   'full'        — Cache every LU factorisation. OOM at nx=800 (compressible).
+%   'auto'        — LRU cache bounded by Opt.lu_max_cache. OOM at nx=800.
 %   'lapack_band' — LAPACK zgbsv/dgbsv MEX. Fastest single solve (~3x vs seq).
 %                   No factor cache yet — refactors per call.
 %                   Build once per machine: run src/hns/mexbuild_dgbsv.m.
-%   'full'        — Cache every LU factorisation. OOM at nx=800 (compressible).
-%   'auto'        — LRU cache bounded by Opt.lu_max_cache. OOM at nx=800.
 %   'seq'         — symrcm + sparse LU, one mode group at a time. ~210 s on M=0.5.
 %                   Robust fallback if MEX unavailable.
 %   'none'        — Backslash each time. Reference / debug.
