@@ -18,7 +18,7 @@ function StabGrid = main_gridgen(input, params, output)
 %   params  struct with the union of fields consumed by the chosen resampler
 %           (n_eta_new / n_xi_new / y_i / H / xi_range / xi_trim_* / Re /
 %            lref / Uref / nu / rescale / elliptic / plot / plot_opts ...)
-%           plus grid-generation knobs (FD1_order, FD2_order, eta_method,
+%           plus grid-generation knobs (FD_xi_order_1, FD_xi_order_2, FD_eta_method,
 %           FD_eta_order). See the per-case callers in gridgen/benchmark/.
 %
 %   output  struct with fields:
@@ -94,7 +94,7 @@ function Grid = params_to_grid(params)
 % Extract the grid-generation subset of params into a struct that
 % build_stab_grid understands.
 Grid = struct();
-passthrough = {'Re','plot','FD1_order','FD2_order','eta_method','FD_eta_order'};
+passthrough = {'Re','plot','FD_xi_order_1','FD_xi_order_2','FD_eta_method','FD_eta_order'};
 for k = 1:numel(passthrough)
     f = passthrough{k};
     if isfield(params, f) && ~isempty(params.(f))
@@ -102,9 +102,9 @@ for k = 1:numel(passthrough)
     end
 end
 % Sensible defaults when the caller doesn't set them
-if ~isfield(Grid, 'FD1_order');   Grid.FD1_order   = 4;      end
-if ~isfield(Grid, 'FD2_order');   Grid.FD2_order   = 2;      end
-if ~isfield(Grid, 'eta_method');  Grid.eta_method  = 'cheb'; end
+if ~isfield(Grid, 'FD_xi_order_1');   Grid.FD_xi_order_1   = 4;      end
+if ~isfield(Grid, 'FD_xi_order_2');   Grid.FD_xi_order_2   = 2;      end
+if ~isfield(Grid, 'FD_eta_method');  Grid.FD_eta_method  = 'cheb'; end
 if ~isfield(Grid, 'FD_eta_order');Grid.FD_eta_order= 4;      end
 if ~isfield(Grid, 'plot');        Grid.plot        = false;  end
 end

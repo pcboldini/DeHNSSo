@@ -72,7 +72,16 @@ Opt.plot_metric = 'umax';   % 'umax' | 'urms' | 'energy'
 %% Performance
 % =========================================================================
 
-Opt.lu_mode = 'full';       % LU cache: 'full' | 'auto' (LRU) | 'none'
+% LU mode (Opt.lu_mode):
+%   'lapack_band' — LAPACK zgbsv/dgbsv MEX. Fastest single solve.
+%                   No factor cache yet — refactors per call.
+%                   Build once per machine: run src/hns/mexbuild_dgbsv.m.
+%   'full'        — Cache every LU factorisation. Fastest for repeated solves,
+%                   unbounded memory.
+%   'auto'        — LRU cache bounded by Opt.lu_max_cache.
+%   'none'        — Backslash each time. Reference / debug.
+% See docs/user_guide.md §8 for the picker table.
+Opt.lu_mode = 'full';
 Opt.parfor  = 'off';        % parallel assembly/solve: 'on' | 'off'
 Opt.gpu     = 'off';        % GPU sparse solve: 'on' | 'off'
 

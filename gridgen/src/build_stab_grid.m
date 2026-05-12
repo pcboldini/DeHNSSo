@@ -9,6 +9,12 @@ function Grid = build_stab_grid(BF, Grid)
 %   For a curvilinear mesh (BF.mesh_type = 'curvilinear'):
 %     BF must be the output of resample_curvilinear or resample_unstructured.
 %     Metric tensors are computed via finite differences.
+%
+%   Compressible base flow (auto-detected from BF.rho and BF.T):
+%     If BF carries BF.rho and BF.T, they are copied to Grid and Sutherland's
+%     law is evaluated to populate Grid.mu, Grid.dmuT, Grid.d2muT2 (needed by
+%     the energy equation and the LHS_compressible operator).
+%     Thermo metadata BF.Ma, BF.Pr, BF.gamma, BF.Sstar is passed through.
 
 curvilinear = isfield(BF, 'mesh_type') && strcmp(BF.mesh_type, 'curvilinear');
 
@@ -70,7 +76,7 @@ Grid.hasMask = false;
 
 %% Build wall-normal differentiation operators (D1, D2)
 % Used consistently for both metric tensors and the stability operator.
-use_fd = isfield(Grid, 'eta_method') && strcmpi(Grid.eta_method, 'fd');
+use_fd = isfield(Grid, 'FD_eta_method') && strcmpi(Grid.FD_eta_method, 'fd');
 % ('cheb' or empty → Chebyshev; 'fd' → sparse FD)
 if use_fd
     if ~isfield(Grid, 'FD_eta_order') || isempty(Grid.FD_eta_order)
@@ -100,8 +106,8 @@ if curvilinear
     xxi = zeros(Grid.ny, Grid.nx);   % dx/dxi
     yxi = zeros(Grid.ny, Grid.nx);   % dy/dxi
     for j = 1:Grid.ny
-        xxi(j,:) = FD1_uneven(xi_2d(j,:)', X(j,:)', Grid.FD1_order)';
-        yxi(j,:) = FD1_uneven(xi_2d(j,:)', Y(j,:)', Grid.FD1_order)';
+        xxi(j,:) = FD1_uneven(xi_2d(j,:)', X(j,:)', Grid.FD_xi_order_1)';
+        yxi(j,:) = FD1_uneven(xi_2d(j,:)', Y(j,:)', Grid.FD_xi_order_1)';
     end
     % eta-direction: D1 (Chebyshev or FD, consistent with stability operator)
     xeta = Grid.D1 * X;   % dx/deta  [ny x nx]
@@ -125,10 +131,10 @@ if curvilinear
     xxi_eta = zeros(Grid.ny, Grid.nx);   % d2x/dxi deta  (= d/dxi of xeta)
     yxi_eta = zeros(Grid.ny, Grid.nx);   % d2y/dxi deta  (= d/dxi of yeta)
     for j = 1:Grid.ny
-        xxi_xi(j,:)  = FD2_uneven(xi_2d(j,:)', X(j,:)',    Grid.FD2_order)';
-        yxi_xi(j,:)  = FD2_uneven(xi_2d(j,:)', Y(j,:)',    Grid.FD2_order)';
-        xxi_eta(j,:) = FD1_uneven(xi_2d(j,:)', xeta(j,:)', Grid.FD1_order)';
-        yxi_eta(j,:) = FD1_uneven(xi_2d(j,:)', yeta(j,:)', Grid.FD1_order)';
+        xxi_xi(j,:)  = FD2_uneven(xi_2d(j,:)', X(j,:)',    Grid.FD_xi_order_2)';
+        yxi_xi(j,:)  = FD2_uneven(xi_2d(j,:)', Y(j,:)',    Grid.FD_xi_order_2)';
+        xxi_eta(j,:) = FD1_uneven(xi_2d(j,:)', xeta(j,:)', Grid.FD_xi_order_1)';
+        yxi_eta(j,:) = FD1_uneven(xi_2d(j,:)', yeta(j,:)', Grid.FD_xi_order_1)';
     end
     % eta-direction: spectral Chebyshev D2
     xeta_eta = Grid.D2 * X;   % d2x/deta2  [ny x nx]
@@ -160,11 +166,39 @@ end
 Grid.U = BF.U;
 Grid.V = BF.V;
 Grid.W = BF.W;
+
+% Compressible base flow: copy ρ, T and thermo metadata, evaluate Sutherland.
+is_compr = isfield(BF, 'rho') && isfield(BF, 'T');
+if is_compr
+    Grid.rho = BF.rho;
+    Grid.T   = BF.T;
+    for f_name = {'Ma','Pr','gamma','Sstar'}
+        if isfield(BF, f_name{1}) && ~isempty(BF.(f_name{1}))
+            Grid.(f_name{1}) = BF.(f_name{1});
+        end
+    end
+    if isfield(Grid, 'Sstar') && ~isempty(Grid.Sstar)
+        [Grid.mu, Grid.dmuT, Grid.d2muT2] = sutherland(Grid.T, Grid.Sstar);
+    end
+end
+
 Grid = compute_bf_derivatives(Grid);
 
 if curvilinear
     fprintf('Curvilinear grid ready: %d streamwise x %d wall-normal\n', Grid.nx, Grid.ny);
 else
     fprintf('Cartesian grid ready: %d streamwise x %d wall-normal\n', Grid.nx, Grid.ny);
+end
+if is_compr
+    fprintf('Compressible BF: ρ, T, μ, ∂μ/∂T, ∂²μ/∂T² populated (Ma=%.3f, Pr=%.3f)\n', ...
+        getfielddef(Grid,'Ma',NaN), getfielddef(Grid,'Pr',NaN));
+end
+end
+
+function v = getfielddef(s, name, default)
+if isfield(s, name) && ~isempty(s.(name))
+    v = s.(name);
+else
+    v = default;
 end
 end

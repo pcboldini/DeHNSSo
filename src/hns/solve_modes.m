@@ -1,14 +1,18 @@
-function [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MFD_diff] = solve_modes(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MFD_diff)
+function [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff] = solve_modes(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff)
 %SOLVE_MODES  Solve the HNS system for all active modes.
 %
 %   LU caching controlled by Opt.lu_mode:
-%     'full'  — cache all LU factorisations (fastest, most memory)
-%     'auto'  — LRU cache with soft limit Opt.lu_max_cache. Eviction skips
-%               keys still needed by the current iteration, so the cache
-%               grows to max(lu_max_cache, nphys) when necessary (one-time
-%               warning on growth).
-%     'block' — block-pentadiagonal solver, O(bsize^2*nx) memory (low memory)
-%     'none'  — use backslash each time, no caching (slowest, least memory)
+%     'lapack_band' — LAPACK zgbsv/dgbsv via MEX, fastest single solve
+%                     (~3x vs seq for compressible TS); needs ~12-20 GB.
+%                     Build once via src/hns/mexbuild_dgbsv.m.
+%     'full'        — cache all LU factorisations (fastest reuse, most memory)
+%     'auto'        — LRU cache with soft limit Opt.lu_max_cache. Eviction skips
+%                     keys still needed by the current iteration, so the cache
+%                     grows to max(lu_max_cache, nphys) when necessary (one-time
+%                     warning on growth).
+%     'seq'         — symrcm + lu one mode-group at a time, discard after solve
+%                     (medium memory, required for compressible 5-var on ~32 GB)
+%     'none'        — use backslash each time, no caching (slowest, least memory)
 %
 %   Parallel solve controlled by Opt.parfor (set automatically in init):
 %     true  — parfor over modes (requires Parallel Computing Toolbox)
@@ -32,15 +36,19 @@ if Opt.mmry == 1 && needs_beta && (isempty(MLA3) || isempty(MLA4))
     fprintf(' MLA3/MLA4 missing for 3D run — rebuilding LHS.\n');
     Opt.mmry = 0;
 end
+is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible, 'on');
 if Opt.mmry ~= 1
     Opt.mmry = 1;
     fprintf(' Constructing LHS matrices ...\n');
     tic
-    [MLAMFD, MLA1, MLA2, MLA3, MLA4] = LHS(BF, Bound, StabGrid, Init, Stab, StabRes, Opt);
+    if is_compr
+        [MLAMFD, MLA1, MLA2, MLA3, MLA4, MLA5] = LHS_compressible(BF, Bound, StabGrid, Init, Stab, StabRes, Opt);
+    else
+        [MLAMFD, MLA1, MLA2, MLA3, MLA4]       = LHS(BF, Bound, StabGrid, Init, Stab, StabRes, Opt);
+        MLA5 = sparse(size(MLA1,1), size(MLA1,2));
+    end
     MFD_diff = MLAMFD - MLA1;
     clear MLAMFD
-    % Clear LHS workspace from Stab (no longer needed after assembly)
-    Stab.ML1 = []; Stab.ML1MFD = []; Stab.ML2 = []; Stab.ML3 = []; Stab.ML4 = [];
     fprintf(' LHS done in %.1f s\n', toc);
 end
 
@@ -50,12 +58,10 @@ q_out  = zeros(nphys, size(StabRes.q, 2));
 Stab_f = Stab.f;
 Mvec   = Stab.Mvec;
 Nvec   = Stab.Nvec;
-bsize  = size(MLA1, 1) / StabGrid.nx;
 
-if strcmpi(Opt.lu_mode, 'band')
-    % Band-optimized: symrcm reordering + backslash (no stored factorisation).
-    % MATLAB detects banded structure and uses efficient internal solver.
-    % Low memory, moderate speed — re-solves each time but no LU stored.
+if strcmpi(Opt.lu_mode, 'seq')
+    % Sequential mode: factorise one matrix, solve all modes that use it,
+    % discard.  Only one LU in memory at a time — minimal memory footprint.
     unique_keys = {};
     mode_groups = {};
     for k = 1:nphys
@@ -75,12 +81,12 @@ if strcmpi(Opt.lu_mode, 'band')
         j0 = phys_modes(k_list(1));
         omega = StabRes.omegavec(j0);
         beta  = StabRes.betavec(j0);
-        fprintf(' Band solve (%d,%d) [%d mode(s)] ...', Mvec(j0), Nvec(j0), numel(k_list));
+        fprintf(' LU+solve (%d,%d) [seq, %d mode(s)] ...', Mvec(j0), Nvec(j0), numel(k_list));
         tic_g = tic;
 
-        ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MFD_diff);
+        ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
         r  = symrcm(ML);
-        ML_r = ML(r,r);
+        [L, U, p] = lu(ML(r,r), 'vector');
         clear ML
 
         for ki = 1:numel(k_list)
@@ -89,18 +95,25 @@ if strcmpi(Opt.lu_mode, 'band')
             R_j = RHS(Bound, StabGrid, Mode, Opt, StabRes, j);
             f_j = Stab_f(j,:);
             f_j(R_j ~= 0) = 0;
-            rhs = R_j + f_j.';
-            x = zeros(size(rhs));
-            x(r) = ML_r \ rhs(r);
+            rhs   = R_j + f_j.';
+            rhs_r = rhs(r);
+            x_r   = U \ (L \ rhs_r(p));
+            x     = zeros(size(rhs));
+            x(r)  = x_r;
             q_out(k,:) = x.';
         end
-        clear ML_r r
+        clear L U p r
         fprintf(' done (%.1f s)\n', toc(tic_g));
     end
 
-elseif strcmpi(Opt.lu_mode, 'block')
-    % Block-pentadiagonal solver: O(bsize^2 * nx) memory.
-    % Group modes by (omega, beta), assemble ML, solve with block elimination.
+elseif strcmpi(Opt.lu_mode, 'lapack_band')
+    % Banded LU via LAPACK zgbsv MEX (Apple Accelerate-backed).
+    % ~3x faster than 'seq' on compressible 5-var, but uses ~20 GB for nx=800
+    % at bsize=405 (LDAB ~ 3*bsize complex doubles).
+    if exist(['dgbsv_solve.' mexext], 'file') ~= 3
+        error('solve_modes:no_mex', ...
+              'dgbsv_solve MEX not built. Run src/hns/mexbuild_dgbsv.m first.');
+    end
     unique_keys = {};
     mode_groups = {};
     for k = 1:nphys
@@ -120,10 +133,11 @@ elseif strcmpi(Opt.lu_mode, 'block')
         j0 = phys_modes(k_list(1));
         omega = StabRes.omegavec(j0);
         beta  = StabRes.betavec(j0);
-        fprintf(' Block solve (%d,%d) [%d mode(s)] ...', Mvec(j0), Nvec(j0), numel(k_list));
+        fprintf(' Band-LU solve (%d,%d) [lapack_band, %d mode(s)] ...', ...
+                Mvec(j0), Nvec(j0), numel(k_list));
         tic_g = tic;
 
-        ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MFD_diff);
+        ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
 
         for ki = 1:numel(k_list)
             k = k_list(ki);
@@ -131,8 +145,8 @@ elseif strcmpi(Opt.lu_mode, 'block')
             R_j = RHS(Bound, StabGrid, Mode, Opt, StabRes, j);
             f_j = Stab_f(j,:);
             f_j(R_j ~= 0) = 0;
-            rhs = R_j + f_j.';
-            q_out(k,:) = block_penta_solve(ML, rhs, bsize, StabGrid.nx).';
+            rhs = full(R_j + f_j.');
+            q_out(k,:) = dgbsv_solve(ML, rhs).';
         end
         clear ML
         fprintf(' done (%.1f s)\n', toc(tic_g));
@@ -157,7 +171,7 @@ else
         ML_key  = ml_key(omega, beta);
 
         if ~isfield(Opt.LU_cache, ML_key)
-            ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MFD_diff);
+            ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
 
             if strcmpi(Opt.gpu, 'on')
                 fprintf(' ML (%d,%d) [GPU] ...', Stab.Mvec(j), Stab.Nvec(j));
@@ -197,7 +211,8 @@ else
                                 if ~isfield(Opt,'lu_grew_warned') || ~Opt.lu_grew_warned
                                     warning(['LU cache grown from lu_max_cache=%d to %d ' ...
                                              'to hold all %d active modes; set lu_max_cache ' ...
-                                             'accordingly or use lu_mode=''block'' for a bounded footprint.'], ...
+                                             'accordingly or use lu_mode=''seq''/''lapack_band'' ' ...
+                                             'for a bounded footprint.'], ...
                                             Opt.lu_max_cache, n_cached+1, nphys);
                                     Opt.lu_grew_warned = true;
                                 end
@@ -225,7 +240,7 @@ else
     n_needed = numel(unique(arrayfun(@(j) ml_key(StabRes.omegavec(j), StabRes.betavec(j)), ...
         1:Mode.nf, 'UniformOutput', false)));
     if n_unique >= n_needed
-        MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MFD_diff = [];
+        MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MLA5 = []; MFD_diff = [];
     end
 
     % Solve
@@ -318,14 +333,15 @@ function s = do_lu(ML)
 s = struct('L', L, 'U', U, 'p', p, 'q', q);
 end
 
-function ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MFD_diff)
+function ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff)
+% MLA5 = iβ·∂_x cross-viscous block (compressible only; zero sparse otherwise).
 if omega == 0 && beta == 0
     ML = MLA1 + MFD_diff;
 elseif omega == 0
-    ML = MLA1 + MLA3*beta + MLA4*beta^2;
+    ML = MLA1 + MLA3*beta + MLA4*beta^2 + MLA5*beta;
 elseif beta == 0
     ML = MLA1 + MLA2*omega;
 else
-    ML = MLA1 + MLA2*omega + MLA3*beta + MLA4*beta^2;
+    ML = MLA1 + MLA2*omega + MLA3*beta + MLA4*beta^2 + MLA5*beta;
 end
 end

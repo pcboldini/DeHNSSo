@@ -34,9 +34,9 @@ params.sig = [0.2];
 params.ag  = [0.5];
 
 %% Grid-generation options
-params.FD1_order    = 4;
-params.FD2_order    = 2;
-params.eta_method   = 'fd';   % sparse FD pentadiagonal — ~80× fewer nnz than cheb;
+params.FD_xi_order_1    = 4;
+params.FD_xi_order_2    = 2;
+params.FD_eta_method   = 'fd';   % sparse FD pentadiagonal — ~80× fewer nnz than cheb;
                               % avoids OOM in UMFPACK factorisation on laptop
 params.FD_eta_order = 4;
 

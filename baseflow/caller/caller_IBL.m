@@ -1,5 +1,8 @@
 
 clc; clear all; format long
+caller_dir = fileparts(mfilename('fullpath'));
+rootdir    = fullfile(caller_dir, '..', '..');     % refactor repo root
+addpath(genpath(rootdir));
 
 BL.model = 0;                             % choose between incompressible or compressible boundary layer (0: incompressible; 1: compressible)
 
@@ -38,24 +41,13 @@ BF.Re = BF.Uref*BF.lref/BF.nu; % [-] Reference Reynolds nbr Re_0, based on the r
 
 %------------ (Global) non-dimensionalization ------------
 % lengthscales:
-BF.X=BL.x/BF.lref;   
+BF.X=BL.x/BF.lref;
 BF.Y=BL.y/BF.lref;
 % velocities:
 BF.U=BL.u/BF.Uref;
 BF.V=BL.v/BF.Uref;
 BF.W=BL.w/BF.Uref;
-% first x derivatives:
-BF.dxU  = BL.dudx*(BF.lref/BF.Uref);       
-BF.dxV  = BL.dvdx*(BF.lref/BF.Uref); 
-BF.dxW  = BL.dwdx*(BF.lref/BF.Uref); 
-% first y derivatives:
-BF.dyU  = BL.Du*(BF.lref/BF.Uref);         
-BF.dyV  = BL.Dv*(BF.lref/BF.Uref); 
-BF.dyW  = BL.Dw*(BF.lref/BF.Uref); 
-% second y derivatives:
-BF.ddyU  = BL.DDu*(BF.lref)^2/BF.Uref;     
-BF.ddyV  = BL.DDv*(BF.lref)^2/BF.Uref; 
-BF.ddyW  = BL.DDw*(BF.lref)^2/BF.Uref; 
+% (Derivatives are produced by gridgen — see Interpol/src/compute_bf_derivatives.m.)
 
 %% Postprocessing
 
@@ -63,6 +55,6 @@ BF.ddyW  = BL.DDw*(BF.lref)^2/BF.Uref;
 
 %% Save
 
-out_dir = fullfile('..', 'output');
-if ~exist(out_dir, 'dir'); mkdir(out_dir); end
-save(fullfile(out_dir, 'bf_blasius.mat'), 'BF');
+outdir = fullfile(caller_dir, '..', 'output');
+if ~exist(outdir, 'dir'); mkdir(outdir); end
+save(fullfile(outdir, 'BF_Blasius.mat'), 'BF');

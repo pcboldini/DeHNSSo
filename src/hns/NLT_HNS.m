@@ -27,8 +27,8 @@ function [ f ] = NLT_HNS(Grid,RunJ,StabRes,D1,HB)
 [nf,ny,nx] = size(StabRes.u);
 iu = 1i;
 
-% Reset f
-f = zeros(nf, 4*ny*nx);
+nvar = round(size(StabRes.q, 2) / (ny*nx));   % 4 incompressible | 5 compressible
+f    = zeros(nf, nvar*ny*nx);
 
 % Metric coefficients
 etay = Grid.etay;
@@ -117,9 +117,13 @@ for j = RunJ(RunJ >= round(nf/2))
             - iu*beta .* w_gh.*w_jk;
     end
 
-    % Reshape momentum into f (vectorised, skip i=1)
-    block = [xm_j(:,2:nx); ym_j(:,2:nx); zm_j(:,2:nx); zeros(ny, nx-1)];
-    f(j, 4*ny+1:end) = block(:).';
+    % Compressible (nvar=5): ρ and T NLT rows kept at zero (incompressible NLT approximation).
+    if nvar == 5
+        block = [xm_j(:,2:nx); ym_j(:,2:nx); zm_j(:,2:nx); zeros(ny, nx-1); zeros(ny, nx-1)];
+    else
+        block = [xm_j(:,2:nx); ym_j(:,2:nx); zm_j(:,2:nx); zeros(ny, nx-1)];
+    end
+    f(j, nvar*ny+1:end) = block(:).';
 
 end
 

@@ -60,7 +60,7 @@ Tollmien-Schlichting waves in a flat-plate Blasius boundary layer with zero pres
 
 ### To reproduce Fig. 8 (M=5 nonlinear, medium grid)
 
-In `callers/benchmark/blasius.m`: set `Stab.M = 5` and `Opt.linear = 'off'`. For the refined paper grid, regenerate `bf_blasius.mat` at `nx=2674`, `ny=100` via `baseflow/IBL/caller.m`.
+In `callers/benchmark/blasius.m`: set `Stab.M = 5` and `Opt.linear = 'off'`. For the refined paper grid, regenerate `bf_blasius.mat` at `nx=2674`, `ny=100` via `baseflow/caller/caller_IBL.m`.
 
 ### Expected output (paper-faithful run)
 
@@ -164,6 +164,63 @@ The shipped defaults match the paper configuration; no edits needed to reproduce
 ### Runtime
 
 - 2000×100 grid: ~0.6 h on a desktop (Intel Xeon, 4 cores, 32 GB)
+
+---
+
+## Case 4 — Compressible TS waves (Zanus/Bertolotti benchmark)
+
+Tollmien-Schlichting waves in a compressible (subsonic) flat-plate boundary layer at Ma = 0.5. Reproduces the Zanus/Bertolotti (2017) PSE CPG benchmark.
+
+### Physical parameters
+
+| Quantity | Value |
+|---|---|
+| Mach number `Ma` | 0.50 |
+| Prandtl number `Pr` | 0.72 |
+| Heat-capacity ratio `γ` | 1.4 |
+| Sutherland constant `S* = S/T_∞` | 0.536 (air, `T_∞ = 206 K`) |
+| Wall thermal BC | adiabatic |
+| Reduced frequency `F = 2π f ν / U_∞²` | 40×10⁻⁶ |
+| Inflow Reynolds `R₀ = √Re_x₀` | 500 |
+| Outflow Reynolds `R₁` | 1700 |
+
+### Numerical setup
+
+| Knob | Default (shipped) | Paper (M = 0.5) |
+|---|---|---|
+| Spectral truncation `(M, N)` | `(1, 0)` — linear single TS wave | same |
+| `Opt.compressible` | `'on'` | required |
+| `Opt.linear` | `'on'` | same |
+| `Stab.IC` | `'CLST'` (required for compressible) | same |
+| `Opt.bc_top` | `{'H_DR','H_DR','H_DR','H_DR'}` (4-channel u,v,w,T) | same |
+| `Opt.bc_wall_thermal` | `'isothermal'` (also OK for adiabatic BF) | same |
+| `Opt.buffer` | `'para'` (required at Ma > 0) | same |
+| Streamwise grid `nx` | 800 (from compressible FSC) | 800 |
+| Wall-normal grid `ny` | 81 (Malik–Chebyshev) | 81 |
+| `Opt.lu_mode` | `'lapack_band'` (recommended) or `'seq'` | — |
+
+### Pipeline
+
+```matlab
+cd baseflow/caller/;       caller_CBL                          % BF_compressible.mat (~10 s)
+cd ../../gridgen/benchmark/; blasius_compressible              % DeHNSSo_input_compressible.mat (~10 s)
+cd ../../callers/benchmark/; blasius_compressible              % HNS + Zanus/Bertolotti overlay
+```
+
+If `Opt.lu_mode = 'lapack_band'`: build the MEX once per machine with `run('src/hns/mexbuild_dgbsv.m')`. Requires MATLAB ≥ R2018a and a C compiler configured for `mex`. Fall back to `Opt.lu_mode = 'seq'` if no compiler is available (≈3× slower).
+
+### Expected output
+
+- Spatial growth rate `−α_i(R)` matches the Zanus/Bertolotti 2017 PSE reference (markers) to plot resolution across the full domain (R ∈ [500, 1700]), including the unstable lobe peaked at R ≈ 1050 and the return to stability at R ≳ 1400.
+- Streamwise wavenumber `α_r(R)` overlays the parallel CLST result.
+- `StabRes.E` (Chu/Mack disturbance energy) available via `Opt.plot_metric = 'energy'`.
+
+### Runtime
+
+v2 single-thread on a 32 GB Apple Silicon laptop:
+
+- `lu_mode = 'lapack_band'`: ~91 s total (13 s LHS + 75 s LU+solve), ~20 GB peak (banded AB)
+- `lu_mode = 'seq'`: ~226 s total (13 s LHS + 211 s LU+solve), ~8 GB peak (sparse LU)
 
 ---
 

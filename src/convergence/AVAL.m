@@ -7,17 +7,16 @@ function [Opt,StabRes] = AVAL(Grid,Opt,Mode,StabRes)
 %   If so, reduces the inflow amplitude by half and resets the solution.
 %   Tracks the number of damping events in Opt.AVAL.
 
-    % Reshape q into phi (vectorised)
-    ny_ = Grid.ny;
-    nx_ = Grid.nx;
+    ny_   = Grid.ny;
+    nx_   = Grid.nx;
+    nvar  = size(StabRes.phi, 2) / ny_;
+    n_vel = 3;                              % u, v, w slots
     for j = Mode.RunJ
-        StabRes.phi(j,:,:) = reshape(StabRes.q(j,:), 4*ny_, nx_);
+        StabRes.phi(j,:,:) = reshape(StabRes.q(j,:), nvar*ny_, nx_);
     end
 
-    % Calculate the maximum amplitude reached linearly
-    [Opt.AVAL,~] = max(max(abs(squeeze(StabRes.phi(round(Mode.nf/2)+1,1:3*ny_,:)))));
+    [Opt.AVAL,~] = max(max(abs(squeeze(StabRes.phi(round(Mode.nf/2)+1,1:n_vel*ny_,:)))));
 
-    % Find Amplitude Factor (AF) such that evolution is linear
     if Opt.AVAL >= Opt.AMAX
         Opt.AF = Opt.AMAX/Opt.AVAL;
     end

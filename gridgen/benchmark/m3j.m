@@ -41,12 +41,12 @@ params.plot_opts.xi_slices  = linspace(0, 1, 8);
 params.plot_opts.eta_slices = [0.0, 0.1, 0.3];
 
 %% Grid-generation options
-params.FD1_order    = 4;
-params.FD2_order    = 2;
+params.FD_xi_order_1    = 4;
+params.FD_xi_order_2    = 2;
 % Use sparse FD for the wall-normal direction — same reason as hump caller:
 % dense Chebyshev + curvilinear metric cross-coupling produces a LHS too large
 % for UMFPACK to factor on 32 GB. FD is ~indistinguishable for smooth BL.
-params.eta_method   = 'fd';
+params.FD_eta_method   = 'fd';
 params.FD_eta_order = 4;
 
 %% Output

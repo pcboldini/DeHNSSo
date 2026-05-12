@@ -19,14 +19,28 @@ for j = 1:nf_bc
     end
 end
 
-% Initialize solution vector phi = [u v w p]', Amplitude A and streamwise wavenumber alpha 
-StabRes.phi    = zeros(Mode.nf,4*StabGrid.ny,StabGrid.nx);
+is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
+nvar     = 4 + double(is_compr);
+
+StabRes.phi    = zeros(Mode.nf,nvar*StabGrid.ny,StabGrid.nx);
 StabRes.alpha  = zeros(Mode.nf,StabGrid.nx);
 StabRes.A      = zeros(Mode.nf,StabGrid.nx);
 StabRes.u      = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
 StabRes.v      = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
 StabRes.w      = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
 StabRes.p      = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
+if is_compr
+    StabRes.rho = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
+    StabRes.T   = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
+end
+
+if is_compr && ~(strcmpi(Stab.IC,'CLST') || strcmpi(Stab.IC,'LOAD'))
+    error('inflow:badIC', ...
+        'Opt.compressible=''on'' requires Stab.IC=''CLST'' or ''LOAD''; got ''%s''.', Stab.IC);
+end
+if ~is_compr && strcmpi(Stab.IC,'CLST')
+    error('inflow:badIC', 'Stab.IC=''CLST'' requires Opt.compressible=''on''.');
+end
 
 % Determine ILST freestream BC from per-component Opt.bc_top.
 % ILST uses a single flag: 'H_DR' or 'H_NM'.
@@ -44,12 +58,7 @@ else
 end
 
 if Stab.IC=="LOAD"
-    % Load inflow condition from a previously saved StabRes or phiIC file.
-    % The file must be specified via Stab.ICfile and contain either:
-    %   - a variable 'StabRes' with fields u,v,w,p of size [nf x ny x nx], or
-    %   - a variable 'phiIC'   of size [nf x 4*ny] (concatenated inflow eigenvectors).
-    %
-    % The loaded result must have matching ny and nf (same M, N, omega_0, beta_0).
+    % phiIC width = nvar*ny: 4 incompressible (u,v,w,p), 5 compressible (u,v,w,ρ,T).
 
     assert(isfield(Stab,'ICfile') && ~isempty(Stab.ICfile), ...
         'Stab.ICfile must be set when Stab.IC = ''LOAD''.');
@@ -58,17 +67,21 @@ if Stab.IC=="LOAD"
     loaded = load(Stab.ICfile);
 
     if isfield(loaded,'phiIC')
-        % Direct load of phiIC [nf x 4*ny]
         phiIC_load = loaded.phiIC;
-        assert(size(phiIC_load,1) == Mode.nf && size(phiIC_load,2) == 4*StabGrid.ny, ...
+        assert(size(phiIC_load,1) == Mode.nf && size(phiIC_load,2) == nvar*StabGrid.ny, ...
             'Loaded phiIC size [%d x %d] does not match expected [%d x %d].', ...
-            size(phiIC_load,1), size(phiIC_load,2), Mode.nf, 4*StabGrid.ny);
+            size(phiIC_load,1), size(phiIC_load,2), Mode.nf, nvar*StabGrid.ny);
         ny = StabGrid.ny;
         for j = 1:Mode.nf
             StabRes.u(j,:,1) = phiIC_load(j,      1:ny);
             StabRes.v(j,:,1) = phiIC_load(j,   ny+1:2*ny);
             StabRes.w(j,:,1) = phiIC_load(j, 2*ny+1:3*ny);
-            StabRes.p(j,:,1) = phiIC_load(j, 3*ny+1:4*ny);
+            if is_compr
+                StabRes.rho(j,:,1) = phiIC_load(j, 3*ny+1:4*ny);
+                StabRes.T(j,:,1)   = phiIC_load(j, 4*ny+1:5*ny);
+            else
+                StabRes.p(j,:,1)   = phiIC_load(j, 3*ny+1:4*ny);
+            end
         end
 
     elseif isfield(loaded,'StabRes')
@@ -76,29 +89,29 @@ if Stab.IC=="LOAD"
         assert(size(SR.u,1) == Mode.nf && size(SR.u,2) == StabGrid.ny, ...
             'Loaded StabRes.u size [%d x %d x ...] does not match expected [%d x %d x ...].', ...
             size(SR.u,1), size(SR.u,2), Mode.nf, StabGrid.ny);
-        % Full-domain warm-start if the saved StabRes has the whole domain
-        % (third dim matches StabGrid.nx). Otherwise fall back to station-1
-        % only (original behaviour — inflow BC only).
+        if is_compr
+            assert(isfield(SR,'rho') && isfield(SR,'T'), ...
+                'Loaded StabRes lacks .rho/.T fields (compressible LOAD requires them).');
+        end
+        % Continuation: rescale the warm-start linearly when Stab.A0_fund changed.
+        scale = 1;
+        if isfield(loaded,'Stab') && isfield(loaded.Stab,'A0_fund') ...
+                && isfield(Stab,'A0_fund') && loaded.Stab.A0_fund > 0
+            scale = Stab.A0_fund / loaded.Stab.A0_fund;
+        end
         if size(SR.u,3) == StabGrid.nx
-            % Amplitude scaling for continuation: if the saved run used a
-            % different Stab.A0_fund, rescale the warm-start linearly so the
-            % downstream saturation level is consistent with the new A0. The
-            % nonlinear fixed point will shift slightly from this estimate, but
-            % it's a far better initial guess than the raw saved values.
-            scale = 1;
-            if isfield(loaded,'Stab') && isfield(loaded.Stab,'A0_fund') ...
-                    && isfield(Stab,'A0_fund') && loaded.Stab.A0_fund > 0
-                scale = Stab.A0_fund / loaded.Stab.A0_fund;
-            end
             for j = 1:Mode.nf
                 StabRes.u(j,:,:) = scale * SR.u(j,:,:);
                 StabRes.v(j,:,:) = scale * SR.v(j,:,:);
                 StabRes.w(j,:,:) = scale * SR.w(j,:,:);
-                StabRes.p(j,:,:) = scale * SR.p(j,:,:);
+                if is_compr
+                    StabRes.rho(j,:,:) = scale * SR.rho(j,:,:);
+                    StabRes.T(j,:,:)   = scale * SR.T(j,:,:);
+                else
+                    StabRes.p(j,:,:) = scale * SR.p(j,:,:);
+                end
             end
-            % Also seed StabRes.q (the flat solution vector Picard iterates on)
-            % so the first Picard step sees the warm-start, not zeros.
-            if isfield(SR,'q') && isequal(size(SR.q), [Mode.nf, 4*StabGrid.ny*StabGrid.nx])
+            if isfield(SR,'q') && isequal(size(SR.q), [Mode.nf, nvar*StabGrid.ny*StabGrid.nx])
                 StabRes.q = scale * SR.q;
             end
             fprintf('  LOAD: full-domain warm-start (%d x %d x %d), A0 scale = %.3f\n', ...
@@ -108,7 +121,12 @@ if Stab.IC=="LOAD"
                 StabRes.u(j,:,1) = SR.u(j,:,1);
                 StabRes.v(j,:,1) = SR.v(j,:,1);
                 StabRes.w(j,:,1) = SR.w(j,:,1);
-                StabRes.p(j,:,1) = SR.p(j,:,1);
+                if is_compr
+                    StabRes.rho(j,:,1) = SR.rho(j,:,1);
+                    StabRes.T(j,:,1)   = SR.T(j,:,1);
+                else
+                    StabRes.p(j,:,1) = SR.p(j,:,1);
+                end
             end
             fprintf('  LOAD: inflow-only (station 1) — no downstream warm-start\n');
         end
@@ -117,11 +135,19 @@ if Stab.IC=="LOAD"
         error('ICfile must contain a variable named ''StabRes'' or ''phiIC''.');
     end
 
-    % Apply amplitude scaling and phase reference for physical modes
+    if is_compr
+        % Derive p' from EOS:  p' = (ρ'·T̄ + ρ̄·T') / (γ·Ma²)
+        gM2 = StabGrid.gamma * StabGrid.Ma^2;
+        for j = 1:Mode.nf
+            StabRes.p(j,:,1) = (StabRes.rho(j,:,1) .* StabGrid.T(:,1).' ...
+                              + StabGrid.rho(:,1).' .* StabRes.T(j,:,1)) / gM2;
+        end
+    end
+
     [~, nonzeromodesic] = find(Stab.A0 > 0);
     for j = flip(nonzeromodesic)
         if j >= round(Mode.nf/2)
-            % Normalise by max(|u|) before scaling by A0
+            % Normalise by max(|u|), then scale by A0.
             y_int  = linspace(StabGrid.y(1), StabGrid.y(end), 4000);
             u1int  = interp1(StabGrid.y, abs(StabRes.u(j,:,1)), y_int, 'spline');
             ampltd = max(abs(u1int));
@@ -129,13 +155,24 @@ if Stab.IC=="LOAD"
                 StabRes.u(j,:,1) = StabRes.u(j,:,1) / ampltd;
                 StabRes.v(j,:,1) = StabRes.v(j,:,1) / ampltd;
                 StabRes.w(j,:,1) = StabRes.w(j,:,1) / ampltd;
-                StabRes.p(j,:,1) = StabRes.p(j,:,1) / ampltd;
+                if is_compr
+                    StabRes.rho(j,:,1) = StabRes.rho(j,:,1) / ampltd;
+                    StabRes.T(j,:,1)   = StabRes.T(j,:,1)   / ampltd;
+                else
+                    StabRes.p(j,:,1) = StabRes.p(j,:,1) / ampltd;
+                end
             end
             StabRes.u(j,:,1) = Stab.A0(j) .* StabRes.u(j,:,1);
             StabRes.v(j,:,1) = Stab.A0(j) .* StabRes.v(j,:,1);
             StabRes.w(j,:,1) = Stab.A0(j) .* StabRes.w(j,:,1);
-            StabRes.p(j,:,1) = Stab.A0(j) .* StabRes.p(j,:,1);
-            StabRes.phi(j,:,1) = [StabRes.u(j,:,1) StabRes.v(j,:,1) StabRes.w(j,:,1) StabRes.p(j,:,1)];
+            if is_compr
+                StabRes.rho(j,:,1) = Stab.A0(j) .* StabRes.rho(j,:,1);
+                StabRes.T(j,:,1)   = Stab.A0(j) .* StabRes.T(j,:,1);
+                StabRes.phi(j,:,1) = [StabRes.u(j,:,1) StabRes.v(j,:,1) StabRes.w(j,:,1) StabRes.rho(j,:,1) StabRes.T(j,:,1)];
+            else
+                StabRes.p(j,:,1) = Stab.A0(j) .* StabRes.p(j,:,1);
+                StabRes.phi(j,:,1) = [StabRes.u(j,:,1) StabRes.v(j,:,1) StabRes.w(j,:,1) StabRes.p(j,:,1)];
+            end
             switch lower(Stab.phaseRef)
                 case 'pwall'
                     theta0 = angle(StabRes.p(j,end,1));
@@ -152,7 +189,12 @@ if Stab.IC=="LOAD"
             StabRes.u(j,:,1)   = conj(StabRes.u(j2,:,1));
             StabRes.v(j,:,1)   = conj(StabRes.v(j2,:,1));
             StabRes.w(j,:,1)   = conj(StabRes.w(j2,:,1));
-            StabRes.p(j,:,1)   = conj(StabRes.p(j2,:,1));
+            if is_compr
+                StabRes.rho(j,:,1) = conj(StabRes.rho(j2,:,1));
+                StabRes.T(j,:,1)   = conj(StabRes.T(j2,:,1));
+            else
+                StabRes.p(j,:,1)   = conj(StabRes.p(j2,:,1));
+            end
             StabRes.alpha(j,1) = -conj(StabRes.alpha(j2,1));
             StabRes.phi(j,:,1) = conj(StabRes.phi(j2,:,1));
         end
@@ -202,8 +244,51 @@ elseif Stab.IC=="ILST"
         fprintf('Initialising with ILST solution at inflow and non-homogeneous b.c. at wall. \n')
     end
 
+elseif Stab.IC=="CLST"
+    [~,nonzeromodesic] = find(Stab.A0>0);
+
+    for j = flip(nonzeromodesic)
+        if j >= round(Mode.nf/2)   % Physical mode
+            StabRes = CLST(j, 1, StabGrid, StabRes, bc_top, Opt);
+
+            % CLST normalizes by max|u'|; scale by A0 and rebuild phi at the new amplitude.
+            StabRes.u(j,:,1)   = Stab.A0(j).*StabRes.u(j,:,1);
+            StabRes.v(j,:,1)   = Stab.A0(j).*StabRes.v(j,:,1);
+            StabRes.w(j,:,1)   = Stab.A0(j).*StabRes.w(j,:,1);
+            StabRes.p(j,:,1)   = Stab.A0(j).*StabRes.p(j,:,1);
+            StabRes.rho(j,:,1) = Stab.A0(j).*StabRes.rho(j,:,1);
+            StabRes.T(j,:,1)   = Stab.A0(j).*StabRes.T(j,:,1);
+
+            StabRes.phi(j,:,1) = [StabRes.u(j,:,1),    StabRes.v(j,:,1), ...
+                                  StabRes.w(j,:,1),    StabRes.rho(j,:,1), ...
+                                  StabRes.T(j,:,1)];
+
+            switch lower(Stab.phaseRef)
+                case 'pwall'
+                    theta0 = angle(StabRes.p(j,end,1));
+                case 'umax'
+                    [~,iy] = max(abs(StabRes.u(j,:,1)));
+                    theta0 = angle(StabRes.u(j,iy,1));
+                otherwise
+                    error('Unknown phaseRef option');
+            end
+            StabRes.phi(j,:,1) = StabRes.phi(j,:,1) * exp(-1i*theta0);
+        else   % Conjugate mode
+            j2 = round(Mode.nf/2)-(j-round(Mode.nf/2));
+            StabRes.u(j,:,1)   = conj(StabRes.u(j2,:,1));
+            StabRes.v(j,:,1)   = conj(StabRes.v(j2,:,1));
+            StabRes.w(j,:,1)   = conj(StabRes.w(j2,:,1));
+            StabRes.p(j,:,1)   = conj(StabRes.p(j2,:,1));
+            StabRes.rho(j,:,1) = conj(StabRes.rho(j2,:,1));
+            StabRes.T(j,:,1)   = conj(StabRes.T(j2,:,1));
+            StabRes.alpha(j,1) = -conj(StabRes.alpha(j2,1));
+            StabRes.phi(j,:,1) = conj(StabRes.phi(j2,:,1));
+        end
+    end
+    fprintf('Initialising with CLST solution at inflow.\n')
+
 else
-    error('Unknown inflow condition Stab.IC = ''%s''. Valid options: ''ILST'', ''LOAD''.', Stab.IC);
+    error('Unknown inflow condition Stab.IC = ''%s''. Valid options: ''ILST'', ''CLST'', ''LOAD''.', Stab.IC);
 end
 
 % nonzero modes are those initiated at inflow + those forced at wall

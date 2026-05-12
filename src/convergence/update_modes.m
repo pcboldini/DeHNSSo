@@ -1,16 +1,27 @@
 function [StabRes, Mode, Stab] = update_modes(StabGrid, Bound, Mode, Opt, Stab, StabRes)
 %UPDATE_MODES  Extract solution, compute amplitudes, activate new modes, compute NLT.
 
-ny_ = StabGrid.ny;
-nx_ = StabGrid.nx;
+ny_      = StabGrid.ny;
+nx_      = StabGrid.nx;
+is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
+nvar     = 4 + double(is_compr);
 
-%% Extract u,v,w,p from solution q
+%% Extract u,v,w,(p | rho,T) from solution q;  for compressible derive p' from EOS.
 for j = Mode.RunJ
-    qj = reshape(StabRes.q(j,:), 4*ny_, nx_);
+    qj = reshape(StabRes.q(j,:), nvar*ny_, nx_);
     StabRes.u(j,:,:) = qj(1:ny_,        :);
     StabRes.v(j,:,:) = qj(ny_+1:2*ny_,  :);
     StabRes.w(j,:,:) = qj(2*ny_+1:3*ny_,:);
-    StabRes.p(j,:,:) = qj(3*ny_+1:4*ny_,:);
+    if is_compr
+        StabRes.rho(j,:,:) = qj(3*ny_+1:4*ny_,:);
+        StabRes.T(j,:,:)   = qj(4*ny_+1:5*ny_,:);
+        % p' = (ρ'·T̄ + ρ̄·T') / (γ·Ma²)
+        gM2 = StabGrid.gamma * StabGrid.Ma^2;
+        StabRes.p(j,:,:) = (squeeze(StabRes.rho(j,:,:)) .* StabGrid.T ...
+                          + StabGrid.rho .* squeeze(StabRes.T(j,:,:))) / gM2;
+    else
+        StabRes.p(j,:,:) = qj(3*ny_+1:4*ny_,:);
+    end
 end
 
 %% Compute amplitudes
@@ -67,14 +78,16 @@ end
 NewModes = find(Mode.Aactive - Aactive_old > 0);
 Mode.RunJ = sort([Mode.RunJ NewModes]);
 
-%% Calculate nonlinear terms
-[Stab.f] = NLT_HNS(StabGrid, Mode.RunJ, StabRes, StabGrid.D1, Stab.HB);
+%% Calculate nonlinear terms (skip for linear runs)
+is_linear = isfield(Opt,'linear') && strcmpi(Opt.linear,'on');
+if ~is_linear
+    [Stab.f] = NLT_HNS(StabGrid, Mode.RunJ, StabRes, StabGrid.D1, Stab.HB);
 
-
-% Apply buffer attenuation (vectorised over active modes)
-ib = Bound.ibuff;
-bufcf_vec = repelem(Bound.bufcf(ib:nx_), 4*ny_);
-idx = (ib-1)*4*ny_+1 : nx_*4*ny_;
-Stab.f(Mode.RunJ, idx) = Stab.f(Mode.RunJ, idx) .* bufcf_vec;
+    % Apply buffer attenuation (vectorised over active modes)
+    ib = Bound.ibuff;
+    bufcf_vec = repelem(Bound.bufcf(ib:nx_), nvar*ny_);
+    idx = (ib-1)*nvar*ny_+1 : nx_*nvar*ny_;
+    Stab.f(Mode.RunJ, idx) = Stab.f(Mode.RunJ, idx) .* bufcf_vec;
+end
 
 end

@@ -63,6 +63,10 @@ for j = Mode.RunJ
     StabRes.v(j,:,:) = squeeze(StabRes.v(j,:,:)) ./ absU;
     StabRes.w(j,:,:) = squeeze(StabRes.w(j,:,:)) ./ absU;
     StabRes.p(j,:,:) = squeeze(StabRes.p(j,:,:)) ./ absU;
+    if isfield(StabRes,'rho')
+        StabRes.rho(j,:,:) = squeeze(StabRes.rho(j,:,:)) ./ absU;
+        StabRes.T(j,:,:)   = squeeze(StabRes.T(j,:,:))   ./ absU;
+    end
 
     if j == round(Mode.nf/2)
         StabRes.A(j,:) = absU;
@@ -71,11 +75,16 @@ for j = Mode.RunJ
     end
 end
 
-%% Kinetic energy per mode: E(x) = 0.5 * ∫ (|u|² + |v|² + |w|²) dη
-% Computed on the rescaled (full) field — shape functions are normalized to
-% |u_max|=1, so multiply by the per-mode amplitude (A or A/2) before integration.
+%% Disturbance energy per mode (kinetic, or Chu/Mack for compressible)
 StabRes.E = zeros(size(StabRes.A));
-half_nf = round(Mode.nf/2);
+half_nf   = round(Mode.nf/2);
+is_compr  = isfield(StabRes,'rho');
+if is_compr
+    rho_bar = StabGrid.rho;
+    T_bar   = StabGrid.T;
+    Ma2     = StabGrid.Ma^2;
+    ga      = StabGrid.gamma;
+end
 for j = Mode.RunJ
     if j == half_nf
         scale = StabRes.A(j, :);          % MFD: A = |u_max|
@@ -85,7 +94,15 @@ for j = Mode.RunJ
     u_full = squeeze(StabRes.u(j, :, :)) .* scale;
     v_full = squeeze(StabRes.v(j, :, :)) .* scale;
     w_full = squeeze(StabRes.w(j, :, :)) .* scale;
-    integrand = abs(u_full).^2 + abs(v_full).^2 + abs(w_full).^2;
+    if is_compr
+        rho_full  = squeeze(StabRes.rho(j, :, :)) .* scale;
+        T_full    = squeeze(StabRes.T  (j, :, :)) .* scale;
+        integrand = rho_bar .* (abs(u_full).^2 + abs(v_full).^2 + abs(w_full).^2) ...
+                  + T_bar   ./ (ga*rho_bar*Ma2)          .* abs(rho_full).^2 ...
+                  + rho_bar ./ (ga*(ga-1)*Ma2*T_bar)     .* abs(T_full).^2;
+    else
+        integrand = abs(u_full).^2 + abs(v_full).^2 + abs(w_full).^2;
+    end
     StabRes.E(j, :) = 0.5 * trapz(StabGrid.y, integrand, 1);
 end
 
@@ -100,6 +117,10 @@ StabRes.u(1:half-1, :, :)     = [];
 StabRes.v(1:half-1, :, :)     = [];
 StabRes.w(1:half-1, :, :)     = [];
 StabRes.p(1:half-1, :, :)     = [];
+if isfield(StabRes,'rho')
+    StabRes.rho(1:half-1, :, :) = [];
+    StabRes.T(1:half-1, :, :)   = [];
+end
 
 if Opt.Sweep
     StabRes.Asweep(1:half-1, :, :)       = [];

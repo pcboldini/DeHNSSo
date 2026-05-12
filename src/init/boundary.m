@@ -60,14 +60,16 @@ Bound.bufsp = ones(Grid.ny, Grid.nx);
 Bound.stepi = 0;
 
 %% Inhomogeneous BCs: interpolate Stab.bcw / Stab.bct onto numerical grid
+is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
+n_bc     = 3 + double(is_compr);   % u,v,w [,T]
 nf = size(Stab.bcw, 3);
-Bound.bcw = zeros(3, Grid.nx, nf);
-Bound.bct = zeros(3, Grid.nx, nf);
+Bound.bcw = zeros(n_bc, Grid.nx, nf);
+Bound.bct = zeros(n_bc, Grid.nx, nf);
 has_bcw = any(Stab.bcw(:));
 has_bct = any(Stab.bct(:));
 if has_bcw || has_bct
     for j = 1:nf
-        for k = 1:3
+        for k = 1:n_bc
             if has_bcw && any(Stab.bcw(k,:,j))
                 Bound.bcw(k,:,j) = interp1(Stab.bcx, Stab.bcw(k,:,j), Grid.xun, 'cubic', 0);
             end

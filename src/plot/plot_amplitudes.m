@@ -16,7 +16,7 @@ function plot_amplitudes(StabGrid, StabRes, ref_data, scholten_csv, plot_metric)
 %   plot_metric (optional, default 'umax'):
 %     'umax'   — peak |u'|        (StabRes.A directly)
 %     'urms'   — RMS u'           (StabRes.A / sqrt(2))
-%     'energy' — sqrt(E_kin)      (sqrt(StabRes.E))
+%     'energy' — sqrt(E); E is kinetic (incompressible) or Chu/Mack (compressible)
 %
 %   Mode labels use StabRes.omegavec/betavec to determine (m,n) indices.
 

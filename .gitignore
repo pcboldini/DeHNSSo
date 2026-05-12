@@ -4,6 +4,13 @@
 *.mlapp
 *.mlx
 
+# MEX binaries (platform-specific — each user builds via mexbuild_*.m)
+*.mexa64
+*.mexmaci64
+*.mexmaca64
+*.mexw64
+*.mexw32
+
 # Input/output data files
 input/*.mat
 baseflow/output/*

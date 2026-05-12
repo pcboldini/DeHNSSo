@@ -319,16 +319,47 @@ Opt.newton_precond  = 'block'; % 'block' | 'full'
 
 The stall heuristic triggers when `dal` stops decreasing for ≥ 5 iters, or when `picard_af_count ≥ 15` at one AF, or on amplitude blow-up. Newton then converges the current AF using the existing LU cache as preconditioner and ramps further.
 
-### LU factorisation cache
-
-The LHS matrix is factorised once per mode and reused across iterations. Three caching strategies:
+### LU mode
 
 ```matlab
-Opt.lu_mode = 'full';  % cache all LU factorisations (fastest, most memory)
-Opt.lu_mode = 'auto';  % cache up to lu_max_cache, evict oldest (bounded memory)
-Opt.lu_mode = 'none';  % solve with backslash each time (slowest, least memory)
-% Opt.lu_max_cache = 3;  % only relevant for 'auto' mode
+Opt.lu_mode = 'lapack_band';  % LAPACK zgbsv/dgbsv MEX — fastest single solve (~3x);
+                              %   needs ~6-12 GB; requires one-time MEX build (see below).
+Opt.lu_mode = 'full';         % cache every LU factorisation (fastest reuse, unbounded memory)
+Opt.lu_mode = 'auto';         % LRU-cached LUs, bounded memory (default for nonlinear runs)
+Opt.lu_mode = 'none';         % backslash each time, no caching (slowest, baseline)
+% Opt.lu_max_cache = 3;       % only relevant for 'auto'
 ```
+
+**Picking quickly:**
+
+| Run                                  | Recommended                                |
+| ------------------------------------ | ------------------------------------------ |
+| Linear single-mode (TS)              | `lapack_band`                              |
+| Nonlinear multi-mode, plenty of RAM  | `auto` (caches reusable factors)           |
+| Memory-constrained                   | `auto` with small `lu_max_cache`           |
+| Validation / debugging               | `none` (reference, no caching)             |
+
+### Building the `lapack_band` MEX (one-time setup per machine)
+
+`lu_mode = 'lapack_band'` calls a MEX wrapper around LAPACK's banded LU
+(`zgbsv`/`dgbsv`). The MEX binary is platform-specific and is **not** shipped
+with the repo — each user builds it once.
+
+```matlab
+>> run('src/hns/mexbuild_dgbsv.m')
+```
+
+Requirements:
+
+- MATLAB R2018a or later (uses the `-R2018a` interleaved-complex API).
+- A C compiler configured for MEX (`mex -setup` once if you've never used MEX).
+  - macOS: Xcode Command Line Tools.
+  - Linux: `gcc`.
+  - Windows: MSVC / MinGW.
+
+If `lu_mode = 'lapack_band'` is selected but the MEX is missing, `solve_modes`
+errors with a message pointing to `mexbuild_dgbsv.m`. Fall back to
+`lu_mode = 'auto'` if you cannot build (e.g. no compiler available).
 
 ### Parallel and GPU acceleration
 

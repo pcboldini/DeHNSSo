@@ -25,9 +25,9 @@ params.rescale   = false;        % BF already non-dim
 params.plot      = false;
 
 %% Grid-generation options
-params.FD1_order    = 4;
-params.FD2_order    = 2;
-params.eta_method   = 'cheb';
+params.FD_xi_order_1    = 4;
+params.FD_xi_order_2    = 2;
+params.FD_eta_method   = 'cheb';
 params.FD_eta_order = 4;
 
 %% Output

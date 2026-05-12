@@ -1,16 +1,25 @@
 function Grid = compute_bf_derivatives(Grid)
-%COMPUTE_BF_DERIVATIVES  First **physical** derivatives of base-flow velocities U, V, W.
+%COMPUTE_BF_DERIVATIVES  First (and second) physical derivatives of base-flow fields.
 %
-%   Returns ∂U/∂x and ∂U/∂y (and likewise for V, W) stored as Grid.dxU, Grid.dyU, etc.
-%   These are the physical-space derivatives the HNS LHS assembly expects, not
-%   the raw computational-space derivatives ∂U/∂ξ, ∂U/∂η.
+%   Always differentiates the velocity components U, V, W and stores
+%   ∂U/∂x, ∂U/∂y, … as Grid.dxU, Grid.dyU, etc.
+%   If Grid.rho / Grid.T are present (compressible base flow), it also
+%   differentiates them and stores Grid.dxrho/dyrho, Grid.dxT/dyT.
+%   These are the physical-space derivatives the HNS LHS assembly expects,
+%   not the raw computational-space derivatives ∂·/∂ξ, ∂·/∂η.
 %
-%   On curvilinear grids the chain rule is applied using the inverse metric
-%   tensors set earlier in build_stab_grid:
-%       ∂U/∂x = ξ_x · ∂U/∂ξ + η_x · ∂U/∂η
-%       ∂U/∂y = ξ_y · ∂U/∂ξ + η_y · ∂U/∂η
+%   Second streamwise derivatives ∂²U/∂x², ∂²V/∂x², ∂²W/∂x², ∂²T/∂x² are
+%   also computed (Grid.dxxU, …) when the corresponding field is present
+%   — required by LHS_compressible for the viscous terms.
+%   The chain rule is currently Cartesian-only (xixx = etaxx = 0); on
+%   curvilinear grids a warning is emitted and ∂²/∂ξ² is stored verbatim.
+%
+%   On curvilinear grids the first-derivative chain rule is applied using
+%   the inverse metric tensors set earlier in build_stab_grid:
+%       ∂·/∂x = ξ_x · ∂·/∂ξ + η_x · ∂·/∂η
+%       ∂·/∂y = ξ_y · ∂·/∂ξ + η_y · ∂·/∂η
 %   On Cartesian grids (ξ_x = η_y = 1, ξ_y = η_x = 0) this reduces to the
-%   identity: ∂U/∂x = ∂U/∂ξ, ∂U/∂y = ∂U/∂η.
+%   identity: ∂·/∂x = ∂·/∂ξ, ∂·/∂y = ∂·/∂η.
 %
 %   Discretisation:
 %     ∂/∂η : D1_bf — Grid.D1 in the interior, local one-sided Fornberg
@@ -22,6 +31,7 @@ function Grid = compute_bf_derivatives(Grid)
 %            blow up the wall shear by O(N²). A local FD stencil avoids
 %            this without affecting the stability operator.
 %     ∂/∂ξ : FD1_uneven on the (possibly non-uniform) Grid.xi1D
+%     ∂²/∂ξ²: FD2_uneven (order Grid.FD_xi_order_2, default 4)
 
 % ---- Boundary-safe D1 for base-flow differentiation -----------------------
 N     = Grid.ny;
@@ -39,31 +49,61 @@ w_t   = fornberg_weights_loc(y(1), y(idx_t), 1);
 D1_bf(1, :)     = 0;
 D1_bf(1, idx_t) = w_t;
 
-% ---- Computational-space derivatives --------------------------------------
-dU_deta = D1_bf * Grid.U;
-dV_deta = D1_bf * Grid.V;
-dW_deta = D1_bf * Grid.W;
+% ---- Differentiate each base-flow field present on Grid -------------------
+fields = {'U','V','W'};
+if isfield(Grid, 'rho'); fields{end+1} = 'rho'; end
+if isfield(Grid, 'T');   fields{end+1} = 'T';   end
 
-xi = Grid.xi1D(:);
-dU_dxi = zeros(Grid.ny, Grid.nx);
-dV_dxi = zeros(Grid.ny, Grid.nx);
-dW_dxi = zeros(Grid.ny, Grid.nx);
-for j = 1:Grid.ny
-    dU_dxi(j,:) = FD1_uneven(xi, Grid.U(j,:)', Grid.FD1_order)';
-    dV_dxi(j,:) = FD1_uneven(xi, Grid.V(j,:)', Grid.FD1_order)';
-    dW_dxi(j,:) = FD1_uneven(xi, Grid.W(j,:)', Grid.FD1_order)';
+xi             = Grid.xi1D(:);
+FD_xi_order_2  = getfielddef(Grid, 'FD_xi_order_2', 4);   % 4th-order matches heritage FD1d4o∘FD1d4o
+% Streamwise BF second derivatives are only needed by LHS_compressible;
+% skip them entirely for incompressible BF (no ρ, no T on Grid).
+is_compr       = isfield(Grid, 'rho') && isfield(Grid, 'T');
+if is_compr
+    need_dxx = {'U','V','W','T'};
+else
+    need_dxx = {};
+end
+is_curvilinear = isfield(Grid, 'xixx') && any(Grid.xixx(:) ~= 0);
+
+for k = 1:numel(fields)
+    fname = fields{k};
+    F     = Grid.(fname);
+
+    % Computational-space first derivatives
+    dF_deta = D1_bf * F;
+    dF_dxi  = zeros(Grid.ny, Grid.nx);
+    for j = 1:Grid.ny
+        dF_dxi(j,:) = FD1_uneven(xi, F(j,:)', Grid.FD_xi_order_1)';
+    end
+
+    % First derivatives in physical coordinates (Cartesian: identity)
+    Grid.(['dx' fname]) = Grid.xix .* dF_dxi + Grid.etax .* dF_deta;
+    Grid.(['dy' fname]) = Grid.xiy .* dF_dxi + Grid.etay .* dF_deta;
+
+    % Streamwise second derivative ∂²F/∂x² (Cartesian only; consumed by LHS_compressible)
+    if any(strcmp(fname, need_dxx))
+        d2F_dxi2 = zeros(Grid.ny, Grid.nx);
+        for j = 1:Grid.ny
+            d2F_dxi2(j,:) = FD2_uneven(xi, F(j,:)', FD_xi_order_2)';
+        end
+        Grid.(['dxx' fname]) = d2F_dxi2;
+    end
 end
 
-% ---- Chain rule to physical coordinates -----------------------------------
-% Metrics live on the same (ny × nx) grid as the BF arrays.
-Grid.dxU = Grid.xix .* dU_dxi + Grid.etax .* dU_deta;
-Grid.dyU = Grid.xiy .* dU_dxi + Grid.etay .* dU_deta;
+if is_curvilinear && is_compr
+    warning('compute_bf_derivatives:CurvilinearDxx', ...
+        'Streamwise BF second derivatives (dxxU/...) stored as ∂²/∂ξ² — full curvilinear chain rule not yet implemented.');
+end
+end
 
-Grid.dxV = Grid.xix .* dV_dxi + Grid.etax .* dV_deta;
-Grid.dyV = Grid.xiy .* dV_dxi + Grid.etay .* dV_deta;
 
-Grid.dxW = Grid.xix .* dW_dxi + Grid.etax .* dW_deta;
-Grid.dyW = Grid.xiy .* dW_dxi + Grid.etay .* dW_deta;
+function v = getfielddef(s, name, default)
+if isfield(s, name) && ~isempty(s.(name))
+    v = s.(name);
+else
+    v = default;
+end
 end
 
 

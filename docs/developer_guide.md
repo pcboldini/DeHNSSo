@@ -31,7 +31,9 @@ DeHNSSo/
 │   ├── hns/                        — Core HNS equations
 │   │   ├── LHS.m                   — Assemble global LHS sparse matrix (per mode)
 │   │   ├── RHS.m                   — Assemble RHS vector (inflow IC + actuation BCs)
-│   │   ├── solve_modes.m           — Mode-by-mode solve with LU cache
+│   │   ├── solve_modes.m           — Mode-by-mode solve, dispatch on Opt.lu_mode
+│   │   ├── dgbsv_solve.c           — MEX wrapper for LAPACK banded LU (lu_mode='lapack_band')
+│   │   ├── mexbuild_dgbsv.m        — One-line build for the MEX (run once per machine)
 │   │   ├── NLT.m                   — Nonlinear forcing (mode-to-mode interaction)
 │   │   └── AVAL.m                  — Inflow amplitude damping
 │   ├── convergence/
@@ -118,7 +120,7 @@ Solver control options.
 | `AFg` | 1.1 | Amplitude factor growth rate |
 | `AMAX` | 0.1 | Maximum amplitude factor |
 | `TH` | 1e-11 | NLT activation threshold |
-| `lu_mode` | `'full'` | LU cache strategy: `'full'`, `'auto'`, `'none'` |
+| `lu_mode` | `'full'` | LU strategy: `'lapack_band'`, `'full'`, `'auto'`, `'none'` |
 | `lu_max_cache` | 3 | Max cached LU entries for `'auto'` mode |
 | `rerun` | `'off'` | Reuse LHS from previous call |
 | `parfor` | auto | Parallel LHS/solve: `'on'` or `'off'` (auto-detected) |
@@ -229,18 +231,66 @@ Freestream values are only injected for components where `Opt.bc_top{k} = 'IH_DR
 
 ---
 
-## 6. LU cache
+## 6. LU strategies
 
-`solve_modes.m` caches LU factorisations in `Opt.LU_cache`, keyed by `(omega_j, beta_j)`. On the first solve for a mode, the LU is computed and stored. On subsequent iterations, it is reused if the key matches.
+`solve_modes.m` dispatches on `Opt.lu_mode`. Two families:
 
-**Strategies (`Opt.lu_mode`):**
-- `'full'`: unlimited cache — fastest for repeated solves, memory scales with `nf × (4*ny*nx)^2 / 8`.
-- `'auto'`: capped at `Opt.lu_max_cache` entries, oldest evicted (LRU). Use when memory is limited.
-- `'none'`: no cache — MATLAB's `\` is called every time. Slowest but minimal memory.
+**Cache-based** (`'full'`, `'auto'`, `'none'`): MATLAB `decomposition(ML,'lu')` cached in `Opt.LU_cache`, keyed by `(omega_j, beta_j)`. Reused across iterations.
+
+- `'full'`: unbounded cache. Fastest for repeated solves, memory scales with `nf × (4·ny·nx)² / 8`.
+- `'auto'`: LRU cache capped at `Opt.lu_max_cache`. Eviction skips keys still needed this iteration; cache grows past `lu_max_cache` if necessary (one-time warning).
+- `'none'`: no caching. MATLAB's `\` each time. Slowest, minimal memory.
+
+**Per-call solvers** (`'lapack_band'`): no caching, one factor per mode-group.
+
+- `'lapack_band'`: LAPACK `zgbsv`/`dgbsv` via MEX (`src/hns/dgbsv_solve.c`). Exploits the block-pentadiagonal structure with Apple Accelerate / OpenBLAS dense-banded BLAS3. ~3× faster than the cache-based path on a single solve; needs ~6-12 GB peak. See section 6a.
 
 **GPU mode (`Opt.gpu = 'on'`):** the assembled `ML` matrix is stored as `gpuArray(ML)` in the cache instead of a `decomposition` object. MATLAB does not support sparse complex LU decomposition caching on GPU; the matrix is refactorised on every iteration. Only beneficial when ny is large enough that O(ny²) GPU compute exceeds host-GPU transfer cost (roughly ny ≥ 80 for NVIDIA A100).
 
-**Rerun:** when `Opt.rerun = 'on'`, the LU cache from the previous run is passed back in via `LHS.LU_cache`. If `(omega_j, beta_j)` is unchanged (e.g., amplitude sweep), the factorisation is reused with no cost. If `omega_j` changes (frequency sweep), a new factorisation is computed for that mode.
+**Rerun:** when `Opt.rerun = 'on'`, the LU cache from the previous run is passed back in via `LHS.LU_cache` (cache-based modes only). If `(omega_j, beta_j)` is unchanged (e.g., amplitude sweep), the factorisation is reused with no cost. If `omega_j` changes (frequency sweep), a new factorisation is computed for that mode. `'lapack_band'` always refactors since it doesn't cache.
+
+---
+
+## 6a. `lapack_band` MEX
+
+`Opt.lu_mode = 'lapack_band'` calls a MEX wrapper for LAPACK's banded LU with
+partial pivoting. The wrapper auto-detects real vs complex `ML` and dispatches:
+
+- `mxIsComplex(ML) || mxIsComplex(RHS)` → `zgbsv` (complex band LU)
+- otherwise → `dgbsv` (real band LU)
+
+The second condition matters in nonlinear runs: the MFD (0,0) mode has a real
+`ML` but the NLT-projected RHS may be stored as complex. The MEX promotes
+`ML` to complex on the fly when only the RHS is complex.
+
+**Bandwidth detection.** `KL` (subdiagonals) and `KU` (superdiagonals) are
+inferred from the sparsity pattern at runtime. For TS at nx=800, ny=81 (4-var):
+`KL≈440, KU≈600, LDAB≈1481`, AB storage 6.1 GB complex / 3.1 GB real.
+
+**Why pivoting matters.** The shifted-forward FD boundary stencil at i=2
+produces a small diagonal block (`rcond ≈ 1e-20`). Unpivoted block-LU (the
+removed `block_penta_solve`) amplified the small pivot through Schur updates
+and lost all precision within 4-5 steps. `zgbsv`'s partial pivoting selects
+the largest-magnitude candidate within the column band, swaps it to the
+diagonal, and proceeds stably. This is why `lapack_band` works on the same
+matrices `block_penta_solve` failed on.
+
+**Files:**
+
+- `src/hns/dgbsv_solve.c` — MEX source (~150 lines).
+- `src/hns/mexbuild_dgbsv.m` — one-line build wrapper invoking `mex -R2018a … -lmwlapack`.
+- The compiled `.mex*` binary is platform-specific and not version-controlled.
+
+**Build requirements:** MATLAB R2018a+ (for `-R2018a` interleaved-complex API),
+a C compiler configured via `mex -setup` (Xcode CLT on macOS, gcc on Linux,
+MSVC/MinGW on Windows). MATLAB's LAPACK (`lapack.h` + `libmwlapack`) is used
+for portability — on macOS this resolves through Apple Accelerate, on Linux
+through OpenBLAS/MKL.
+
+**Limitations:** no LU-factor caching (each call refactors). For nonlinear
+runs with many Picard iterations and few unique mode keys, `auto`'s caching
+may beat `lapack_band`. Adding factor caching to the MEX (saving `AB` and
+`IPIV` between calls) is straightforward but not yet implemented.
 
 ---
 

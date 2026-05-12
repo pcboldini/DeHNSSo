@@ -20,6 +20,8 @@ if ~exist('Opt','var')      || ~isstruct(Opt);      Opt = struct();      end
 if ~exist('Stab','var')     || ~isstruct(Stab);     Stab = struct();     end
 if ~exist('LHS','var');     LHS = struct(); end
 if ~isfield(Opt,'rerun');   Opt.rerun = 'off'; end
+if ~isfield(Opt,'compressible'); Opt.compressible = 'off'; end
+is_compr = strcmpi(Opt.compressible, 'on');
 
 fprintf('\n');
 fprintf(' ______     _   _  _   _  _____ _____       \n');
@@ -38,7 +40,26 @@ BF.Re  = StabGrid.Re;
 BF.U   = StabGrid.U;    BF.V   = StabGrid.V;    BF.W   = StabGrid.W;
 BF.dxU = StabGrid.dxU;  BF.dxV = StabGrid.dxV;  BF.dxW = StabGrid.dxW;
 BF.dyU = StabGrid.dyU;  BF.dyV = StabGrid.dyV;  BF.dyW = StabGrid.dyW;
-fprintf('done (9 fields, Re = %.2f)\n', BF.Re);
+
+if is_compr
+    required = {'rho','T','dxrho','dyrho','dxT','dyT', ...
+                'dxxU','dxxV','dxxW','dxxT', ...
+                'Ma','Pr','gamma','Sstar','mu','dmuT','d2muT2'};
+    missing = required(~cellfun(@(f) isfield(StabGrid,f), required));
+    if ~isempty(missing)
+        error('main:compressibleMissingFields', ...
+            ['Opt.compressible=''on'' but StabGrid is missing: %s. ' ...
+             'Re-run gridgen on a BF that carries rho and T.'], ...
+            strjoin(missing, ', '));
+    end
+    for k = 1:numel(required)
+        f = required{k};
+        BF.(f) = StabGrid.(f);
+    end
+    fprintf('done (compressible, Re = %.2f, Ma = %.2f)\n', BF.Re, BF.Ma);
+else
+    fprintf('done (incompressible, 9 fields, Re = %.2f)\n', BF.Re);
+end
 
 %% 1. Initialisation
 [StabGrid, Init, Mode, Opt, Stab, StabRes] = init(StabGrid, Opt, Stab);
@@ -55,16 +76,26 @@ if strcmpi(Opt.rerun,'on') && isfield(LHS,'MLA1') && ~isempty(LHS.MLA1)
     MLA2     = LHS.MLA2;
     if isfield(LHS, 'MLA3'); MLA3 = LHS.MLA3; else; MLA3 = []; end
     if isfield(LHS, 'MLA4'); MLA4 = LHS.MLA4; else; MLA4 = []; end
+    if isfield(LHS, 'MLA5'); MLA5 = LHS.MLA5; else; MLA5 = []; end
     MFD_diff = LHS.MFD_diff;
     Opt.mmry = 1;   % signal solve_modes to skip LHS construction
     % LU cache persists in Opt between runs (not in LHS, to avoid duplication).
     fprintf(' Reusing LHS matrices from previous run.\n');
 else
-    MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MFD_diff = [];
+    MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MLA5 = []; MFD_diff = [];
 end
 
 is_linear = isfield(Opt,'linear') && strcmpi(Opt.linear,'on');
 is_newton = isfield(Opt,'solver') && strcmpi(Opt.solver, 'newton');
+
+if is_newton && is_compr
+    error('main:compressibleNewton', ...
+        'Newton solver not yet implemented for the compressible path. Run with Opt.linear=''on''.');
+end
+if is_compr && isfield(Opt,'adjoint') && strcmpi(Opt.adjoint,'on')
+    error('main:compressibleAdjoint', ...
+        'Adjoint not yet implemented for the compressible path.');
+end
 
 if is_newton
     %% Newton solve (JFNK — see solve_newton.m)
@@ -73,7 +104,7 @@ if is_newton
     [StabRes, Mode, info] = solve_newton(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes);
     fprintf('--- Newton %s after %d iterations (%.1f s) ---\n\n', ...
             info.status, info.iters, toc(t_loop));
-    MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MFD_diff = [];
+    MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MLA5 = []; MFD_diff = [];
 elseif is_linear
     %% Linear solve (single iteration, no NLT, no amplitude ramping)
     fprintf('\n--- Linear solve ---\n');
@@ -81,8 +112,8 @@ elseif is_linear
     Opt.dal = zeros(Mode.nf, 1);
     Opt.AF  = 1;
 
-    [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MFD_diff] = solve_modes( ...
-        BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MFD_diff);
+    [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff] = solve_modes( ...
+        BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
     [StabRes, Mode, Stab] = update_modes(StabGrid, Bound, Mode, Opt, Stab, StabRes);
 
     if strcmpi(Opt.plot,'on')
@@ -123,8 +154,8 @@ else
             q_old = StabRes.q;
 
             % Full Picard step: q_picard = ML⁻¹ * (rBC + f_NLT)
-            [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MFD_diff] = solve_modes( ...
-                BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MFD_diff);
+            [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff] = solve_modes( ...
+                BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
 
             % AVAL rescales the first iterate down to AMAX based on the
             % linear-regime prediction. Skip it when LOAD has warm-started
@@ -324,7 +355,7 @@ else
                         Opt.LU_cache = struct();
                         Opt.lu_order = {}; Opt.lu_order_label = {};
                     end
-                    MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MFD_diff = [];
+                    MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MLA5 = []; MFD_diff = [];
                     Opt.mmry = 0;   % force LHS rebuild on the next call if needed
                 end
             end
@@ -397,6 +428,7 @@ LHS.MLA1     = MLA1;
 LHS.MLA2     = MLA2;
 LHS.MLA3     = MLA3;
 LHS.MLA4     = MLA4;
+LHS.MLA5     = MLA5;
 LHS.MFD_diff = MFD_diff;
 % Note: LU_cache is NOT copied into LHS to avoid doubling memory.
 % For rerun mode, the cache persists in Opt (returned to workspace).

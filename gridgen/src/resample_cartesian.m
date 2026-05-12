@@ -44,6 +44,12 @@ y_raw  = BF.Y(:);            % [ny_raw × 1]
 nx_raw = numel(x_raw);
 ny_raw = numel(y_raw);
 U_raw  = BF.U;   V_raw = BF.V;   W_raw = BF.W;
+% Compressible fields (auto-detected by presence of ρ and T).
+is_compr = isfield(BF,'rho') && isfield(BF,'T');
+if is_compr
+    rho_raw = BF.rho;
+    T_raw   = BF.T;
+end
 
 %% Optional non-dim rescale: U/Uref, X/lref, Y/lref
 do_rescale = isfield(params, 'rescale') && params.rescale;
@@ -74,11 +80,15 @@ end
 %% Wall-normal domain (H, y_i)
 if isfield(params, 'H') && ~isempty(params.H)
     H = params.H;
+elseif isfield(BF, 'H') && ~isempty(BF.H)
+    H = BF.H;
 else
-    H = (y_raw(end) - y_raw(1)) * 0.99;
+    H = abs(y_raw(end) - y_raw(1)) * 0.99;   % BF.Y may be descending (η: top→wall)
 end
 if isfield(params, 'y_i') && ~isempty(params.y_i)
     y_i = params.y_i;
+elseif isfield(BF, 'y_i') && ~isempty(BF.y_i)
+    y_i = BF.y_i;
 else
     y_i = H / 10;
 end
@@ -125,6 +135,11 @@ end
 U_new = interp2(x_raw, y_raw, U_raw, Xq, Yq, interp_method);
 V_new = interp2(x_raw, y_raw, V_raw, Xq, Yq, interp_method);
 W_new = interp2(x_raw, y_raw, W_raw, Xq, Yq, interp_method);
+% ρ, T (already non-dim by the BL caller; not affected by params.rescale)
+if is_compr
+    rho_new = interp2(x_raw, y_raw, rho_raw, Xq, Yq, interp_method);
+    T_new   = interp2(x_raw, y_raw, T_raw,   Xq, Yq, interp_method);
+end
 
 %% Package into DeHNSSo-ready BF (no mesh_type field → build_stab_grid uses Cartesian branch)
 BF_new       = struct();
@@ -137,6 +152,18 @@ BF_new.H     = H;
 BF_new.y_i   = y_i;
 BF_new.xi1D  = xi_new;
 BF_new.eta1D = eta_new;
+
+% Pass through compressible fields and thermo metadata so build_stab_grid
+% can auto-detect and run Sutherland.
+if is_compr
+    BF_new.rho = rho_new;
+    BF_new.T   = T_new;
+    for f_name = {'Ma','Pr','gamma','Sstar'}
+        if isfield(BF, f_name{1}) && ~isempty(BF.(f_name{1}))
+            BF_new.(f_name{1}) = BF.(f_name{1});
+        end
+    end
+end
 
 fprintf('Cartesian resample done: %d × %d → %d × %d (Malik-Cheb η, %s interp)\n', ...
         ny_raw, nx_raw, ny_new, nx_new, interp_method);

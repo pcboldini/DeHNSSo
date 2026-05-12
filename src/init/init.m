@@ -17,10 +17,22 @@ assert(isfield(Grid,'nx') && ~isempty(Grid.nx),      'Grid.nx (streamwise points
 assert(isfield(Grid,'ny') && ~isempty(Grid.ny),      'Grid.ny (wall-normal points) is required.');
 assert(isfield(Grid,'Re') && ~isempty(Grid.Re),      'Grid.Re (Reynolds number) is required.');
 
+if ~isfield(Opt,'compressible'); Opt.compressible = 'off'; end
+is_compr  = strcmpi(Opt.compressible, 'on');
+nvar      = 4 + double(is_compr);      % (u,v,w,p) | (u,v,w,rho,T)
+n_bc_top  = 3 + double(is_compr);      % BC channels: u,v,w [,T]
+if is_compr && ~isfield(Opt,'bc_wall_thermal'); Opt.bc_wall_thermal = 'isothermal'; end
+
 % Stab: Homogeneous BC's by default
 if ~isfield(Stab,'bcx'); Stab.bcx = linspace(Grid.S,Grid.S+Grid.L,10); end
-if ~isfield(Stab,'bcw'); Stab.bcw = zeros(3,10,(2*Stab.N+1)*(2*Stab.M+1)); end
-if ~isfield(Stab,'bct'); Stab.bct = zeros(3,10,(2*Stab.N+1)*(2*Stab.M+1)); end
+if ~isfield(Stab,'bcw'); Stab.bcw = zeros(n_bc_top,10,(2*Stab.N+1)*(2*Stab.M+1)); end
+if ~isfield(Stab,'bct'); Stab.bct = zeros(n_bc_top,10,(2*Stab.N+1)*(2*Stab.M+1)); end
+assert(size(Stab.bcw,1) == n_bc_top, 'init:bcwSize', ...
+    'Stab.bcw first dim is %d but n_bc_top is %d (Opt.compressible=%s).', ...
+    size(Stab.bcw,1), n_bc_top, Opt.compressible);
+assert(size(Stab.bct,1) == n_bc_top, 'init:bctSize', ...
+    'Stab.bct first dim is %d but n_bc_top is %d (Opt.compressible=%s).', ...
+    size(Stab.bct,1), n_bc_top, Opt.compressible);
 % Build A0 from A0_fund if user provided the simplified scalar form.
 % Fundamental mode is picked automatically from (M, N, omega_0, beta_0):
 %   TS         (M>=1, omega_0~=0, N=0, beta_0=0)      -> (m=1, n=0)
@@ -70,17 +82,18 @@ if ~isfield(Opt,'AMAX');        Opt.AMAX = 0.1; end
 if ~isfield(Opt,'ConvF');       Opt.ConvF = 100; end
 if ~isfield(Opt,'plot');        Opt.plot = 'on'; end
 if ~isfield(Opt,'buffer');     Opt.buffer = 'on'; end     % 'on', 'para', or 'off'
-% Freestream BC: per-component type for u, v, w.
+% Freestream BC: per-component type — 3 entries (u,v,w) incompressible,
+% 4 entries (u,v,w,T) compressible.
 %   'H_DR'  = homogeneous Dirichlet  (q̂ = 0)
 %   'IH_DR' = inhomogeneous Dirichlet (q̂ = bct value)
 %   'H_NM'  = homogeneous Neumann    (∂q̂/∂y = 0)
-% Backward compatibility: scalar 'dirichlet'/'neumann' expands to all 3.
+% Backward compatibility: scalar 'dirichlet'/'neumann' expands to all channels.
 if ~isfield(Opt,'bc_top')
-    Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};
+    Opt.bc_top = repmat({'H_DR'}, 1, n_bc_top);
 elseif ischar(Opt.bc_top) || isstring(Opt.bc_top)
     switch lower(char(Opt.bc_top))
-        case 'dirichlet'; Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};
-        case 'neumann';   Opt.bc_top = {'H_NM', 'H_NM', 'H_NM'};
+        case 'dirichlet'; Opt.bc_top = repmat({'H_DR'}, 1, n_bc_top);
+        case 'neumann';   Opt.bc_top = repmat({'H_NM'}, 1, n_bc_top);
         otherwise;         error('Unknown bc_top: %s', Opt.bc_top);
     end
 end
@@ -128,16 +141,11 @@ Mode.Aactive = zeros(size(Mode.L));       % Active mode registrer
 Stab.I      = eye(Grid.ny);
 Stab.Z      = zeros(Grid.ny);
 
-% Allocate LHS matrix blocks 1-4 and separately for MFD.
-% Sparsity estimates assume 4th-order FD; revisit if FD order changes.
-Stab.ML1MFD = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,4*(3*Grid.ny^2+4*Grid.ny)+7*Grid.ny^2+4*Grid.ny);
-Stab.ML1    = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,4*(3*Grid.ny^2+4*Grid.ny)+7*Grid.ny^2+4*Grid.ny);
-Stab.ML2    = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,3*Grid.ny);
-Stab.ML3    = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,5*Grid.ny);
-Stab.ML4    = spalloc(4*Grid.ny,4*Grid.ny*Grid.nx,3*Grid.ny);
+% LHS sparse blocks (MLA1..MLA5, MLAMFD) are built from triplet (i,j,s)
+% accumulators inside LHS / LHS_compressible — no preallocation needed.
 
-StabRes.R=zeros(4*Grid.nx*Grid.ny,1);  % Initiate RHS vector
-Stab.f=zeros(Mode.nf,4*Grid.ny*Grid.nx);
+StabRes.R = zeros(nvar*Grid.nx*Grid.ny, 1);  % Initiate RHS vector
+Stab.f    = zeros(Mode.nf, nvar*Grid.ny*Grid.nx);
 
 % Streamwise FD: dxi is the scalar first-spacing; D_xi is the sparse
 % 4th-order FD matrix valid on non-uniform ξ grids.
@@ -147,7 +155,7 @@ Grid.D_xi  = fd1_matrix_nonuniform(Grid.x(:));
 %% Initialization of nonlinear convergence loop
 
 StabRes.Aold = zeros(Mode.nf,Grid.nx);            % Amplitudes of previous iteration
-StabRes.q = zeros(Mode.nf,4*Grid.ny*Grid.nx);     % Solution vector
+StabRes.q = zeros(Mode.nf, nvar*Grid.ny*Grid.nx);     % Solution vector
 
 Opt.dal = ones(Mode.nf,1);   % Convergence measure
 Opt.dalsave(:,1) = Opt.dal; % Convergence measure register
