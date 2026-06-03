@@ -416,6 +416,15 @@ When `Opt.rerun = 'on'`:
 - LU factorisations are reused when `omega` and `beta` are unchanged (actuation/amplitude sweeps).
 - LU factorisations are recomputed when `omega` or `beta` changes (frequency/wavenumber sweeps).
 
+Indicative cost on the nonlinear Blasius TS case (M=5, Nx=800, Ny=40, `lu_mode='full'`):
+
+| call | what runs | wall-clock |
+|---|---|---|
+| first (`rerun='off'`) | assembly + 6 LU factorisations + Picard | ~40 s |
+| reuse (`rerun='on'`, amplitude sweep) | restored blocks + 6 cached factorisations, Picard only | ~6–8 s (~6× faster) |
+
+The reused solve reproduces the from-scratch result to machine precision.
+
 ---
 
 ## 10. Output

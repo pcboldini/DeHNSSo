@@ -10,9 +10,9 @@ function [StabRes, StabGrid, LHS] = main(Stab, StabGrid, Opt, LHS)
 %   2. Convergence loop: solve modes, update amplitudes, check convergence
 %   3. Post-process: normalize shape functions, compute wavenumbers
 %
-%   LHS struct fields: MLA1, MLA2, MFD_diff — base LHS matrices that depend
-%   only on the base flow, not on omega/beta. Pass back in with Opt.rerun='on'
-%   to skip matrix assembly (useful for omega/beta/amplitude sweeps).
+%   LHS struct fields: MLA1..MLA5, MFD_diff and LU_cache — base operators and
+%   their per-mode factorisations. Pass LHS back in with Opt.rerun='on' to skip
+%   both assembly and factorisation (omega/beta/A0 sweeps on a fixed base flow).
 
 %% Input validation
 if ~exist('StabGrid','var') || ~isstruct(StabGrid); StabGrid = struct(); end
@@ -70,19 +70,30 @@ end
 print_config(StabGrid, Stab, Opt);
 
 %% 2. Convergence loop
-% Reuse LHS matrices from a previous run (Opt.rerun='on') or build fresh.
-if strcmpi(Opt.rerun,'on') && isfield(LHS,'MLA1') && ~isempty(LHS.MLA1)
-    MLA1     = LHS.MLA1;
-    MLA2     = LHS.MLA2;
-    if isfield(LHS, 'MLA3'); MLA3 = LHS.MLA3; else; MLA3 = []; end
-    if isfield(LHS, 'MLA4'); MLA4 = LHS.MLA4; else; MLA4 = []; end
-    if isfield(LHS, 'MLA5'); MLA5 = LHS.MLA5; else; MLA5 = []; end
-    MFD_diff = LHS.MFD_diff;
-    Opt.mmry = 1;   % signal solve_modes to skip LHS construction
-    % LU cache persists in Opt between runs (not in LHS, to avoid duplication).
-    fprintf(' Reusing LHS matrices from previous run.\n');
-else
-    MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MLA5 = []; MFD_diff = [];
+% Reuse from a previous run (Opt.rerun='on'): restore the assembled blocks and
+% the per-mode LU cache (both A0-independent) to skip assembly + factorisation.
+MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MLA5 = []; MFD_diff = [];
+if strcmpi(Opt.rerun,'on')
+    has_mla = isfield(LHS,'MLA1') && ~isempty(LHS.MLA1);
+    has_lu  = isfield(LHS,'LU_cache') && ~isempty(fieldnames(LHS.LU_cache));
+    if has_mla
+        MLA1     = LHS.MLA1;
+        MLA2     = LHS.MLA2;
+        if isfield(LHS, 'MLA3'); MLA3 = LHS.MLA3; end
+        if isfield(LHS, 'MLA4'); MLA4 = LHS.MLA4; end
+        if isfield(LHS, 'MLA5'); MLA5 = LHS.MLA5; end
+        MFD_diff = LHS.MFD_diff;
+        Opt.mmry = 1;   % signal solve_modes to skip LHS construction
+    end
+    if has_lu
+        Opt.LU_cache = LHS.LU_cache;
+        if isfield(LHS,'lu_order');       Opt.lu_order       = LHS.lu_order;       end
+        if isfield(LHS,'lu_order_label'); Opt.lu_order_label = LHS.lu_order_label; end
+    end
+    if has_mla || has_lu
+        if has_lu; nlu = numel(fieldnames(LHS.LU_cache)); else; nlu = 0; end
+        fprintf(' Reusing LHS matrices from previous run (%d cached LU factorisation(s) reused).\n', nlu);
+    end
 end
 
 is_linear = isfield(Opt,'linear') && strcmpi(Opt.linear,'on');
@@ -430,7 +441,11 @@ LHS.MLA3     = MLA3;
 LHS.MLA4     = MLA4;
 LHS.MLA5     = MLA5;
 LHS.MFD_diff = MFD_diff;
-% Note: LU_cache is NOT copied into LHS to avoid doubling memory.
-% For rerun mode, the cache persists in Opt (returned to workspace).
+% Carry the LU cache so the next Opt.rerun can skip factorisation (reference, no copy).
+if isfield(Opt,'LU_cache') && ~isempty(fieldnames(Opt.LU_cache))
+    LHS.LU_cache = Opt.LU_cache;
+    if isfield(Opt,'lu_order');       LHS.lu_order       = Opt.lu_order;       end
+    if isfield(Opt,'lu_order_label'); LHS.lu_order_label = Opt.lu_order_label; end
+end
 
 end
