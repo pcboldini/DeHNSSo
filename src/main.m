@@ -333,13 +333,13 @@ else
             %  - dal not decreasing for 5 iters (true stall/divergence), OR
             %  - too many iters at same AF (Picard too slow), OR
             %  - amplitudes blowing up (stall_count + max_A cross threshold), OR
-            %  - Picard has been at AF=1 for 5 iters without converging (done
-            %    its AF-ramp job, Newton should polish), OR
+            %  - Picard has been at AF=1 for 5+ iters AND dal has stopped
+            %    decreasing for 3+ iters (done its AF-ramp job, truly stuck), OR
             %  - runaway signature: max_A jumps >50% in one iter at AF=1, OR
             %  - amplitudes unphysically large (max_A > 1 or NaN/Inf).
             if picard_stall_count >= 5 || picard_af_count >= 15 || ...
                (picard_stall_count >= 3 && max_A > 0.1) || ...
-               (iters_at_AF1 >= 5 && max_dal > Opt.Conv) || ...
+               (iters_at_AF1 >= 5 && picard_stall_count >= 3) || ...
                runaway_jump || ...
                max_A > 1 || ~isfinite(max_A)
                 picard_stall_count = 10;
