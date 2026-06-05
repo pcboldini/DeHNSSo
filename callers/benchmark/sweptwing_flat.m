@@ -18,6 +18,7 @@ load(fullfile(input.folder, 'DeHNSSo_input.mat'));   % provides StabGrid
 
 Stab.M = 0;                 % number of omega (temporal) modes
 Stab.N = 1;                 % number of beta (spanwise) modes
+% Fig.9 nonlinear: set N=5, Opt.linear='off', Opt.buffer='on' (Opt.anderson=5 below is required)
 Stab.omega_0 = 0;           % fundamental angular frequency (stationary)
 Stab.beta_0  = 2*pi * StabGrid.lref / 7.5e-3;   % fundamental spanwise wavenumber (lambda = 7.5 mm)
 
@@ -92,6 +93,7 @@ Opt.gpu     = 'off';        % GPU sparse solve: 'on' | 'off'
 % 'newton' — JFNK with per-mode preconditioner
 
 Opt.solver = 'picard';      % 'picard' (+ Newton fallback) | 'newton'
+Opt.anderson = 5;           % Anderson accel — required for nonlinear (no-op for linear)
 % Opt.newton_tol = 1e-10;
 
 % =========================================================================

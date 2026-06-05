@@ -110,7 +110,7 @@ Stationary crossflow instabilities (CFI) in a swept-wing boundary layer with fav
 
 ### To reproduce Fig. 9 (N=5 nonlinear)
 
-In `callers/benchmark/sweptwing_flat.m`: set `Stab.N = 5` and `Opt.linear = 'off'`. For the paper's wall-normal resolution, increase `params.n_eta_new = 100` in `gridgen/benchmark/sweptwing_flat.m` and re-run gridgen.
+In `callers/benchmark/sweptwing_flat.m`: set `Stab.N = 5`, `Opt.linear = 'off'`, `Opt.buffer = 'on'`, and `Opt.anderson = 5`. The `anderson = 5` is **required** — without it plain Picard diverges during the mode cascade near saturation (`max_A` runs away). For the paper's wall-normal resolution, increase `params.n_eta_new = 100` in `gridgen/benchmark/sweptwing_flat.m` and re-run gridgen.
 
 ### Expected output (paper-faithful run)
 
