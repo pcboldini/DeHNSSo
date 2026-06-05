@@ -56,8 +56,8 @@ Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};
 %   'para' = parabolisation (removes d2/dx2 in buffer -> no upstream reflections)
 %   'off'  = no buffer
 
-Opt.buffer = 'para';
-Opt.xb     = 85;            % buffer start [% of domain]
+Opt.buffer = 'on';
+Opt.xb     = 70;            % buffer start [% of domain]
 
 % =========================================================================
 %% Solver options
