@@ -245,11 +245,12 @@ function [res, grid] = find_stab_structs(S)
     fnames = fieldnames(S);
     for k = 1:numel(fnames)
         v = S.(fnames{k});
-        if isstruct(v) && isfield(v, 'A') && isfield(v, 'alpha')
+        if isstruct(v) && isfield(v, 'A')          % results: amplitudes (alpha optional)
             res = v;
         end
-        if isstruct(v) && isfield(v, 'xun')
+        if isstruct(v) && (isfield(v, 'xun') || isfield(v, 'x'))   % grid: streamwise coord
             grid = v;
+            if ~isfield(grid, 'xun'); grid.xun = grid.x; end       % minimal refs store .x only
         end
     end
 end
