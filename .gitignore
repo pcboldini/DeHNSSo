@@ -15,6 +15,7 @@
 input/*.mat
 baseflow/output/*
 !baseflow/output/benchmark/
+baseflow/output/benchmark/*.csv   # large CSV base flows kept gzipped (auto-unpacked by the caller)
 gridgen/output/
 
 # Figures
