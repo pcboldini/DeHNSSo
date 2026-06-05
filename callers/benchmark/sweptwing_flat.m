@@ -1,5 +1,6 @@
 %% DeHNSSo — Stationary CFI in a swept-wing flat-plate BL
 %  Base flow: bf_sweptwing_flat.mat (see gridgen/benchmark/sweptwing_flat.m)
+%  Nonlinear N=5 = Fig. 9; needs Opt.anderson=5 (set below).
 
 %% Setup
 clear all; close all; clc
@@ -7,101 +8,59 @@ restoredefaultpath
 rootdir = fullfile(fileparts(mfilename('fullpath')), '..', '..');
 addpath(genpath(fullfile(rootdir, 'src')))
 
-% Base flow: generate first by running gridgen/benchmark/sweptwing_flat.m
 input.folder = fullfile(rootdir, 'input');
 load(fullfile(input.folder, 'DeHNSSo_input.mat'));   % provides StabGrid
 
 % =========================================================================
 %% Spectral content
 % =========================================================================
-%  total modes: (2M+1)(2N+1), including conjugates
-
-Stab.M = 0;                 % number of omega (temporal) modes
-Stab.N = 1;                 % number of beta (spanwise) modes
-% Fig.9 nonlinear: set N=5, Opt.linear='off', Opt.buffer='on' (Opt.anderson=5 below is required)
-Stab.omega_0 = 0;           % fundamental angular frequency (stationary)
-Stab.beta_0  = 2*pi * StabGrid.lref / 7.5e-3;   % fundamental spanwise wavenumber (lambda = 7.5 mm)
+Stab.M       = 0;                               % omega (temporal) modes
+Stab.N       = 5;                               % beta (spanwise) modes
+Stab.omega_0 = 0;                               % stationary
+Stab.beta_0  = 2*pi * StabGrid.lref / 7.5e-3;   % lambda = 7.5 mm
 
 % =========================================================================
 %% Inflow conditions
 % =========================================================================
-
-Stab.IC       = 'ILST';     % 'ILST' (local stability) or 'LOAD' (from file)
-Stab.phaseRef = 'umax';     % 'pwall' (TS) or 'umax' (CFI)
-% Stab.ICfile = fullfile(input.folder, 'StabRes_previous.mat');  % required for LOAD
-
-Opt.linear   = 'on';        % 'on' linear (NLT off, 1 iter) | 'off' nonlinear
-Stab.A0_fund = 3.5e-3/2;    % fundamental disturbance amplitude
+Stab.IC       = 'ILST';      % 'ILST' | 'LOAD' (needs Stab.ICfile)
+Stab.phaseRef = 'umax';      % 'pwall' (TS) | 'umax' (CFI)
+Opt.linear    = 'off';       % 'on' linear (1 iter) | 'off' nonlinear
+Stab.A0_fund  = 3.5e-3/2;    % fundamental amplitude
 
 % =========================================================================
 %% Boundary conditions
 % =========================================================================
-%
-% Wall (y=0): always inhomogeneous Dirichlet.
-%   Stab.bcw(k,ix,j) — wall BC value.  k=1 u, k=2 v, k=3 w.
-%   Default: zero (no-slip).
-%
-% Freestream (y=H): per-component BC type.
-%   Opt.bc_top{k} — type for component k=1 u, k=2 v, k=3 w.
-%     'H_DR'  = homogeneous Dirichlet   (q = 0, default)
-%     'IH_DR' = inhomogeneous Dirichlet (q = bct value, requires Stab.bct)
-%     'H_NM'  = homogeneous Neumann     (dq/dy = 0)
-%   Pressure: no BC at freestream (determined by the equations).
-
-Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};
+Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};   % per component: H_DR | IH_DR | H_NM
 
 % =========================================================================
 %% Buffer — outflow treatment
 % =========================================================================
-%   'on'   = amplitude damping (scales solution -> 0 near outflow)
-%   'para' = parabolisation (removes d2/dx2 in buffer -> no upstream reflections)
-%   'off'  = no buffer
-
-Opt.buffer = 'para';
-Opt.xb     = 85;            % buffer start [% of domain]
+Opt.buffer = 'on';           % 'on' damping | 'para' parabolisation | 'off'
+Opt.xb     = 85;             % buffer start [% of domain]
 
 % =========================================================================
 %% Solver options
 % =========================================================================
-
-Opt.plot        = 'on';     % 'on' | 'off'
-Opt.plot_metric = 'umax';   % 'umax' | 'urms' | 'energy'
-% Opt.Conv = 1e-4;          % final convergence criterion
-% Opt.TH   = 1e-11;         % NLT activation threshold
+Opt.plot        = 'on';      % 'on' | 'off'
+Opt.plot_metric = 'umax';    % 'umax' | 'urms' | 'energy'
 
 % =========================================================================
 %% Performance
 % =========================================================================
-
-% LU mode (Opt.lu_mode):
-%   'full'        — Cache every LU factorisation. Fastest for repeated solves,
-%                   unbounded memory.
-%   'auto'        — LRU cache bounded by Opt.lu_max_cache.
-%   'lapack_band' — LAPACK zgbsv/dgbsv MEX. Fastest single solve.
-%                   No factor cache yet — refactors per call.
-%                   Build once per machine: run src/hns/mexbuild_dgbsv.m.
-%   'none'        — Backslash each time. Reference / debug.
-% See docs/user_guide.md §8 for the picker table.
-Opt.lu_mode = 'full';
-Opt.parfor  = 'off';        % parallel assembly/solve: 'on' | 'off'
-Opt.gpu     = 'off';        % GPU sparse solve: 'on' | 'off'
+Opt.lu_mode = 'full';        % 'full' | 'auto' | 'lapack_band' | 'none' (docs/user_guide.md §8)
+Opt.parfor  = 'off';
+Opt.gpu     = 'off';
 
 % =========================================================================
-%% Nonlinear solver choice
+%% Nonlinear solver
 % =========================================================================
-% 'picard' — Picard with AF ramping + mode activation (default)
-% 'newton' — JFNK with per-mode preconditioner
-
-Opt.solver = 'picard';      % 'picard' (+ Newton fallback) | 'newton'
-Opt.anderson = 5;           % Anderson accel — required for nonlinear (no-op for linear)
-% Opt.newton_tol = 1e-10;
+Opt.solver   = 'picard';     % 'picard' | 'newton'
+Opt.anderson = 5;            % required for nonlinear (no-op for linear)
 
 % =========================================================================
 %% Run
 % =========================================================================
-% Opt.rerun = 'on' reuses LHS from a previous run (skips matrix assembly).
-
-Opt.rerun = 'off';
+Opt.rerun = 'off';           % 'on' reuses LHS from a previous run
 
 tic_total = tic;
 if strcmpi(Opt.rerun, 'on')
@@ -120,8 +79,6 @@ fprintf('========================================\n');
 %% Post-processing
 % =========================================================================
 close all
-
-% Reference for overlay (set ref_file = [] to skip)
 ref_file  = fullfile(rootdir, 'literature', 'StabRes_SweptWing_flat_NPSE.mat');
 ref_label = 'NPSE';
 
