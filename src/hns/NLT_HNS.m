@@ -27,7 +27,13 @@ function [ f ] = NLT_HNS(Grid,RunJ,StabRes,D1,HB)
 [nf,ny,nx] = size(StabRes.u);
 iu = 1i;
 
-nvar = round(size(StabRes.q, 2) / (ny*nx));   % 4 incompressible | 5 compressible
+if isfield(StabRes, 'q') && ~isempty(StabRes.q)
+    nvar = round(size(StabRes.q, 2) / (ny*nx));   % 4 incompressible | 5 compressible
+elseif isfield(StabRes, 'T') && ~isempty(StabRes.T)
+    nvar = 5;
+else
+    nvar = 4;
+end
 f    = zeros(nf, nvar*ny*nx);
 
 % Metric coefficients
