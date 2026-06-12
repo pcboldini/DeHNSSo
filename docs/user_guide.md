@@ -103,6 +103,27 @@ params.Re           = 3.719126161394363e+02;   % Uref·lref/ν_air
 
 Leaving `params.n_eta_new` / `params.n_xi_new` empty keeps the source resolution. Setting them resamples to the requested size.
 
+### Step 1d — Base-flow derivatives (computed or supplied)
+
+`gridgen` computes the physical base-flow derivatives that the stability operator needs and stores them on the grid, so the solver never differentiates the base flow itself:
+
+- First derivatives `∂/∂x`, `∂/∂y` of `U, V, W` (and of `rho, T` for a compressible base flow).
+- Compressible only: second streamwise `∂²/∂x²` (`dxxU/V/W/T`), second wall-normal `∂²/∂y²` (`ddyU/V/W/T`), and mixed `∂²/∂x∂y` (`dxyU`, `dxyV`).
+
+By default these come from finite differences of the (interpolated) base flow. If you have an **analytic** base flow you can instead supply the derivatives directly on the BF struct — gridgen detects them automatically and skips the corresponding FD differentiation. No flag is needed:
+
+```matlab
+BF.dxU = ...;  BF.dyU = ...;   % supply both halves of a pair
+```
+
+Rules:
+
+- Detection is **per field** and **per pair**: supply *both* `dx<f>` and `dy<f>` to replace that field's first-derivative differencing. Supply only one and gridgen warns (`<f>: dx<f> provided without its pair ...`) and recomputes both by FD.
+- Recognised fields: `dxU,dyU, dxV,dyV, dxW,dyW` (incompressible); plus `dxrho,dyrho, dxT,dyT` and the second derivatives `dxxU/V/W/T, ddyU/V/W/T, dxyU,dxyV` (compressible). The single second-derivative fields have no pair, so they are taken as-is when present.
+- gridgen reports what it used: `compute_bf_derivatives: using N provided base-flow derivative field(s)`.
+
+Supplying analytic derivatives avoids the finite-difference noise that interpolated CFD base flows can introduce near the wall (which otherwise inflates the wall shear by `O(N²)`). For a smooth analytic base flow the FD path is already accurate to ~0.1%, so this is mainly useful for noisy or analytically-known base flows.
+
 ### Step 2 — Configure and run
 
 Per-case stability scripts live in `callers/benchmark/` (`blasius.m`, `sweptwing_flat.m`, `sweptwing_hump.m`, `m3j.m`). All four share an identical sectioned layout — only case-specific values differ:
@@ -116,7 +137,7 @@ Per-case stability scripts live in `callers/benchmark/` (`blasius.m`, `sweptwing
 | **Solver options** | `Opt.plot`, `Opt.Conv`, `Opt.TH` |
 | **Performance** | `Opt.lu_mode`, `Opt.parfor`, `Opt.gpu` |
 | **Nonlinear solver choice** | `Opt.solver` (`'picard'`/`'newton'`) |
-| **Run** | `Opt.rerun`, call to `main()` |
+| **Run** | `Opt.rerun`, `Opt.save_output`, call to `main()` |
 | **Post-processing** | `plot_amplitudes`, `plot_stability` |
 
 Run a caller from the MATLAB command window:
@@ -441,6 +462,29 @@ The main output is `StabRes`:
 | `StabRes.p(j,y,i)` | `nf × ny × nx` | Pressure shape function |
 
 Index convention: `y=1` is the freestream (`y=H`), `y=ny` is the wall (`y=0`).
+
+### Saving results to disk
+
+By default a run returns `StabRes` to the workspace but writes nothing to disk. Set `Opt.save_output` to a path to save the final (post-processed) results:
+
+```matlab
+Opt.save_output = fullfile(rootdir, 'output', 'StabRes_blasius.mat');   % [] to skip
+```
+
+This writes `StabRes`, `StabGrid` and `Stab` to that `.mat` after post-processing. The benchmark callers set it by default to `output/StabRes_<case>.mat`; the `output/` folder is created automatically and its `.mat` files are git-ignored (like `input/` and `gridgen/output/`). Every run ends with a completion line:
+
+```text
+=== DeHNSSo finished — output saved to output/StabRes_blasius.mat ===
+```
+
+(or `=== DeHNSSo finished (output not saved; set Opt.save_output to save) ===` when the option is empty).
+
+`Opt.save_output` is distinct from `Opt.save_checkpoint`, which dumps the *pre*-post-process state (full mode set with `.q` intact) for restarting via `Stab.IC='LOAD'`:
+
+| Option | Saved | Contents | Use |
+|---|---|---|---|
+| `Opt.save_output` | after post-process | `StabRes, StabGrid, Stab` | final results for analysis/plotting |
+| `Opt.save_checkpoint` | before post-process | `StabRes, StabGrid, Stab, Mode` (`.q` intact) | restart / amplitude continuation (`IC='LOAD'`) |
 
 ### Figures produced during a run
 

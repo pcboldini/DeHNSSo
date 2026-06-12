@@ -15,6 +15,7 @@ DeHNSSo/
 │       ├── sweptwing_hump.m        — Stationary CFI over a hump on swept BL
 │       └── m3j.m                   — Stationary CFI on M3J curved swept-wing BL
 ├── input/                          — DeHNSSo_input.mat (gridgen → solver handoff, gitignored)
+├── output/                         — Saved StabRes results (Opt.save_output, gitignored)
 ├── literature/                     — Committed reference data (auto-loaded by callers/benchmark/<case>.m via ref_file)
 │   ├── StabRes_Blasius_NPSE.mat        — NPSE for Blasius TS (Fig. 8)
 │   ├── StabRes_Blasius_LPSE.mat        — LPSE for Blasius TS (linear PSE)
@@ -83,12 +84,17 @@ The stability grid, assembled by the gridgen pipeline and stored in the input `.
 | `U, V, W` | `ny × nx` | Base-flow velocity components |
 | `dxU, dxV, dxW` | `ny × nx` | Streamwise derivatives of base flow |
 | `dyU, dyV, dyW` | `ny × nx` | Wall-normal derivatives of base flow |
+| `dxxU/V/W/T, ddyU/V/W/T, dxyU, dxyV` | `ny × nx` | Second `∂²/∂x²`, `∂²/∂y²` and mixed `∂²/∂x∂y` base-flow derivatives (compressible) |
+| `rho, T, dxrho, dyrho, dxT, dyT` | `ny × nx` | Density/temperature and their first derivatives (compressible) |
+| `mu, dmuT, d2muT2` | `ny × nx` | Sutherland viscosity and its `T`-derivatives (compressible) |
 | `dzdy, d2zdy2` | `ny × 1` | Malik mapping derivatives |
 | `Re` | scalar | Reynolds number at inflow |
 | `nx, ny` | scalar | Grid dimensions |
 | `H` | scalar | Domain height |
 
 **Grid convention:** index 1 is the freestream (`y = H`), index `ny` is the wall (`y = 0`). ILST_solver internally flips the arrays (it expects index 1 = wall).
+
+**Base-flow differentiation lives entirely in gridgen.** Every base-flow derivative the LHS assembly and the inflow solvers (`ILST`, `CLST`) need is precomputed by `gridgen/src/compute_bf_derivatives.m` and stored on `StabGrid` — the solver never applies `D1`/`D2` to the base flow. The canonical field list is `gridgen/src/bf_deriv_fields.m`; any of these fields present on the raw base flow are taken as analytic input and skip finite differencing (see User Guide §3, Step 1d). `main.m` copies the required fields into the `BF` struct and errors clearly if a compressible grid predates this (re-run gridgen).
 
 ### Stab
 
@@ -123,6 +129,8 @@ Solver control options.
 | `lu_mode` | `'full'` | LU strategy: `'lapack_band'`, `'full'`, `'auto'`, `'none'` |
 | `lu_max_cache` | 3 | Max cached LU entries for `'auto'` mode |
 | `rerun` | `'off'` | Reuse LHS from previous call |
+| `save_output` | `[]` | Path to save final `StabRes, StabGrid, Stab` after post-process |
+| `save_checkpoint` | `[]` | Path to save pre-postprocess state (`.q` intact) for `IC='LOAD'` |
 | `parfor` | auto | Parallel LHS/solve: `'on'` or `'off'` (auto-detected) |
 | `gpu` | auto | GPU solve via gpuArray: `'on'` or `'off'` (auto-detected) |
 | `linear` | `'off'` | Linear mode: `'on'` (no NLT, 1 iter) or `'off'` |
