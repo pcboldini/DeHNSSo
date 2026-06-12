@@ -11,8 +11,8 @@ This is an extended and refactored version of [DeHNSSo](https://doi.org/10.1016/
 ## Recent updates (June 2026)
 
 - **`Opt.rerun` reuses the LU factorisation cache** — amplitude/forcing sweeps on a fixed base flow now skip both assembly and factorisation (~6× faster reuse). See [docs/user_guide.md](docs/user_guide.md) §9
-- **Analytic base-flow derivatives as gridgen input** — supply the base-flow derivatives (`∂/∂x`, `∂/∂y`, plus second and mixed for compressible) directly on the raw base flow to skip finite differencing; auto-detected per field. All base-flow differentiation now lives in gridgen, with the solver only reading precomputed derivatives. See [docs/user_guide.md](docs/user_guide.md) §3 (Step 1d)
-- **Save run output** — `Opt.save_output` writes the final `StabRes`/`StabGrid`/`Stab` to a git-ignored `output/` folder; each run ends with a completion message. See [docs/user_guide.md](docs/user_guide.md) §10
+- **Analytic base-flow derivatives as gridgen input** — supply them on the base flow to skip finite differencing (auto-detected per field); all base-flow differentiation now lives in gridgen. See [docs/user_guide.md](docs/user_guide.md) §3 (Step 1d)
+- **Save run output** — `Opt.save_output` writes the final results to a git-ignored `output/` folder. See [docs/user_guide.md](docs/user_guide.md) §10
 
 ## Recent updates (May 2026)
 
