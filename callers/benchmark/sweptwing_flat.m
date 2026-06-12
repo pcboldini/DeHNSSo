@@ -56,11 +56,13 @@ Opt.gpu     = 'off';
 % =========================================================================
 Opt.solver   = 'picard';     % 'picard' | 'newton'
 Opt.anderson = 5;            % required for nonlinear (no-op for linear)
+Opt.newton_takeover = 'off';
 
 % =========================================================================
 %% Run
 % =========================================================================
 Opt.rerun = 'off';           % 'on' reuses LHS from a previous run
+Opt.save_output = fullfile(rootdir, 'output', 'StabRes_sweptwing_flat.mat');   % final results ([] to skip)
 
 tic_total = tic;
 if strcmpi(Opt.rerun, 'on')

@@ -13,6 +13,7 @@
 
 # Input/output data files
 input/*.mat
+output/*.mat
 baseflow/output/*
 !baseflow/output/benchmark/
 # large CSV base flows kept gzipped (auto-unpacked by the caller)

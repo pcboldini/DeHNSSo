@@ -100,6 +100,7 @@ Opt.solver = 'picard';      % 'picard' (+ Newton fallback) | 'newton'
 % Opt.rerun = 'on' reuses LHS from a previous run (skips matrix assembly).
 
 Opt.rerun = 'off';
+Opt.save_output = fullfile(rootdir, 'output', 'StabRes_blasius.mat');   % final results ([] to skip)
 
 tic_total = tic;
 if strcmpi(Opt.rerun, 'on')

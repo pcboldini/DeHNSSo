@@ -435,6 +435,16 @@ else
     StabRes = postprocess(StabGrid, Init, Mode, Opt, StabRes);
 end
 
+%% Save output (optional): final post-processed results for later analysis/plotting.
+% Opt.save_output = 'path/to/file.mat' (distinct from Opt.save_checkpoint, which
+% dumps the pre-postprocess state for Stab.IC='LOAD' continuation).
+if isfield(Opt,'save_output') && ~isempty(Opt.save_output)
+    out_path = Opt.save_output;
+    out_dir  = fileparts(out_path);
+    if ~isempty(out_dir) && ~exist(out_dir,'dir'); mkdir(out_dir); end
+    save(out_path, 'StabRes', 'StabGrid', 'Stab');
+end
+
 %% Pack LHS output (for reuse in subsequent runs)
 LHS.MLA1     = MLA1;
 LHS.MLA2     = MLA2;
@@ -447,6 +457,13 @@ if isfield(Opt,'LU_cache') && ~isempty(fieldnames(Opt.LU_cache))
     LHS.LU_cache = Opt.LU_cache;
     if isfield(Opt,'lu_order');       LHS.lu_order       = Opt.lu_order;       end
     if isfield(Opt,'lu_order_label'); LHS.lu_order_label = Opt.lu_order_label; end
+end
+
+%% Completion message
+if isfield(Opt,'save_output') && ~isempty(Opt.save_output)
+    fprintf('\n=== DeHNSSo finished — output saved to %s ===\n', Opt.save_output);
+else
+    fprintf('\n=== DeHNSSo finished (output not saved; set Opt.save_output to save) ===\n');
 end
 
 end

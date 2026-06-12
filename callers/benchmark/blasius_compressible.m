@@ -112,6 +112,7 @@ Opt.solver = 'picard';
 % Opt.rerun = 'on' reuses LHS from a previous run (skips matrix assembly).
 
 Opt.rerun = 'off';
+Opt.save_output = fullfile(rootdir, 'output', 'StabRes_blasius_compressible.mat');   % final results ([] to skip)
 
 tic_total = tic;
 if strcmpi(Opt.rerun, 'on')
