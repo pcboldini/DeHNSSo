@@ -14,7 +14,7 @@ input.format     = 'mat';
 input.structured = true;
 
 %% Resampling parameters
-params.n_eta_new = 60;           % validated config uses 60 × 1200
+params.n_eta_new = 40;           % grid: 40 × 1200
 params.n_xi_new  = 1200;
 params.y_i       = [];           % auto (H/10)
 params.H         = [];           % auto
