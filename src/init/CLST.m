@@ -44,13 +44,13 @@ U    = StabGrid.U(:,i);
 W    = StabGrid.W(:,i);
 Rb   = StabGrid.rho(:,i);
 Tb   = StabGrid.T(:,i);
-dyU  = StabGrid.D1 * U;
-dyW  = StabGrid.D1 * W;
-dyRb = StabGrid.D1 * Rb;
-dyTb = StabGrid.D1 * Tb;
+dyU  = StabGrid.dyU(:,i);
+dyW  = StabGrid.dyW(:,i);
+dyRb = StabGrid.dyrho(:,i);
+dyTb = StabGrid.dyT(:,i);
 
-d2yU  = StabGrid.D2 * U;
-d2yTb = StabGrid.D2 * Tb;
+d2yU  = StabGrid.ddyU(:,i);
+d2yTb = StabGrid.ddyT(:,i);
 
 [mu_b, dmuT, d2muT] = sutherland(Tb, Sstar);
 mu_y = dmuT .* dyTb;

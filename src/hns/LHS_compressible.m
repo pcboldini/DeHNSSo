@@ -353,12 +353,12 @@ Ai(rv,rT) = Ai(rv,rT) + (-MuT*tau_yy/Re*D1f).*bufs_i;
 %    (v,T): -mu_T * [∂_xx V̄ + (4/3)*∂_yy V̄ + (1/3)*∂_xy Ū] / Re
 %    (w,T): -mu_T * [∂_xx W̄ + ∂_yy W̄] / Re
 %    (T,T): -γκ_T/(Re Pr) * [∂_xx T̄ + ∂_yy T̄] - γκ_TT/(Re Pr) * |∇T̄|²
-d2yU_v = D2f * BF.U(:,i);
-d2yV_v = D2f * BF.V(:,i);
-d2yW_v = D2f * BF.W(:,i);
-dxyV_v = D1f * BF.dxV(:,i);
-dxyU_v = D1f * BF.dxU(:,i);
-d2yT_v = D2f * BF.T(:,i);
+d2yU_v = BF.ddyU(:,i);
+d2yV_v = BF.ddyV(:,i);
+d2yW_v = BF.ddyW(:,i);
+dxyV_v = BF.dxyV(:,i);
+dxyU_v = BF.dxyU(:,i);
+d2yT_v = BF.ddyT(:,i);
 d2xU_v = BF.dxxU(:,i);
 d2xV_v = BF.dxxV(:,i);
 d2xW_v = BF.dxxW(:,i);

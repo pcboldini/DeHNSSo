@@ -474,6 +474,12 @@ BF_new.Y         = Y_target;
 BF_new.U         = U_new;
 BF_new.V         = V_new;
 BF_new.W         = W_new;
+for dn = bf_deriv_fields()
+    if isfield(BF, dn{1}) && ~isempty(BF.(dn{1}))
+        Fd = F_U;  Fd.Values = BF.(dn{1})(:);
+        BF_new.(dn{1}) = reshape(Fd(X_target(:), Y_target(:)), n_eta_new, n_xi_new);
+    end
+end
 BF_new.xi1D      = xi1D_new;
 BF_new.eta1D     = eta_cheb;
 BF_new.nx        = n_xi_new;

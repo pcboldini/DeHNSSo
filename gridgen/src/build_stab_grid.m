@@ -182,6 +182,12 @@ if is_compr
     end
 end
 
+for dn = bf_deriv_fields()
+    if isfield(BF, dn{1}) && ~isempty(BF.(dn{1}))
+        Grid.(dn{1}) = BF.(dn{1});
+    end
+end
+
 Grid = compute_bf_derivatives(Grid);
 
 if curvilinear

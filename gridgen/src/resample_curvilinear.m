@@ -27,7 +27,7 @@ function BF_new = resample_curvilinear(BF, params)
 
 %% --- 1. Normalise orientation to [ny × nx], wall at row end --------------
 
-[X, Y, U, V, W, ny_raw, nx_raw] = orient_structured_grid(BF);
+[X, Y, U, V, W, ny_raw, nx_raw, Draw] = orient_structured_grid(BF);
 
 if isfield(params,'rescale') && ~isempty(params.rescale) && params.rescale
     assert(isfield(params,'lref') && ~isempty(params.lref) && ...
@@ -178,6 +178,9 @@ V_mid = zeros(n_eta_new, nx_raw);
 W_mid = zeros(n_eta_new, nx_raw);
 X_mid = zeros(n_eta_new, nx_raw);
 Y_mid = zeros(n_eta_new, nx_raw);
+dnf   = fieldnames(Draw)';
+D_mid = struct();
+for q = dnf; D_mid.(q{1}) = zeros(n_eta_new, nx_raw); end
 
 for j = 1:nx_raw
     eta_col       = d_raw(:, j);                      % 0 at wall → max at top
@@ -189,6 +192,7 @@ for j = 1:nx_raw
     W_mid(:, j) = interp1(eta_asc, W(o, j), eta_q, 'pchip');
     X_mid(:, j) = interp1(eta_asc, X(o, j), eta_q, 'pchip');
     Y_mid(:, j) = interp1(eta_asc, Y(o, j), eta_q, 'pchip');
+    for q = dnf; D_mid.(q{1})(:, j) = interp1(eta_asc, Draw.(q{1})(o, j), eta_q, 'pchip'); end
 end
 
 % Pass 2: ξ direction (per η level), raw → target wall arc-length.
@@ -197,6 +201,8 @@ V_new = zeros(n_eta_new, n_xi_new);
 W_new = zeros(n_eta_new, n_xi_new);
 X_new = zeros(n_eta_new, n_xi_new);
 Y_new = zeros(n_eta_new, n_xi_new);
+D_new = struct();
+for q = dnf; D_new.(q{1}) = zeros(n_eta_new, n_xi_new); end
 
 for i = 1:n_eta_new
     U_new(i, :) = interp1(s_wall, U_mid(i, :), xi_new, 'pchip');
@@ -204,6 +210,7 @@ for i = 1:n_eta_new
     W_new(i, :) = interp1(s_wall, W_mid(i, :), xi_new, 'pchip');
     X_new(i, :) = interp1(s_wall, X_mid(i, :), xi_new, 'pchip');
     Y_new(i, :) = interp1(s_wall, Y_mid(i, :), xi_new, 'pchip');
+    for q = dnf; D_new.(q{1})(i, :) = interp1(s_wall, D_mid.(q{1})(i, :), xi_new, 'pchip'); end
 end
 
 %% --- 8. Optional inflow/outflow station trim ----------------------------
@@ -221,6 +228,7 @@ if n_in + n_out > 0
     W_new    = W_new(:, keep);
     X_new    = X_new(:, keep);
     Y_new    = Y_new(:, keep);
+    for q = dnf; D_new.(q{1}) = D_new.(q{1})(:, keep); end
     n_xi_new = numel(keep);
     fprintf('ξ trimmed (inflow %d, outflow %d): %d stations retained\n', ...
             n_in, n_out, n_xi_new);
@@ -243,6 +251,7 @@ BF_new.Y          = Y_new;
 BF_new.U          = U_new;
 BF_new.V          = V_new;
 BF_new.W          = W_new;
+for q = dnf; BF_new.(q{1}) = D_new.(q{1}); end
 BF_new.xi1D       = xi_new;
 BF_new.eta1D      = eta_cheb;
 BF_new.nx         = n_xi_new;
@@ -256,13 +265,18 @@ fprintf('Curvilinear resample done: %d η × %d ξ  (H=%.4f, y_i=%.4f)\n', ...
 end
 
 
-function [X, Y, U, V, W, ny, nx] = orient_structured_grid(BF)
+function [X, Y, U, V, W, ny, nx, Draw] = orient_structured_grid(BF)
 % Ensure the grid is [ny × nx] with the wall at the last row.
 
 X = BF.X; Y = BF.Y; U = BF.U; V = BF.V; W = BF.W;
+Draw = struct();
+for dn = bf_deriv_fields()
+    if isfield(BF, dn{1}) && ~isempty(BF.(dn{1})); Draw.(dn{1}) = BF.(dn{1}); end
+end
 
 if range(X(1, :)) < range(X(:, 1))
     X = X.'; Y = Y.'; U = U.'; V = V.'; W = W.';
+    for dn = fieldnames(Draw)'; Draw.(dn{1}) = Draw.(dn{1}).'; end
     fprintf('Input transposed so streamwise is dim 2.\n');
 end
 
@@ -273,6 +287,7 @@ vel_top = mean(abs(U(1,   :)) + abs(V(1,   :)) + abs(W(1,   :)));
 vel_bot = mean(abs(U(end, :)) + abs(V(end, :)) + abs(W(end, :)));
 if vel_top < vel_bot
     X = flipud(X); Y = flipud(Y); U = flipud(U); V = flipud(V); W = flipud(W);
+    for dn = fieldnames(Draw)'; Draw.(dn{1}) = flipud(Draw.(dn{1})); end
     fprintf('Grid flipped so wall is at row end (DeHNSSo convention).\n');
 end
 end

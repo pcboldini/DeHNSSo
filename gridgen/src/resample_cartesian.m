@@ -165,6 +165,12 @@ if is_compr
     end
 end
 
+for dn = bf_deriv_fields()
+    if isfield(BF, dn{1}) && ~isempty(BF.(dn{1}))
+        BF_new.(dn{1}) = interp2(x_raw, y_raw, BF.(dn{1}), Xq, Yq, interp_method);
+    end
+end
+
 fprintf('Cartesian resample done: %d × %d → %d × %d (Malik-Cheb η, %s interp)\n', ...
         ny_raw, nx_raw, ny_new, nx_new, interp_method);
 end

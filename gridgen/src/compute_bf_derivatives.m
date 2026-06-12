@@ -66,29 +66,69 @@ else
 end
 is_curvilinear = isfield(Grid, 'xixx') && any(Grid.xixx(:) ~= 0);
 
+n_provided = 0;
 for k = 1:numel(fields)
     fname = fields{k};
     F     = Grid.(fname);
 
-    % Computational-space first derivatives
-    dF_deta = D1_bf * F;
-    dF_dxi  = zeros(Grid.ny, Grid.nx);
-    for j = 1:Grid.ny
-        dF_dxi(j,:) = FD1_uneven(xi, F(j,:)', Grid.FD_xi_order_1)';
+    has_dx  = isfield(Grid, ['dx' fname]) && ~isempty(Grid.(['dx' fname]));
+    has_dy  = isfield(Grid, ['dy' fname]) && ~isempty(Grid.(['dy' fname]));
+    have_d1 = has_dx && has_dy;
+    if xor(has_dx, has_dy)
+        given = 'dx'; if has_dy; given = 'dy'; end
+        warning('compute_bf_derivatives:PartialDeriv', ...
+            'Base-flow field %s: %s%s provided without its pair; both dx%s and dy%s recomputed by FD.', ...
+            fname, given, fname, fname, fname);
     end
-
-    % First derivatives in physical coordinates (Cartesian: identity)
-    Grid.(['dx' fname]) = Grid.xix .* dF_dxi + Grid.etax .* dF_deta;
-    Grid.(['dy' fname]) = Grid.xiy .* dF_dxi + Grid.etay .* dF_deta;
-
-    % Streamwise second derivative ∂²F/∂x² (Cartesian only; consumed by LHS_compressible)
-    if any(strcmp(fname, need_dxx))
-        d2F_dxi2 = zeros(Grid.ny, Grid.nx);
+    if have_d1
+        n_provided = n_provided + 2;
+    else
+        dF_deta = D1_bf * F;
+        dF_dxi  = zeros(Grid.ny, Grid.nx);
         for j = 1:Grid.ny
-            d2F_dxi2(j,:) = FD2_uneven(xi, F(j,:)', FD_xi_order_2)';
+            dF_dxi(j,:) = FD1_uneven(xi, F(j,:)', Grid.FD_xi_order_1)';
         end
-        Grid.(['dxx' fname]) = d2F_dxi2;
+        Grid.(['dx' fname]) = Grid.xix .* dF_dxi + Grid.etax .* dF_deta;
+        Grid.(['dy' fname]) = Grid.xiy .* dF_dxi + Grid.etay .* dF_deta;
     end
+
+    if any(strcmp(fname, need_dxx))
+        if isfield(Grid, ['dxx' fname]) && ~isempty(Grid.(['dxx' fname]))
+            n_provided = n_provided + 1;
+        else
+            d2F_dxi2 = zeros(Grid.ny, Grid.nx);
+            for j = 1:Grid.ny
+                d2F_dxi2(j,:) = FD2_uneven(xi, F(j,:)', FD_xi_order_2)';
+            end
+            Grid.(['dxx' fname]) = d2F_dxi2;
+        end
+    end
+end
+
+% Wall-normal second + mixed base-flow derivatives, needed by the compressible
+% viscous terms. Precomputed here (raw D2/D1) so the solver never differentiates
+% the base flow; read as Grid.ddyU/.../dxyU/dxyV by LHS_compressible and CLST.
+if is_compr
+    for nm = {'U','V','W','T'}
+        f = ['ddy' nm{1}];
+        if isfield(Grid, f) && ~isempty(Grid.(f))
+            n_provided = n_provided + 1;
+        else
+            Grid.(f) = Grid.D2 * Grid.(nm{1});
+        end
+    end
+    for nm = {'U','V'}
+        f = ['dxy' nm{1}];
+        if isfield(Grid, f) && ~isempty(Grid.(f))
+            n_provided = n_provided + 1;
+        else
+            Grid.(f) = Grid.D1 * Grid.(['dx' nm{1}]);
+        end
+    end
+end
+
+if n_provided > 0
+    fprintf('  compute_bf_derivatives: using %d provided base-flow derivative field(s)\n', n_provided);
 end
 
 if is_curvilinear && is_compr
