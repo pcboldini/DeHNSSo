@@ -5,14 +5,15 @@ function [StabRes, StabGrid, LHS] = main(Stab, StabGrid, Opt, LHS)
 %   [StabRes, StabGrid, LHS] = main(Stab, StabGrid, Opt)       % also return LHS
 %   [StabRes, StabGrid, LHS] = main(Stab, StabGrid, Opt, LHS)  % reuse LHS (Opt.rerun='on')
 %
-%   Solves the nonlinear Harmonic Navier-Stokes equations iteratively:
-%   1. Initialise grid, operators, inflow, and boundary conditions
+%   Solves the nonlinear harmonic Navier-Stokes (HNS) equations iteratively:
+%   1. Initialize grid, operators, inflow, and boundary conditions
 %   2. Convergence loop: solve modes, update amplitudes, check convergence
 %   3. Post-process: normalize shape functions, compute wavenumbers
 %
-%   LHS struct fields: MLA1..MLA5, MFD_diff and LU_cache: base operators and
-%   their per-mode factorisations. Pass LHS back in with Opt.rerun='on' to skip
-%   both assembly and factorisation (omega/beta/A0 sweeps on a fixed base flow).
+%   LHS struct fields: MLA1..MLA5, MFD_diff and LU_cache: the base operators
+%   and their per-mode factorizations. Pass LHS back in with Opt.rerun='on' to
+%   skip both assembly and factorization (for omega/beta/A0 sweeps on a fixed
+%   base flow).
 
 %% Input validation
 if ~exist('StabGrid','var') || ~isstruct(StabGrid); StabGrid = struct(); end
@@ -23,9 +24,10 @@ if ~isfield(Opt,'rerun');   Opt.rerun = 'off'; end
 if ~isfield(Opt,'compressible'); Opt.compressible = 'off'; end
 is_compr = strcmpi(Opt.compressible, 'on');
 
-% Crash-safe cleanup of out-of-core block-Thomas factor files: sweep any streamed
-% factors registered during THIS run on any in-MATLAB exit (error, Ctrl-C, normal
-% return). Skipped when LHS is requested (nargout>=3), so a rerun keeps its factor.
+% Safety net for out-of-core block-Thomas factor files: on any exit from this
+% run (error, Ctrl-C, or normal return), delete any streamed factor files that
+% were registered. Skipped when LHS is requested (nargout>=3), so a rerun keeps
+% its factor.
 bt_mark = block_thomas('free', [], 'mark');
 if nargout < 3
     bt_ooc_cleanup = onCleanup(@() block_thomas('free', bt_mark, 'sweep')); %#ok<NASGU>
@@ -70,9 +72,10 @@ else
     fprintf('done (incompressible, 9 fields, Re = %.2f)\n', BF.Re);
 end
 
-%% 1. Initialisation
-% solve_newton runs its own init/inflow (twice, to difference F w.r.t. the
-% inflow amplitude), so it needs the RAW inputs, keep them before init overwrites.
+%% 1. Initialization
+% solve_newton runs its own init/inflow twice (to compute the derivative of F
+% with respect to the inflow amplitude), so it needs the RAW inputs; keep them
+% before init overwrites them.
 StabGrid_raw = StabGrid; Stab_raw = Stab; Opt_raw = Opt;
 
 [StabGrid, Init, Mode, Opt, Stab, StabRes] = init(StabGrid, Opt, Stab);
@@ -84,7 +87,7 @@ print_config(StabGrid, Stab, Opt);
 
 %% 2. Convergence loop
 % Reuse from a previous run (Opt.rerun='on'): restore the assembled blocks and
-% the per-mode LU cache (both A0-independent) to skip assembly + factorisation.
+% the per-mode LU cache (both independent of A0) to skip assembly + factorization.
 MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MLA5 = []; MFD_diff = [];
 if strcmpi(Opt.rerun,'on')
     has_mla = isfield(LHS,'MLA1') && ~isempty(LHS.MLA1);
@@ -110,10 +113,11 @@ if strcmpi(Opt.rerun,'on')
 end
 
 is_linear = isfield(Opt,'linear') && strcmpi(Opt.linear,'on');
-% Opt.solver is either 'picard' or 'newton' (= pseudo-arclength continuation,
-% src/newton/solve_newton.m). There is no fixed-amplitude Newton: a cold-start
-% solve does not converge at the amplitudes this solver targets, which is what the
-% continuation exists for. Validate rather than fall through to Picard silently.
+% Opt.solver must be 'picard' or 'newton'. 'newton' means pseudo-arclength
+% continuation (see src/newton/solve_newton.m). There is no fixed-amplitude
+% Newton solve: a cold start does not converge at the amplitudes this solver
+% targets, which is exactly what the continuation is for. Validate the value
+% here instead of silently falling back to Picard.
 if isfield(Opt,'solver') && ~ismember(lower(Opt.solver), {'picard','newton'})
     error('main:badSolver', ...
         ['Opt.solver must be ''picard'' or ''newton'' (= pseudo-arclength ' ...
@@ -179,10 +183,11 @@ else
     AA_Fhist  = [];
     AA_AF_ref = [];   % AF at which history was recorded — reset on AF change
 
-    % Warm-start (Stab.IC='LOAD'): seed the NLT forcing from the loaded converged
-    % field so the FIRST solve reproduces its saturated amplitude. Without this,
-    % Stab.f = 0 on iter 1 -> a linear solve, and since under-relaxation only kicks
-    % in at k1>0 the loaded field is overwritten, re-ramping the amplitude from A0.
+    % Warm start (Stab.IC='LOAD'): seed the nonlinear-term (NLT) forcing from the
+    % loaded converged field so the FIRST solve reproduces its saturated amplitude.
+    % Without this, Stab.f = 0 on iteration 1, giving a linear solve; and since
+    % under-relaxation only starts once k1>0, the loaded field would then be
+    % overwritten, re-ramping the amplitude up from A0.
     if strcmpi(Stab.IC,'LOAD') && strcmpi(Opt.allmodes,'on')
         [StabRes, Mode, Stab] = update_modes(StabGrid, Bound, Mode, Opt, Stab, StabRes);
     end
@@ -229,7 +234,7 @@ else
                 dF = [AA_Fhist(:, 2:end), f_k_vec]    - [AA_Fhist(:, 1:end)];
                 % Tikhonov-regularized LS: (dFᴴdF + λI)γ = dFᴴ f_k.
                 % λ scales with ||dF||²_F so it's dimensionally consistent
-                % and degrades gracefully to plain Picard when dF is
+                % and falls back to plain Picard when dF is
                 % rank-deficient (parallel residuals near saturation).
                 lambda = 1e-10 * norm(dF, 'fro')^2;
                 gamma  = (dF'*dF + lambda * eye(size(dF,2))) \ (dF' * f_k_vec);
@@ -448,7 +453,7 @@ half = round(Mode.nf/2);
 % StabRes so the user can inspect.
 if is_newton
     % solve_newton already applied postprocess internally (with its own active
-    % Mode); running it again here would double-normalise and re-drop conjugates.
+    % Mode); running it again here would double-normalize and re-drop conjugates.
 elseif any(~isfinite(StabRes.q(:)))
     warning('main:postprocess_skipped', ...
         'Solve diverged (non-finite values in StabRes.q) — skipping postprocess.');
@@ -473,7 +478,7 @@ LHS.MLA3     = MLA3;
 LHS.MLA4     = MLA4;
 LHS.MLA5     = MLA5;
 LHS.MFD_diff = MFD_diff;
-% Carry the LU cache so the next Opt.rerun can skip factorisation (reference, no copy).
+% Carry the LU cache so the next Opt.rerun can skip factorization (reference, no copy).
 if isfield(Opt,'LU_cache') && ~isempty(fieldnames(Opt.LU_cache))
     LHS.LU_cache = Opt.LU_cache;
     if isfield(Opt,'lu_order');       LHS.lu_order       = Opt.lu_order;       end

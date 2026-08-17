@@ -1,11 +1,11 @@
 function [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff] = solve_modes(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff)
-%SOLVE_MODES  Solve the HNS system for all active modes.
+%SOLVE_MODES  Solve the harmonic Navier-Stokes (HNS) system for all active modes.
 %
-%   Opt.lu_mode selects the linear-solver back-end:
-%     'lapack_band'  — banded LU MEX, factor cached per mode (compressible)
+%   Opt.lu_mode selects the linear-solver back-end (LU = LU factorization):
+%     'lapack_band'  — banded LU (compiled MEX routine), factor cached per mode (compressible)
 %     'block_thomas' — dual-Schur block-Thomas (Paredes 2024), compressible only
 %     'full'         — cache every LU factor (fastest reuse, most memory)
-%     'auto'         — LRU cache bounded by Opt.lu_max_cache
+%     'auto'         — least-recently-used (LRU) cache bounded by Opt.lu_max_cache
 %     'seq'          — one factor at a time, discard after solve (low memory)
 %     'none'         — backslash each solve (no caching)
 %   Opt.lu_cache='off' forces the cached back-ends to one-shot factor+solve.
@@ -33,9 +33,10 @@ if Opt.mmry ~= 1
         [MLAMFD, MLA1, MLA2, MLA3, MLA4]       = LHS(BF, Bound, StabGrid, Init, Stab, StabRes, Opt);
         MLA5 = sparse(size(MLA1,1), size(MLA1,2));
     end
-    % Helmholtz-resonator impedance wall BC (+ optional free-slip u' over the mouth).
-    % Applied to MLA1 only, so the (0,0) MFD keeps no-slip while the fluctuations
-    % see the resonator (MFD_diff = MLAMFD - MLA1 restores no-slip for the MFD mode).
+    % Helmholtz-resonator impedance wall boundary condition (BC), plus an optional
+    % free-slip u' over the mouth. Applied to MLA1 only, so the (0,0) mean-flow
+    % distortion (MFD) mode keeps no-slip while the fluctuations see the resonator
+    % (MFD_diff = MLAMFD - MLA1 restores no-slip for the MFD mode).
     if isfield(Opt,'hr') && ~isempty(Opt.hr)
         MLA1 = apply_resonator_wall(MLA1, Opt.hr, BF, StabGrid, is_compr);
     end
@@ -54,12 +55,12 @@ if Opt.mmry ~= 1
     end
 end
 
-%% Phase 2 & 3: Factorise and solve
+%% Phase 2 & 3: Factorize and solve
 nphys  = numel(phys_modes);
 q_out  = zeros(nphys, size(StabRes.q, 2));
 Stab_f = Stab.f;
-% Zero the NLT forcing on all Dirichlet BC rows (single-entry). The
-% f_j(R_j~=0)=0 masks catch only inhomogeneous BCs, so homogeneous wall rows
+% Zero the nonlinear-term (NLT) forcing on all Dirichlet BC rows (single-entry).
+% The f_j(R_j~=0)=0 masks catch only inhomogeneous BCs, so homogeneous wall rows
 % would otherwise inherit forcing (e.g. spurious (0,0) wall transpiration).
 bc_dir     = full(sum(MLA1 ~= 0, 2)) == 1;
 bc_dir_mfd = full(sum((MLA1 + MFD_diff) ~= 0, 2)) == 1;
@@ -74,7 +75,7 @@ Mvec   = Stab.Mvec;
 Nvec   = Stab.Nvec;
 
 if strcmpi(Opt.lu_mode, 'seq')
-    % Sequential mode: factorise one matrix, solve all modes that use it,
+    % Sequential mode: factorize one matrix, solve all modes that use it,
     % discard.  Only one LU in memory at a time — minimal memory footprint.
     unique_keys = {};
     mode_groups = {};
@@ -281,7 +282,7 @@ elseif strcmpi(Opt.lu_mode, 'block_thomas')
     end
     ntot = size(MLA1,1); b = round(ntot / StabGrid.nx);
 
-    % Parallel pre-factorisation (Opt.parfor='on', in-core caching). The block
+    % Parallel pre-factorization (Opt.parfor='on', in-core caching). The block
     % factor is the expensive step (the apply is cheap), so factor every
     % not-yet-cached group CONCURRENTLY here; the serial loop below then finds
     % them cached and only applies. Needs a Threads parpool so MLA1..5 are shared

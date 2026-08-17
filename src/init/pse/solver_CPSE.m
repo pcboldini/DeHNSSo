@@ -1,15 +1,16 @@
 function [prof, alpha0, out] = solver_CPSE(omega, beta, StabGrid, Opt)
-%SOLVER_CPSE  Compressible linear PSE inflow condition (Chang & Malik 1993).
+%SOLVER_CPSE  Compressible linear PSE (parabolized stability equations) inflow condition (Chang & Malik 1993).
 %
 %   [prof, alpha0, out] = solver_CPSE(omega, beta, StabGrid, Opt)
 %
-%   Builds a non-parallel inflow shape function by marching the linear
-%   parabolised stability equations up to the inflow station R0. A self-
-%   similar precursor stretches the inflow plane onto [Rstart, R0], a local
-%   compressible LST eigenmode seeds the march, and a first-order backward
-%   scheme (BDF1) integrates the density-form operator (state [rho;u;v;w;T],
-%   pressure eliminated through the ideal-gas EOS). The Chang & Malik
-%   normalisation provides the auxiliary alpha closure.
+%   Builds a non-parallel inflow shape by marching the linear parabolized
+%   stability equations up to the inflow station R0. A self-similar
+%   precursor first stretches the inflow plane onto [Rstart, R0]; a local
+%   compressible LST (linear stability theory) eigenmode seeds the march,
+%   and a first-order backward scheme (BDF1) integrates the density-form
+%   operator (state [rho;u;v;w;T], with pressure eliminated through the
+%   ideal-gas equation of state). The Chang & Malik normalization supplies
+%   the auxiliary closure for alpha.
 %
 %   Inputs:
 %     omega     — angular frequency of the mode
@@ -260,7 +261,7 @@ G = [G11 G12 G13 G14 G15; G21 G22 G23 G24 G25; G31 G32 G33 G34 G35; G41 G42 G43 
 end
 
 function [A,r] = bcstep(A, r, N)
-%BCSTEP  Marched-step BCs: u,v,w,T = 0 at wall (row N) and freestream (row 1); rho free.
+%BCSTEP  Marched-step boundary conditions (BCs): u,v,w,T = 0 at wall (row N) and freestream (row 1); rho free.
 for blk = 1:4
     for row = [blk*N+1, blk*N+N]
         A(row,:) = 0;  A(row,row) = 1;  r(row) = 0;

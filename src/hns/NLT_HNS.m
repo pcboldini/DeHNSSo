@@ -1,25 +1,28 @@
-function [ f ] = NLT_HNS(Grid,RunJ,StabRes,D1,HB)
-%NLT_HNS  Mode-to-mode nonlinear forcing for the HNS system.
+function [ f ] = NLT_HNS(Grid,RunJ,StabRes,D1,HB,use_parfor)
+if nargin < 6 || isempty(use_parfor); use_parfor = false; end
+%NLT_HNS  Nonlinear-term (NLT) forcing for the harmonic Navier-Stokes (HNS) system.
 %
-%   f = NLT_HNS(Grid, RunJ, StabRes, D1, HB)
+%   f = NLT_HNS(Grid, RunJ, StabRes, D1, HB, use_parfor)
 %
-%   Evaluates the nonlinear forcing that couples the harmonic modes of the
-%   harmonic linearised Navier-Stokes (HNS) solver. For each active mode j the
-%   harmonic-balancing registry HB selects the interacting mode pairs (and, in
-%   the compressible case, triples); their products build the momentum,
+%   The HNS equations are linear in each individual mode, so the effect of mode
+%   interactions is added separately as a forcing term. For each active mode j,
+%   the harmonic-balancing registry HB gives the interacting mode pairs (and,
+%   for compressible runs, triples); their products form the momentum,
 %   continuity and energy forcing. Incompressible runs (nvar=4) force momentum
-%   only. Compressible runs (nvar=5) add the density-weighted convection, the
-%   nonlinear EOS pressure, the rho'-coupling, variable-viscosity and
-%   pressure-dilatation groups, consistent with LHS_compressible (c_v form).
+%   only; compressible runs (nvar=5) also add the density-weighted convection,
+%   the nonlinear equation-of-state (EOS) pressure term, the rho'-coupling
+%   group, variable-viscosity corrections and pressure-dilatation (all in
+%   c_v energy form, consistent with LHS_compressible).
 %
 %   Inputs:
-%     Grid     — grid, metrics and base-flow fields
-%     RunJ     — indices of the active modes
-%     StabRes  — current mode fields (u, v, w, p, rho, T, q)
-%     D1       — wall-normal first-derivative operator
-%     HB       — harmonic-balancing interaction registry (see Hbalancing)
-%   Outputs:
-%     f        — [nf x nvar*ny*nx] nonlinear forcing per mode
+%     Grid        grid, metrics and base-flow fields
+%     RunJ        indices of the active modes
+%     StabRes     current mode fields (u, v, w, p, rho, T, q)
+%     D1          wall-normal first-derivative operator
+%     HB          harmonic-balancing interaction registry (see Hbalancing)
+%     use_parfor  run the mode loop in parallel (default false)
+%   Output:
+%     f           [nf x nvar*ny*nx] nonlinear forcing per mode
 
 %% Find dimensions
 [nf,ny,nx] = size(StabRes.u);
@@ -40,9 +43,8 @@ etax = Grid.etax;
 xiy  = Grid.xiy;
 xix  = Grid.xix;
 
-% ξ-derivatives via sparse non-uniform FD matrix (built once in init.m).
-% On a uniform grid this reduces to classical 4th-order coefficients; on
-% xrefined / curvilinear grids it correctly accounts for variable Δξ.
+% Streamwise (xi) derivative matrix: sparse finite-difference (FD) operator
+% for non-uniform grids, built in init.m.
 D_xi = Grid.D_xi;
 
 %% Calculate derivative fields (batched over modes)
@@ -67,19 +69,23 @@ for j = RunJ
     dwdeta(j,:,:) = D1 * squeeze(StabRes.w(j,:,:));
 end
 
-% Compressible: density / temperature / pressure derivatives for the continuity
-% (-div(rho'u')) and energy (-rho_bar*(u'.grad)T' + Ec*(u'.grad)p') NLT.
+% Compressible workspace: density/temperature derivatives, base-flow fields and
+% the cubic-interaction lookup. Pre-declared as [] so every parfor broadcast is
+% defined on the incompressible (nvar=4) path too, which never reads them
+% (parfor requires each broadcast to be assigned before the loop).
+drdxi = []; drdeta = []; dTdxi = []; dTdeta = [];
+Ec = []; Ubar = []; Vbar = []; Wbar = [];
+bdxU = []; bdyU = []; bdxV = []; bdyV = []; bdxW = []; bdyW = []; bdxT = []; bdyT = [];
+bdzU = []; bdzV = []; bdzW = []; bdzT = [];
+mmv = []; nnv = []; mlo = []; mhi = []; nlo = []; nhi = []; Lkp = [];
 if nvar == 5
     drdxi  = zeros(nf, ny, nx);  drdeta = zeros(nf, ny, nx);
     dTdxi  = zeros(nf, ny, nx);  dTdeta = zeros(nf, ny, nx);
-    dpdxi  = zeros(nf, ny, nx);  dpdeta = zeros(nf, ny, nx);
     for j = RunJ
         drdxi(j,:,:)  = squeeze(StabRes.rho(j,:,:)) * D_xi.';
         drdeta(j,:,:) = D1 * squeeze(StabRes.rho(j,:,:));
         dTdxi(j,:,:)  = squeeze(StabRes.T(j,:,:)) * D_xi.';
         dTdeta(j,:,:) = D1 * squeeze(StabRes.T(j,:,:));
-        dpdxi(j,:,:)  = squeeze(StabRes.p(j,:,:)) * D_xi.';
-        dpdeta(j,:,:) = D1 * squeeze(StabRes.p(j,:,:));
     end
     Ec = (Grid.gamma - 1) * Grid.Ma^2;        % Eckert number = (gamma-1) Ma^2
     % base-flow fields/gradients for the rho'-coupling group -rho'(d_t + Ubar.grad + u'.grad Ubar)
@@ -102,9 +108,27 @@ if nvar == 5
     for kk=1:nf, Lkp(mmv(kk)-mlo+1, nnv(kk)-nlo+1)=kk; end
 end
 
-%% Calculate forcing (local ny x nx accumulation per mode, avoids 3D indexing)
+%% Forcing loop (per mode, local ny x nx accumulation)
 
-for j = RunJ(RunJ >= round(nf/2))
+% Loop-invariant constants so the parfor only broadcasts them.
+Re = Grid.Re;
+% Pr is compressible-only; NaN so a compressible path without it fails loudly.
+if isfield(Grid,'Pr'); RePr = Grid.Re*Grid.Pr; else; RePr = NaN; end
+muT_b=[]; muTT_b=[]; mu_b=[]; lamT_b=[]; lamTT_b=[]; lam_b=[];
+if isfield(Grid,'dmuT')            % base-flow viscosity terms (constant across modes)
+    muT_b = Grid.dmuT;  muTT_b = Grid.d2muT2;  mu_b = Grid.mu;
+    lamT_b = -2/3*muT_b; lamTT_b = -2/3*muTT_b; lam_b = -2/3*mu_b;   % Stokes bulk lambda=-2/3 mu
+end
+
+% Solve the upper half of the spectrum only (the rest follows by conjugate
+% symmetry). Each mode is independent, so the loop runs serial (poolM=0) or
+% parallel (poolM=Inf) with identical results.
+jlist = RunJ(RunJ >= round(nf/2));
+nj    = numel(jlist);
+frows = zeros(nj, nvar*ny*(nx-1));    % one forcing row per solved mode
+poolM = 0; if use_parfor; poolM = Inf; end
+parfor (idx = 1:nj, poolM)
+    j = jlist(idx);
 
     % Find interacting mode pairs from Harmonic Balancing
     [gharray, jkarray] = find(HB(:,:,j));
@@ -114,12 +138,12 @@ for j = RunJ(RunJ >= round(nf/2))
     gharray = gharray(active);
     jkarray = jkarray(active);
 
-    % Local accumulation arrays — avoids squeeze into 3D array each interaction
+    % Local accumulation arrays (avoid indexing a 3D array each interaction)
     xm_j = zeros(ny, nx);
     ym_j = zeros(ny, nx);
     zm_j = zeros(ny, nx);
     cm_j = zeros(ny, nx);          % continuity (rho) NLT: -div(rho' u')
-    em_j = zeros(ny, nx);          % energy (T) NLT: -rho_bar*(u'.grad)T' + Ec*(u'.grad)p'
+    em_j = zeros(ny, nx);          % energy (T) NLT: convection + dilatation + viscous
     xmr_j = zeros(ny, nx);         % momentum rho'-coupling (not rho_bar-weighted)
     ymr_j = zeros(ny, nx);
     zmr_j = zeros(ny, nx);
@@ -160,8 +184,7 @@ for j = RunJ(RunJ >= round(nf/2))
             - v_gh.*dwdxi_jk.*xiy - v_gh.*dwdeta_jk.*etay ...
             - iu*beta .* w_gh.*w_jk;
 
-        % Continuity NLT: -div(rho' u') = -[d/dx(rho_gh u_jk) + d/dy(rho_gh v_jk)
-        % + d/dz(rho_gh w_jk)], product rule with each factor carrying its wavenumber.
+        % Continuity NLT: -div(rho' u'), product rule with each factor's wavenumber.
         if nvar == 5
             rho_gh    = squeeze(StabRes.rho(gh,:,:));
             beta_gh   = StabRes.betavec(gh);
@@ -176,26 +199,19 @@ for j = RunJ(RunJ >= round(nf/2))
                 - ( drho_dy.*v_jk + rho_gh.*dv_jk_dy ) ...
                 - ( iu*beta_gh.*rho_gh.*w_jk + rho_gh.*(iu*beta.*w_jk) );
 
-            % Energy (c_v form, consistent with LHS_compressible): convection
-            % -rho_bar*(u'.grad)T'  + pressure-DILATATION -(gamma-1)(rho T div u)'
-            % [added below where div u'_jk is available]. Was cp/pressure-work +Ec*(u'.grad)p'.
+            % Energy convection -rho_bar*(u'.grad)T' (c_v form; pressure-dilatation added below).
             T_jk = squeeze(StabRes.T(jk,:,:));
             dT_jk_dx = squeeze(dTdxi(jk,:,:)).*xix + squeeze(dTdeta(jk,:,:)).*etax;
             dT_jk_dy = squeeze(dTdxi(jk,:,:)).*xiy + squeeze(dTdeta(jk,:,:)).*etay;
             convT = u_gh.*dT_jk_dx + v_gh.*dT_jk_dy + iu*beta.*w_gh.*T_jk;
             em_j = em_j - Grid.rho.*convT;
 
-            % Nonlinear EOS pressure -grad(rho'T')/(gamma Ma^2) (quadratic): the
-            % reconstructed p' is linear in (rho',T'), so the rho'T' piece is
-            % absent from the density-form momentum gradient. From CNPSE nlt_forcing.
-            % Goes in xmr_j (NOT rho_bar-weighted; xm_j is multiplied by rho_b below).
+            % Nonlinear equation-of-state (EOS) pressure term -grad(rho'T')/(gamma Ma^2).
+            % Goes into xmr_j, which is not rho_bar-weighted (xm_j is weighted by rho_b below).
             ikM2 = 1/(Grid.gamma*Grid.Ma^2);
             xmr_j = xmr_j - ikM2*( drho_dx.*T_jk + rho_gh.*dT_jk_dx );
             ymr_j = ymr_j - ikM2*( drho_dy.*T_jk + rho_gh.*dT_jk_dy );
             zmr_j = zmr_j - ikM2*( iu*beta_gh.*rho_gh.*T_jk + rho_gh.*(iu*beta.*T_jk) );
-
-            % (c_v form: the cp EOS pressure-work +Ec*D(rho'T')/Dt/gM2 is dropped;
-            %  the pressure term is the dilatation added below.)
 
             % rho'-coupling group: -rho'( d_t q' + Ubar.grad q' + u'.grad Qbar ),
             % rho' = rho_gh, d_t -> -i*omega_jk, base d_z = 0.
@@ -213,20 +229,9 @@ for j = RunJ(RunJ >= round(nf/2))
             em_j  = em_j  - rho_gh.*( -iu*omega_jk.*T_jk + Ubar.*dT_jk_dx + Vbar.*dT_jk_dy ...
                           + Wbar.*(iu*beta.*T_jk) + u_jk.*bdxT + v_jk.*bdyT + w_jk.*bdzT );
 
-            % --- variable-mu viscous group (flat-plate 2nd derivatives, as in CNPSE) ---
-            % viscosity perturbation mu'(T)=muT*T_gh; lambda=-2/3 mu (Stokes), k=mu.
-            muT_b = Grid.dmuT;  muTT_b = Grid.d2muT2;  mu_b = Grid.mu;
-            % Stokes bulk viscosity lambda = -2/3 mu (consistent with LHS_compressible).
-            % NB: CNPSE nlt_forcing uses lamm=mum (lambda=mu), inconsistent with its own
-            % Stokes linear operator; a latent CNPSE bug, harmless there (bulk ~O(div u')~O(Ma^2)).
-            lamT_b = -2/3*muT_b; lamTT_b = -2/3*muTT_b; lam_b = -2/3*mu_b;
-            Re = Grid.Re;  RePr = Grid.Re*Grid.Pr;  T_gh = squeeze(StabRes.T(gh,:,:));
-            % jk second physical derivatives via the full curvilinear chain rule, the
-            % same expansion the base flow is differentiated with in compute_bf_derivatives:
-            %   d_xx q = xix^2 q_xixi + 2 xix etax q_xieta + etax^2 q_etaeta + xixx q_xi + etaxx q_eta
-            % and analogously for d_yy, d_xy (first AND second inverse metrics). The
-            % computational parts use D2 (eta-eta), Grid.D_xi2 (xi-xi, 4th-order) and
-            % D1 (eta of q_xi). Reduces to D_xi2 / D2 / D1.D_xi on a Cartesian grid.
+            % Variable-mu viscous group (muT_b/lamT_b pushed above the loop).
+            T_gh = squeeze(StabRes.T(gh,:,:));
+            % Second physical derivatives via the curvilinear chain rule (see phys_d2).
             D2 = Grid.D2;
             if isfield(Grid,'D_xi2') && ~isempty(Grid.D_xi2), D_xi2 = Grid.D_xi2; else, D_xi2 = D_xi*D_xi; end
             mets = struct('xix',xix,'etax',etax,'xiy',xiy,'etay',etay, ...
@@ -244,8 +249,7 @@ for j = RunJ(RunJ >= round(nf/2))
             dTg_x = squeeze(dTdxi(gh,:,:)).*xix + squeeze(dTdeta(gh,:,:)).*etax;
             dTg_y = squeeze(dTdxi(gh,:,:)).*xiy + squeeze(dTdeta(gh,:,:)).*etay;
             divU = du_jk_dx + dv_jk_dy + iu*beta.*w_jk;     % div u'_jk
-            % c_v pressure-dilatation -(gamma-1)(rho T div u)' [quadratic], matching
-            % LHS_compressible; replaces the cp pressure-work removed above.
+            % c_v pressure-dilatation -(gamma-1)(rho T div u)'.
             em_j = em_j - (Grid.gamma-1)*( Grid.rho.*T_gh.*divU ...
                                          + rho_gh.*Grid.T.*divU ...
                                          + rho_gh.*T_jk.*(bdxU+bdyV+bdzW) );
@@ -298,9 +302,9 @@ for j = RunJ(RunJ >= round(nf/2))
         end
     end
 
-    % --- cubic (3-wave) NLT: -rho'_a (u'_b.grad)q'_c (momentum/energy) + cubic
+    % --- cubic (3-wave) nonlinear-term forcing: -rho'_a (u'_b.grad)q'_c + cubic
     % viscous dissipation. Triples (a,b,c) with spectral indices summing to mode j;
-    % skip MFD-coupling triples unless all three are the MFD (matches CNPSE).
+    % all triples are retained (mean-flow distortion, MFD, paired with a wave included).
     if nvar == 5
         mj=mmv(j); nj=nnv(j);
         for a = RunJ
@@ -309,7 +313,6 @@ for j = RunJ(RunJ >= round(nf/2))
             if m3i<mlo||m3i>mhi||n3i<nlo||n3i>nhi, continue; end
             c=Lkp(m3i-mlo+1, n3i-nlo+1);
             if c==0 || ~any(RunJ==c), continue; end
-            % Full physics: cubic MFD<->wave triples retained (no skip).
             rho1=squeeze(StabRes.rho(a,:,:)); T1c=squeeze(StabRes.T(a,:,:));
             bb=StabRes.betavec(b); bc=StabRes.betavec(c);
             u2=squeeze(StabRes.u(b,:,:)); v2=squeeze(StabRes.v(b,:,:)); w2=squeeze(StabRes.w(b,:,:));
@@ -335,34 +338,28 @@ for j = RunJ(RunJ >= round(nf/2))
               + (Grid.gamma*Ec/Re)*muT_b.*T1c.*( du2y.*du3y + 2*du2y.*dv3x + dv2x.*dv3x ) ...
               + (Grid.gamma*Ec/Re)*muT_b.*T1c.*( dw2y.*dw3y + 2*dw2y.*ibv3 + ibv2.*ibv3 ) ...
               + (Grid.gamma*Ec/Re)*muT_b.*T1c.*( dw2x.*dw3x + 2*dw2x.*ibu3 + ibu2.*ibu3 );
-            % c_v cubic pressure-dilatation -(gamma-1) rho'_a T'_c (div u'_b):
-            % replaces the cp cubic pressure-work +Ec*u'.grad(rho'T'/gM2).
+            % c_v cubic pressure-dilatation -(gamma-1) rho'_a T'_c (div u'_b).
             em_j = em_j - (Grid.gamma-1)*rho1.*T3.*( du2x + dv2y + iu*bb.*w2 );
           end
         end
     end
 
-    % Compressible (nvar=5): density-weight the convective momentum forcing,
-    % -rho_bar*(u'.grad)u'. At Ma->0 the base density rho_bar->1 so this reduces
-    % to the incompressible forcing (recovery gate). Continuity (rho) row = cm_j
-    % and energy (T) row = em_j are fully assembled above (quad + cubic).
+    % Compressible: density-weight the convective momentum forcing (-rho_bar*(u'.grad)u')
+    % and add the rho'-coupling xmr_j. At Ma->0 rho_bar->1, recovering the
+    % incompressible forcing. cm_j (continuity) and em_j (energy) are assembled above.
     if nvar == 5
-        rho_b = Grid.rho;                 % base density on the stab grid (ny x nx)
-        mfmode = getenv('INCOMPF');       % momentum-forcing diagnostic
-        mfsc = getenv('MFSCALE'); if isempty(mfsc), mfsc=1; else, mfsc=str2double(mfsc); end
-        if isempty(mfmode)                % default: full compressible (mfsc=1); MFSCALE scales it
-            xm_j = mfsc*(rho_b.*xm_j + xmr_j);  ym_j = mfsc*(rho_b.*ym_j + ymr_j);  zm_j = mfsc*(rho_b.*zm_j + zmr_j);
-        elseif strcmp(mfmode,'rhob')      % rho_bar weight only (no rho'-coupling)
-            xm_j = rho_b.*xm_j;          ym_j = rho_b.*ym_j;          zm_j = rho_b.*zm_j;
-        elseif strcmp(mfmode,'xmr')       % rho'-coupling only (no rho_bar weight)
-            xm_j = xm_j + xmr_j;         ym_j = ym_j + ymr_j;         zm_j = zm_j + zmr_j;
-        end                               % else (INCOMPF=1): plain -(u'.grad)u' incompressible momentum forcing
+        rho_b = Grid.rho;
+        xm_j = rho_b.*xm_j + xmr_j;
+        ym_j = rho_b.*ym_j + ymr_j;
+        zm_j = rho_b.*zm_j + zmr_j;
         block = [xm_j(:,2:nx); ym_j(:,2:nx); zm_j(:,2:nx); cm_j(:,2:nx); em_j(:,2:nx)];
     else
         block = [xm_j(:,2:nx); ym_j(:,2:nx); zm_j(:,2:nx); zeros(ny, nx-1)];
     end
-    f(j, nvar*ny+1:end) = block(:).';
+    frows(idx,:) = block(:).';
 
 end
 
+% Scatter the solved rows back into the full forcing array.
+f(jlist, nvar*ny+1:end) = frows;
 end

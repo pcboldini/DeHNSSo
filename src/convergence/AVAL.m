@@ -1,11 +1,12 @@
 function [Opt,StabRes] = AVAL(Grid,Opt,Mode,StabRes)
-%AVAL  Amplitude value check and inflow amplitude damping.
+%AVAL  Check the peak disturbance amplitude and damp the inflow if it is too large.
 %
 %   [Opt, StabRes] = AVAL(Grid, Opt, Mode, StabRes)
 %
-%   Checks if the maximum perturbation amplitude exceeds Opt.AMAX.
-%   If so, reduces the inflow amplitude by half and resets the solution.
-%   Tracks the number of damping events in Opt.AVAL.
+%   Finds the peak velocity amplitude of the fundamental mode and stores it in
+%   Opt.AVAL. If that peak exceeds the ceiling Opt.AMAX, the amplitude factor
+%   Opt.AF is rescaled so the peak comes back down to Opt.AMAX, and the whole
+%   solution vector is scaled by the new Opt.AF.
 
 %% Reshape the solution vector into the field array phi
     ny_   = Grid.ny;

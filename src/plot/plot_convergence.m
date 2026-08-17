@@ -3,10 +3,11 @@ function plot_convergence(StabGrid, Mode, Stab, Opt)
 %
 %   plot_convergence(StabGrid, Mode, Stab, Opt)
 %
-%   Draws the Picard fixed-point residual per physical mode against iteration
-%   number (figure 3), overlaying the convergence and intermediate thresholds
-%   and markers where the amplitude factor AF changed. When Newton history is
-%   present a second subplot shows the Newton residual per mode.
+%   Plots the Picard fixed-point residual for each physical mode against
+%   iteration number (figure 3), with the convergence and intermediate
+%   thresholds drawn as reference lines and markers showing where the
+%   amplitude factor AF changed. If Newton iteration history is present,
+%   a second subplot shows the Newton residual for each mode.
 %
 %   Inputs:
 %     StabGrid  — grid structure (unused for plotting, kept for interface)

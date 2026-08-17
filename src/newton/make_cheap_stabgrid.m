@@ -1,26 +1,30 @@
 function StabGrid_cheap = make_cheap_stabgrid(StabGrid)
-%MAKE_CHEAP_STABGRID  Build a lower-order copy of StabGrid for the preconditioner.
+%MAKE_CHEAP_STABGRID  Build a lower-order copy of StabGrid for the
+%   preconditioner.
 %
 %   StabGrid_cheap = make_cheap_stabgrid(StabGrid)
 %
-%   Builds a lower-order copy of StabGrid for use as a preconditioner-only
-%   Jacobian (Liu/Brehm cheap-stencil approach).
+%   Builds a lower-order copy of StabGrid, used only to assemble a cheaper
+%   preconditioner Jacobian (the Liu/Brehm cheap-stencil approach).
 %
-%   The residual is computed with the full-order operators (4th-order FD
-%   in eta and xi, from the original StabGrid). The Newton preconditioner
-%   instead uses operators from this cheap-stencil StabGrid:
+%   The residual is still computed with the full-order operators (4th-order
+%   finite differences, FD, in eta and xi, from the original StabGrid). The
+%   Newton preconditioner instead uses operators from this cheap-stencil
+%   StabGrid:
 %     D1, D2  : 2nd-order FD in eta (3-point central, sparser than 4th-order)
 %     D_xi    : 2nd-order central FD in xi (3-point central, sparser than
 %                the 4th-order 5-point Fornberg stencil)
 %
-%   The resulting per-mode LHS matrices have ~half the nnz of the full-order
-%   version, so the per-mode LU factor is correspondingly lighter.
+%   Because the stencils are sparser, the resulting per-mode LHS matrices
+%   have roughly half the nonzero count of the full-order version, so the
+%   per-mode LU factor is correspondingly lighter too.
 %
 %   Reference:
-%     Bi & Liu 2024 (START_LNS), Algorithm 1 (NAS-FGMRES): residual at full
-%     accuracy, Jacobian assembled with cheaper stencils.
+%     Bi & Liu 2024 (START_LNS), Algorithm 1 (NAS-FGMRES): compute the
+%     residual at full accuracy, but assemble the Jacobian with cheaper
+%     stencils.
 %     Haas, Browne, Fasel & Brehm 2020 (JCP): approximate-Jacobian
-%     preconditioner for the time-spectral linearised NS solver.
+%     preconditioner for the time-spectral linearized Navier-Stokes solver.
 
 StabGrid_cheap = StabGrid;
 
@@ -60,9 +64,9 @@ vals = zeros(3*n, 1);
 k = 0;
 for i = 1:n
     if i == 1
-        % 2nd-order forward: -3/2, 2, -1/2 scaled for non-uniform spacing
-        % Use simple forward difference on the leading two stations as a
-        % fall-back; ok for preconditioner-only operator.
+        % 2nd-order forward difference (-3/2, 2, -1/2 scaled for non-uniform
+        % spacing), used at the leading two stations. Fine here since this
+        % operator is only used for the preconditioner, not the residual.
         h1 = x(2) - x(1);
         h2 = x(3) - x(1);
         cols(k+1:k+3) = [1, 2, 3];

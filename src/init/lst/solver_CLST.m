@@ -1,13 +1,14 @@
 function [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha2)
-%SOLVER_CLST  Assemble and solve the compressible LST eigenvalue problem.
+%SOLVER_CLST  Assemble and solve the compressible LST (linear stability theory) eigenvalue problem.
 %
 %   [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha2)
 %
 %   Builds the spatial compressible stability operator at station i in
-%   variables (rho, u, v, w, T) and solves the quadratic EVP
+%   variables (rho, u, v, w, T) and solves the quadratic eigenvalue problem
 %   (AA - alpha*BB - alpha^2*CCxx) q = 0 via polyeig. Matrix assembly is
-%   delegated to CLST_Matrix (one call per grid point); ideal gas EOS,
-%   Sutherland viscosity. The caller (CLST) filters Eval for the physical mode.
+%   delegated to CLST_Matrix (one call per grid point), using the ideal-gas
+%   equation of state (EOS) and Sutherland's viscosity law. The caller
+%   filters Eval to find the physical mode (see EVfilter).
 %
 %   Inputs:
 %     StabGrid    — grid structure (U, W, rho, T and y-derivatives, D-metrics,
@@ -90,7 +91,7 @@ for k = 1:ny
     Vxy(5,:) = Vxy(5,:) * Ec; Vxz(5,:) = Vxz(5,:) * Ec;
     Vyz(5,:) = Vyz(5,:) * Ec;
 
-    % Spatial EVP, quadratic in alpha: (AA - alpha*BB - alpha^2*Vxx) q = 0.
+    % Spatial eigenvalue problem, quadratic in alpha: (AA - alpha*BB - alpha^2*Vxx) q = 0.
     % A1..B2 are the alpha^0 and alpha^1 coefficients; Vxx is the alpha^2 (streamwise
     % 2nd-deriv viscous) coefficient, assembled into CCxx and solved via polyeig below.
     A1 = -zz*omega*Lt + zz*beta*Lz + Lq - beta^2*Vzz;
@@ -124,7 +125,7 @@ BB = BBR1 + BBR2 * Total_Dn;
 % Ordering within each point: [rho, u, v, w, T]
 
 % Freestream: u = v = w = T = 0  ('H_DR') OR d/dy = 0  ('H_NM')
-% Wavenumber BC here is on the wall-normal derivative operator Total_Dn.
+% The Neumann condition acts on the wall-normal derivative operator Total_Dn.
 use_NM_top = strcmpi(bc_top, 'H_NM');
 for m = 2:5
     if use_NM_top
@@ -146,7 +147,7 @@ end
 %  via polyeig(AA,-BB,-CCxx). The alpha^2 (streamwise 2nd-deriv viscous) term is
 %  essential at finite Mach: dropping it under-damps the 2nd Mack mode (Im(alpha)
 %  ~11% low at Ma=4.5). drop_alpha2=true zeroes CCxx to reproduce the old
-%  linear GEP for paper comparison.
+%  linear generalised eigenvalue problem (GEP) used for paper comparison.
 if drop_alpha2
     CCxx = 0*CCxx;
 end
@@ -160,7 +161,7 @@ function [Lt,Lx,Ly,Lz,Lq,Vxx,Vxy,Vyy,Vxz,Vyz,Vzz] = CLST_Matrix(Re, Pr, Ec, ...
     rk, ryk, tk, tyk, tyyk, uk, uyk, uyyk, wk, wyk, ...
     muk, mutk, muttk, muyk, pk, eT, gM2)
 %CLST_MATRIX  5x5 coefficient matrices for one grid point, variables (rho,u,v,w,T).
-%   Ideal gas EOS: p = rho*T/(gamma*Ma^2), e = cv*T.
+%   Ideal-gas equation of state (EOS): p = rho*T/(gamma*Ma^2), e = cv*T.
 %     muyk = mutk*tyk (y-derivative of viscosity); pk = rk*tk/gM2; eT = de/dT = cv.
 
 % EOS derivatives (ideal gas: p = rho*T/gM2)

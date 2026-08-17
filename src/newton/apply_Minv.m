@@ -1,30 +1,30 @@
 function dq_real = apply_Minv(r_real, ctx)
-%APPLY_MINV  Preconditioner apply in real arithmetic.
+%APPLY_MINV  Apply the preconditioner, working in real arithmetic.
 %
 %   dq_real = apply_Minv(r_real, ctx)
 %
-%   Interprets r_real as [real(r_phys); imag(r_phys)], applies a complex
+%   Reads r_real as [real(r_phys); imag(r_phys)], applies a complex
 %   preconditioner, and returns [real(dq_phys); imag(dq_phys)].
 %
-%   Three preconditioner modes are dispatched:
-%     ctx.use_full_precond = true  -> ctx.LU_full (single coupled-Jacobian
-%       sparse LU/ILU, see factor_precond_full.m). Heaviest memory but
-%       strongest convergence.
-%     ctx.use_poly_precond = true  -> polynomial / Neumann-series with
-%       per-mode block LU as D^{-1} and ctx.Jh_poly as N. No coupled
-%       factorisation; memory scales linearly with mesh refinement.
-%       K iterations controlled by ctx.poly_K.
+%   Three preconditioner modes, chosen by ctx flags:
+%     ctx.use_full_precond = true  -> use ctx.LU_full, a single sparse
+%       LU/ILU factor of the full coupled Jacobian (see
+%       factor_precond_full.m). Uses the most memory but converges best.
+%     ctx.use_poly_precond = true  -> polynomial (Neumann-series)
+%       preconditioner: per-mode block LU as D^{-1}, ctx.Jh_poly as N.
+%       Needs no coupled factorization, so memory grows only linearly
+%       with mesh refinement. Number of terms set by ctx.poly_K.
 %     otherwise                     -> per-mode block-diagonal solve via
-%       ctx.LU{k}. Drops all cross-mode coupling; cheapest per apply but
-%       stalls at high A0.
+%       ctx.LU{k}. Ignores all coupling between modes: cheapest per call,
+%       but convergence stalls at high inflow amplitude A0.
 
 nphys = ctx.nphys;
 bsize = ctx.bsize;
 N     = nphys * bsize;
 
-% Real-form coupled ILU acts directly on r_real (no complex decomposition).
-% Captures both holomorphic and antiholomorphic Jacobian parts (diagnostic
-% for the use_full_precond Armijo stall).
+% Real-form coupled ILU factor: acts directly on r_real, no complex
+% decomposition needed. Captures both the holomorphic and antiholomorphic
+% Jacobian parts; used to diagnose the Armijo stall seen with use_full_precond.
 if isfield(ctx, 'use_full_real_precond') && ctx.use_full_real_precond
     s = ctx.LU_full_real;
     dq_real = s.U \ (s.L \ r_real);
@@ -34,14 +34,16 @@ end
 r_complex = r_real(1:N) + 1i * r_real(N+1:2*N);
 
 if isfield(ctx, 'use_full_precond') && ctx.use_full_precond
-    % Coupled-Jacobian (I)LU factor of A only (ignores Ja).
+    % (I)LU factor of the coupled Jacobian's holomorphic part A only
+    % (the antiholomorphic part Ja is ignored here).
     s = ctx.LU_full;
     dq_complex = zeros(N, 1);
     dq_complex(s.q) = s.U \ (s.L \ r_complex(s.p));
 
 elseif isfield(ctx, 'use_poly_precond') && ctx.use_poly_precond
-    % Polynomial / Neumann series:
-    %   J = D - Jh, with D = blkdiag(ML), Jh = NLT-Jacobian cross-mode
+    % Polynomial (Neumann-series) preconditioner:
+    %   J = D - Jh, with D = blkdiag(ML), Jh = the cross-mode part of the
+    %   NLT (nonlinear-terms) Jacobian
     %   J^{-1} v ≈ sum_{k=0}^{K-1} (D^{-1} Jh)^k D^{-1} v
     K  = ctx.poly_K;
     Jh = ctx.Jh_poly;
@@ -56,7 +58,7 @@ elseif isfield(ctx, 'use_poly_precond') && ctx.use_poly_precond
     end
 
 else
-    % Block-Jacobi (per-mode, no cross-mode coupling).
+    % Block-Jacobi: per-mode only, no coupling between modes.
     dq_complex = apply_blockLU(r_complex, ctx);
 end
 
@@ -65,8 +67,8 @@ end
 
 
 function dq_complex = apply_blockLU(r_complex, ctx)
-%APPLY_BLOCKLU  Per-mode block-diagonal solve via cached factors.
-%   Cached factor types (per mode):
+%APPLY_BLOCKLU  Per-mode block-diagonal solve using the cached factors.
+%   Cached factor type (per mode) is one of:
 %     L/U/p/q populated   -> sparse LU / ILU (MATLAB lu/ilu)
 %     decomp non-empty    -> LAPACK banded LU (decomposition(A,'banded'))
 nphys = ctx.nphys;

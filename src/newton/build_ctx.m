@@ -1,15 +1,18 @@
 function ctx = build_ctx(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes)
-%BUILD_CTX  Assemble Newton solver context: LHS, per-mode LU, BC vectors.
+%BUILD_CTX  Assemble the Newton solver context: LHS operators, per-mode
+%   LU factors, and boundary-condition vectors.
 %
 %   ctx = build_ctx(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes)
 %
-%   Assembles the per-mode linear operators (LHS), their block preconditioner
-%   factors, and the inhomogeneous BC vectors into a single context struct
-%   consumed by the Newton-Krylov / pseudo-arclength solver.
+%   Builds the per-mode linear operators (LHS), their block-preconditioner
+%   factors, and the inhomogeneous boundary-condition vectors, and packs
+%   them into a single context struct used by the Newton-Krylov /
+%   pseudo-arclength solver.
 %
-%   Used by solve_newton.m (pseudo-arclength continuation in A0_fund) and by
-%   the build_JNL instrumentation in paper/checks/, which call it directly and
-%   set newton_precond='none' to skip the per-mode block LUs they don't need.
+%   Called by solve_newton.m (pseudo-arclength continuation in A0_fund) and
+%   by the build_JNL instrumentation in paper/checks/, which calls it
+%   directly with newton_precond='none' to skip building the per-mode block
+%   LU factors it does not need.
 
 %% Assemble LHS operators
 is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
@@ -27,8 +30,9 @@ clear MLAMFD
 
 % Cheap-stencil LHS matrices for the preconditioner (Liu/Brehm pattern).
 % When Opt.newton_block_factor='cheap', the per-mode preconditioner is the
-% full LU of a 2nd-order-FD Jacobian (cheap), while the Newton matvec keeps
-% using the full-order operator from MLA1..MLA4 above.
+% full LU of a cheaper 2nd-order finite-difference (FD) Jacobian, while the
+% Newton matvec (matrix-vector product) still uses the full-order operator
+% from MLA1..MLA4 above.
 use_cheap_precond = isfield(Opt,'newton_block_factor') && ...
                     strcmpi(Opt.newton_block_factor, 'cheap') && ~is_compr;
 if is_compr && isfield(Opt,'newton_block_factor') && strcmpi(Opt.newton_block_factor,'cheap')
@@ -72,8 +76,8 @@ ctx.StabRes    = StabRes;
 ctx.Opt        = Opt;
 ctx.Mvec       = Stab.Mvec;
 ctx.Nvec       = Stab.Nvec;
-ctx.dxi        = StabGrid.x(2) - StabGrid.x(1);   % legacy scalar (for display only)
-ctx.D_xi       = StabGrid.D_xi;                    % sparse non-uniform FD matrix
+ctx.dxi        = StabGrid.x(2) - StabGrid.x(1);   % legacy scalar, for display only
+ctx.D_xi       = StabGrid.D_xi;                    % sparse non-uniform FD matrix in xi
 ctx.xix        = StabGrid.xix;
 ctx.etax       = StabGrid.etax;
 ctx.xiy        = StabGrid.xiy;
@@ -92,11 +96,13 @@ key_cache = struct();
 skip_block_lu = isfield(Opt,'newton_precond') ...
                 && ismember(lower(Opt.newton_precond), {'full','full_real','none'});
 
-% Shared block preconditioner: build one exact banded factor for the wave modes
-% + one for the MFD mode and point all modes at them, instead of one factor per
-% mode. The modes differ only by omega*MLA2 (a small perturbation), so a single
-% exact factor preconditions each block well while cutting the factor memory
-% from nphys x to ~2x. ctx.ML{k} stay per-mode (correct operators for the matvec).
+% Shared block preconditioner: instead of one factor per mode, build one exact
+% banded factor for the wave modes and one for the MFD mode, and point every
+% mode at the matching factor. The modes differ only by omega*MLA2 (a small
+% perturbation), so a single exact factor preconditions each block well while
+% cutting the factor memory from nphys x down to about 2x. ctx.ML{k} still
+% holds the correct per-mode operator, used by the matvec (matrix-vector
+% product).
 share_pc = isfield(Opt,'newton_share_precond') && strcmpi(Opt.newton_share_precond,'on') ...
            && ~skip_block_lu;
 
@@ -108,7 +114,7 @@ for k = 1:nphys
     key   = ml_key(omega, beta);
 
     if ~isfield(key_cache, key)
-        % MLA5 = i*beta*d_x cross-viscous block (compressible only; empty otherwise).
+        % MLA5 is the i*beta*d_x cross-viscous block; compressible only, empty otherwise.
         b5 = 0; if is_compr && ~isempty(MLA5); b5 = beta; end
         if omega == 0 && beta == 0
             ML = MLA1 + MFD_diff;

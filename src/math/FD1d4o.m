@@ -3,10 +3,11 @@ function [ DD ] = FD1d4o( D,d )
 %
 %   DD = FD1d4o(D, d)
 %
-%   Differentiates the field D along its rows, assuming uniform spacing d and
-%   that the coordinate ascends as the column index decreases. Central
-%   differences are used in the interior and biased five-point stencils at the
-%   two boundary columns on each side. At least six columns are required.
+%   Differentiates the field D along its rows on a grid with uniform spacing
+%   d, assuming the coordinate ascends as the column index decreases. Central
+%   differences (finite differences, FD) are used in the interior; biased
+%   five-point stencils handle the two boundary columns on each side. At
+%   least six columns are needed for these stencils to fit.
 %
 %   Inputs:
 %     D  — field sampled on a uniform grid (derivative taken along rows)

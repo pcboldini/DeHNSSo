@@ -5,7 +5,8 @@ function print_config(StabGrid, Stab, Opt)
 %
 %   Reports the grid, spectral content, inflow, compressibility, and solver
 %   settings for the run, then estimates the memory required by the LHS
-%   operator and its LU factorisation and warns when that estimate is large.
+%   operator and its LU factorization (the LU decomposition used to solve the
+%   linear system) and warns when that estimate is large.
 %
 %   Inputs:
 %     StabGrid  — stability grid (dimensions, coordinates, flow parameters)

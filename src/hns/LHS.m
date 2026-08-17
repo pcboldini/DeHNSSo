@@ -4,8 +4,9 @@ function [MLAMFD,MLA1,MLA2,MLA3,MLA4] = LHS(BF,Bound,Grid,Init,Stab,StabRes,Opt)
 %   [MLAMFD, MLA1, MLA2, MLA3, MLA4] = LHS(BF, Bound, Grid, Init, Stab, StabRes, Opt)
 %
 %   Constructs the block-pentadiagonal LHS operator from local coefficient
-%   matrices (Ai..Gi) at each streamwise station using 4th-order FD stencils.
-%   Sparse triplets are accumulated in cell arrays (O(n) cost).
+%   matrices (Ai..Gi) at each streamwise station using 4th-order finite-
+%   difference (FD) stencils. Sparse triplets are accumulated in cell
+%   arrays (O(n) cost).
 %
 %   Parallel assembly controlled by Opt.parfor:
 %     true  — parfor over stations i=2:nx (requires Parallel Computing Toolbox)
@@ -175,20 +176,21 @@ xiy  = Grid.xiy(:,i);   etay = Grid.etay(:,i);
 xixx = Grid.xixx(:,i);  xiyy = Grid.xiyy(:,i);
 etaxx= Grid.etaxx(:,i); etayy= Grid.etayy(:,i);
 
-% Buffer
+% Outflow buffer weights for this station
 bufs_i  = Bound.bufs(:,i);
 bufsp_i = Bound.bufsp(:,i);
 bufc_i  = Bound.bufc(i);
 bufp_i  = Bound.bufp(i);
 
-% Reusable: Act = eta advection+viscous, Ect = xi advection+cross-metric
+% Reusable blocks: Act = wall-normal (eta) advection + viscous terms;
+% Ect = streamwise (xi) advection + cross-metric terms
 Act = U.*etax*D1f + V.*etay*D1f ...
     - 1/Re*(etax.^2+etay.^2).*D2f - 1/Re*(etaxx+etayy).*D1f;
 Ect = U.*xix + V.*xiy - 1/Re*(xixx+xiyy).*If ...
     - 1/Re*(2*etax.*xix+2*etay.*xiy).*D1f;
 
 % Coefficient blocks: ML = MLA1 + omega*MLA2 + beta*MLA3 + beta^2*MLA4 (cols u,v,w,p)
-% Ai: MLA1 diagonal (advection + eta-viscous, pressure grad)
+% Ai: MLA1 diagonal (advection + eta-viscous, pressure gradient)
 Ai = [(Act+dxU).*bufs_i    dyU.*bufs_i       Zf    etax.*D1f.*bufs_i
        dxV.*bufs_i         (Act+dyV).*bufs_i  Zf    etay.*D1f.*bufs_i
        dxW.*bufs_i          dyW.*bufs_i        Act.*bufs_i  Zf
@@ -200,7 +202,7 @@ Bi = [-iu*If.*bufs_i  Zf             Zf             Zf
        Zf             Zf            -iu*If.*bufs_i  Zf
        Zf             Zf             Zf             Zf];
 
-% Ci: MLA3 (x beta): i*beta convection + spanwise pressure grad
+% Ci: MLA3 (x beta): i*beta convection + spanwise pressure gradient
 Ci = [iu*W.*bufs_i  Zf           Zf           Zf
        Zf           iu*W.*bufs_i  Zf           Zf
        Zf           Zf           iu*W.*bufs_i  iu*If.*bufs_i
@@ -212,7 +214,7 @@ Di = [If/Re.*bufs_i  Zf           Zf           Zf
        Zf           Zf           If/Re.*bufs_i  Zf
        Zf           Zf           Zf            Zf];
 
-% Ei: MLA1 d/dxi: advection + pressure grad
+% Ei: MLA1 d/dxi: advection + pressure gradient
 Ei = [Ect.*bufs_i   Zf          Zf          If.*xix.*bufs_i
        Zf           Ect.*bufs_i  Zf          If.*xiy.*bufs_i
        Zf           Zf          Ect.*bufs_i  Zf
@@ -293,9 +295,10 @@ blk2(:, cur_off+1:cur_off+bsize) = Bi*bufc_i;
 blk3(:, cur_off+1:cur_off+bsize) = Ci*bufc_i;
 blk4(:, cur_off+1:cur_off+bsize) = Di*bufc_i;
 
-% Apply freestream BCs per component (u, v, w)
+% Apply freestream boundary conditions (BCs) per component (u, v, w)
 %   'H_DR'/'IH_DR' → identity row (Dirichlet);  'H_NM' → D1 row (Neumann: ∂/∂y=0)
-%   'free'         → keep the assembled equation (no imposed BC, as the MFD does for v)
+%   'free'         → keep the assembled equation (no imposed BC, as the mean-flow
+%                    distortion, MFD, does for v)
 for k = 1:3
     if strcmpi(bc_top_type{k}, 'free'); continue; end
     r      = (k-1)*ny + 1;
@@ -312,7 +315,7 @@ for k = 1:3
     end
 end
 
-% Apply wall BCs
+% Apply wall boundary conditions
 blk1MFD(bc_wall,:) = 0;
 blk1(bc_wall,:)    = 0;
 blk2(bc_wall,:)    = 0;

@@ -11,19 +11,19 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://doi.org
 ## Recent updates (August 2026)
 
 - **Compressible Newton solver** — pseudo-arclength continuation in amplitude for the full (u, v, w, ρ, T) path, reaching high-amplitude states Picard cannot. Set `Opt.solver = 'newton'` with `Opt.newton_target`
-- **Block-Thomas direct solver** — Paredes dual-Schur block-pentadiagonal factorisation with out-of-core streaming, the memory-feasible path for large compressible systems (`Opt.lu_mode = 'block_thomas'`)
+- **Block-Thomas direct solver** — Paredes dual-Schur block-pentadiagonal factorization with out-of-core streaming, the memory-feasible path for large compressible systems (`Opt.lu_mode = 'block_thomas'`)
 - **Banded-LU factor caching** — `lapack_band` now caches the banded factor and reuses it across Picard iterations (`Opt.lu_cache`)
 - **PSE inflow** — seed the inflow with a linear-PSE (non-parallel) profile via `Stab.IC = 'PSE'`, or load precomputed modes with `Opt.pse_inflow`
 - **Grid-first wall forcing** — define the actuator or wall-velocity distribution in gridgen (mesh refined around it) and apply it with `add_wall_forcing`; `Stab.IC = 'ZERO'` runs forcing-only cases
 - **Helmholtz-resonator wall BC** — reactive impedance condition `v' − Y·p' = 0` over a resonator mouth (`Opt.hr`), with the streamwise mesh clustered at the neck; validated against Michelis (2023) (`callers/benchmark/resonator.m`)
-- **`gridgen/src` reorganised** — split into role-based subfolders (`io`, `grid`, `resample`, `forcing`, `math`, `util`, `plot`)
-- **`src/` reorganised** — inflow eigen-solvers split into `src/init/lst/` (`solver_ILST`, `solver_CLST`) and `src/init/pse/` (`solver_IPSE`, `solver_CPSE`), with per-mode seeding in `inflow.m`; boundary conditions under `src/boundary/`; direct linear-solver backends under `src/linsolve/` (`lapack_band/`, `block_thomas/`)
-- **Bundled MUMPS 5.3.5** — under `src/external/` for the Newton factorisations
+- **`gridgen/src` reorganized** — split into role-based subfolders (`io`, `grid`, `resample`, `forcing`, `math`, `util`, `plot`)
+- **`src/` reorganized** — inflow eigen-solvers split into `src/init/lst/` (`solver_ILST`, `solver_CLST`) and `src/init/pse/` (`solver_IPSE`, `solver_CPSE`), with per-mode seeding in `inflow.m`; boundary conditions under `src/boundary/`; direct linear-solver backends under `src/linsolve/` (`lapack_band/`, `block_thomas/`)
+- **Bundled MUMPS 5.3.5** — under `src/external/` for the Newton factorizations
 - and more
 
 ## Recent updates (June 2026)
 
-- **`Opt.rerun` reuses the LU factorisation cache** — amplitude/forcing sweeps on a fixed base flow now skip both assembly and factorisation (~6× faster reuse). See [docs/user_guide.md](docs/user_guide.md) §9
+- **`Opt.rerun` reuses the LU factorization cache** — amplitude/forcing sweeps on a fixed base flow now skip both assembly and factorization (~6× faster reuse). See [docs/user_guide.md](docs/user_guide.md) §9
 - **Analytic base-flow derivatives as gridgen input** — supply them on the base flow to skip finite differencing (auto-detected per field); all base-flow differentiation now lives in gridgen. See [docs/user_guide.md](docs/user_guide.md) §3 (Step 1d)
 - **Save run output** — `Opt.save_output` writes the final results to a git-ignored `output/` folder. See [docs/user_guide.md](docs/user_guide.md) §10
 
@@ -58,7 +58,7 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://doi.org
   - `'H_DR'` — homogeneous Dirichlet (q = 0, default)
   - `'IH_DR'` — inhomogeneous Dirichlet (q = value from `Stab.bct`)
   - `'H_NM'` — homogeneous Neumann (dq/dy = 0)
-  - `'free'` — unconstrained: keep the governing equation at `y = H` (no imposed BC), as used with the parabolisation buffer
+  - `'free'` — unconstrained: keep the governing equation at `y = H` (no imposed BC), as used with the parabolization buffer
 - **Wall actuation** — inhomogeneous Dirichlet BC at the wall (blowing/suction, streamwise or spanwise forcing). Define the actuator or an arbitrary wall-normal-velocity distribution in gridgen so the mesh clusters around it, then apply it in the caller with `add_wall_forcing` (amplitude and phase only); multiple actuators stack additively. Sets the underlying wall field `Stab.bcw`
 - **Helmholtz-resonator wall** — reactive impedance BC `v' − Y·p' = 0` imposed over a resonator mouth via `Opt.hr` (`apply_resonator_wall`); models Helmholtz-resonator TS-wave control, with an optional free-slip `u'` over the mouth. The `(0,0)` mean flow keeps no-slip
 - **Freestream forcing** — inhomogeneous Dirichlet BC at `y = H` (acoustic waves, free-stream turbulence) via `Stab.bct`; requires `'IH_DR'` on the forced component
@@ -86,10 +86,10 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://doi.org
 ### Computational efficiency
 - **LHS matrix reuse** — pass the assembled LHS back across calls via `Opt.rerun = 'on'`; avoids full matrix reassembly for parameter sweeps (amplitude, actuation, frequency)
 - **LU mode selection** — `Opt.lu_mode` picks the linear-solver strategy:
-  - `'full'` — cache every LU factorisation (default; fastest reuse, unbounded memory)
+  - `'full'` — cache every LU factorization (default; fastest reuse, unbounded memory)
   - `'auto'` — LRU cache bounded by `Opt.lu_max_cache` (bounded memory)
   - `'lapack_band'` — LAPACK `zgbsv`/`dgbsv` MEX (banded LU with partial pivoting); ~2.8× faster on total wall (3.4× on the factorize-and-solve) than `seq` on the compressible TS benchmark, at half the peak memory, with per-mode factor caching (`Opt.lu_cache`) that further accelerates nonlinear runs. Build once via `src/linsolve/lapack_band/mexbuild_dgbsv.m`
-  - `'block_thomas'` — Paredes dual-Schur block-pentadiagonal factorisation, optionally out-of-core (`Opt.bt_ooc`); the memory-feasible path for large compressible systems
+  - `'block_thomas'` — Paredes dual-Schur block-pentadiagonal factorization, optionally out-of-core (`Opt.bt_ooc`); the memory-feasible path for large compressible systems
   - `'seq'` — one LU per mode group, discard after solve (low memory; required for compressible 5-var on tight RAM)
   - `'none'` — backslash each time (reference / debug)
 - **Parallel assembly and solve** — `Opt.parfor = 'on'` parallelises LHS station assembly and mode solve (auto-detected; requires Parallel Computing Toolbox)
@@ -110,9 +110,9 @@ DeHNSSo/
 ├── literature/                  — Reference data for validation plots (PSE, DNS, LPSE, Zanus/Bertolotti)
 ├── src/                         — Solver source code
 │   ├── main.m                   — Main solver entry point
-│   ├── init/                    — Initialisation; inflow eigen-solvers in lst/ (solver_ILST/CLST) and pse/ (solver_IPSE/CPSE)
+│   ├── init/                    — Initialization; inflow eigen-solvers in lst/ (solver_ILST/CLST) and pse/ (solver_IPSE/CPSE)
 │   ├── boundary/                — Boundary conditions: wall forcing, resonator impedance, buffer setup
-│   ├── hns/                     — Core HNS: LHS, LHS_compressible, RHS, NLT, mode bookkeeping, solve dispatch
+│   ├── hns/                     — Core HNS: LHS, LHS_compressible, RHS, NLT, mode indexing, solve dispatch
 │   ├── linsolve/                — Direct linear-solver backends: lapack_band/ (banded LU MEX), block_thomas/
 │   ├── newton/                  — Newton pseudo-arclength continuation solver
 │   ├── convergence/             — Iteration control, amplitude damping, convergence checks
@@ -120,7 +120,7 @@ DeHNSSo/
 │   ├── io/                      — Post-processing, configuration printing
 │   ├── plot/                    — Intermediate, convergence, and final amplitude plots
 │   ├── math/                    — Finite differences, Chebyshev operators
-│   └── external/                — Bundled MUMPS 5.3.5 (Newton factorisations)
+│   └── external/                — Bundled MUMPS 5.3.5 (Newton factorizations)
 ├── gridgen/                     — Grid generation and base-flow preprocessing
 │   ├── main_gridgen.m           — Pipeline entry point
 │   ├── benchmark/               — Per-case scripts: blasius.m, blasius_compressible.m, sweptwing_flat.m, ...

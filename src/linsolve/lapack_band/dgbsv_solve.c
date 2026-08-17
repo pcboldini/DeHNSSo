@@ -1,14 +1,16 @@
 /* dgbsv_solve.c
  *
- * MEX wrapper for LAPACK *gbsv (banded LU with partial pivoting).
+ * MEX (MATLAB executable, compiled C) wrapper for LAPACK *gbsv: a banded LU
+ * (LU factorization) solve with partial pivoting.
  *   Real  ML -> dgbsv
  *   Complex ML -> zgbsv
  *
  *   x = dgbsv_solve(ML, rhs)         % auto-detect kl, ku
- *   x = dgbsv_solve(ML, rhs, kl, ku) % user-supplied bandwidth
+ *   x = dgbsv_solve(ML, rhs, kl, ku) % user-supplied bandwidth (kl = lower, ku = upper)
  *
  * ML must be a sparse N-by-N double matrix (real or complex).
- * rhs must be a dense N-by-1 vector (real or complex; complex if ML is).
+ * rhs (right-hand side) must be a dense N-by-1 vector (real or complex;
+ * complex if ML is).
  *
  * Compile via src/linsolve/lapack_band/mexbuild_dgbsv.m (-R2018a -lmwlapack).
  */
@@ -76,7 +78,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     mexPrintf("[dgbsv] %s N=%td  KL=%td  KU=%td  LDAB=%td  AB=%.2f GB\n",
               is_cplx ? "ZGBSV(complex)" : "DGBSV(real)",
               (ptrdiff_t)N, KL, KU, LDAB, GB);
-    mexEvalString("drawnow;");  /* flush stdout before the big alloc */
+    mexEvalString("drawnow;");  /* flush stdout before the big allocation below */
 
     /* --- Allocate banded matrix (zeroed) --- */
     double *AB = (double*)mxCalloc(AB_elem, elem_bytes);
@@ -86,8 +88,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     }
 
     /* --- Fill AB ---
-     * Banded format (col-major): AB[KL+KU+i-j, j] = A[i,j], 0-indexed
-     * For complex: AB stored interleaved (re,im,re,im,...) of length 2*LDAB*N doubles.
+     * Banded format (column-major): AB[KL+KU+i-j, j] = A[i,j], 0-indexed.
+     * For complex: AB is stored interleaved (real, imaginary, real, imaginary, ...),
+     * as 2*LDAB*N doubles, where LDAB (leading dimension of the banded array) = 2*KL+KU+1.
      */
     if (is_cplx) {
         /* AB is complex (interleaved). If ML is complex, copy re/im;

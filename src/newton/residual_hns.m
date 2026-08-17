@@ -1,15 +1,18 @@
 function F_real = residual_hns(q_real, ctx)
-%RESIDUAL_HNS  Pure F(q) residual of the nonlinear HNS system (real arithmetic).
+%RESIDUAL_HNS  Residual F(q) of the nonlinear HNS (harmonic Navier-Stokes)
+%   system, in real arithmetic.
 %
 %   F_real = residual_hns(q_real, ctx)
 %
-%   State vector is REAL of length 2*nphys*bsize:
+%   The state vector is REAL, of length 2*nphys*bsize:
 %       q_real = [real(q_phys); imag(q_phys)]
-%   where q_phys stacks the physical modes only. This keeps the JFNK
-%   linearisation well-posed: conjugate modes are filled inside as
-%   conj(q_phys), and NLT depends on both q_phys and conj(q_phys), so the
-%   complex Jacobian is antilinear. Splitting into real/imag parts makes
-%   the operator genuinely linear on q_real, which is what GMRES needs.
+%   where q_phys stacks the physical modes only. Working in real/imag
+%   parts is what makes the Jacobian-free Newton-Krylov (JFNK) linearization
+%   well posed: conjugate modes are reconstructed inside as conj(q_phys),
+%   and the NLT (nonlinear terms) depend on both q_phys and conj(q_phys), so
+%   the complex Jacobian is antilinear, not linear. Splitting into real and
+%   imaginary parts turns the operator into a genuinely linear one on
+%   q_real, which is what GMRES requires.
 
 %% Unpack state
 nphys = ctx.nphys;
@@ -23,7 +26,8 @@ N     = nphys * bsize;
 % Real -> complex physical state
 q_complex = q_real(1:N) + 1i * q_real(N+1:2*N);
 
-% Unpack physical q into full (nf x ny x nx) fields with conjugates
+% Expand the physical-mode-only q into full (nf x ny x nx) fields, filling
+% in the conjugate modes
 nvar = 4; if isfield(ctx,'nvar') && ~isempty(ctx.nvar); nvar = ctx.nvar; end
 tmp.u = zeros(nf, ny, nx);
 tmp.v = zeros(nf, ny, nx);

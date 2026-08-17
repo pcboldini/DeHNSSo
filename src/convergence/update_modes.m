@@ -22,7 +22,8 @@ nx_      = StabGrid.nx;
 is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
 nvar     = 4 + double(is_compr);
 
-%% Extract u,v,w,(p | rho,T) from solution q;  for compressible derive p' from EOS.
+%% Split solution q into u, v, w and either p (incompressible) or rho, T (compressible).
+% For compressible runs, p' is not stored directly and is recovered from the equation of state (EOS).
 for j = Mode.RunJ
     qj = reshape(StabRes.q(j,:), nvar*ny_, nx_);
     StabRes.u(j,:,:) = qj(1:ny_,        :);
@@ -47,8 +48,8 @@ end
 
 %% Determine active modes
 if isfield(Opt,'allmodes') && strcmpi(Opt.allmodes,'on')
-    % 2D cascade (oblique breakdown): the 1D harmonic ladder misses off-axis
-    % modes (2,0)/(0,2)/(2,2); activate the full (m,n) set.
+    % For the 2D cascade (oblique breakdown), activate every (m,n) mode. The
+    % usual 1D harmonic ladder would miss off-axis modes such as (2,0), (0,2), (2,2).
     Mode.Aactive(:) = 1;
     Mode.RunJ = 1:Mode.nf;
 else
@@ -65,8 +66,8 @@ if Opt.Sweep == 1
     nfm = max(nzA) + 1;
     nfl = min(nzA) - 1;
 else
-    % k1 is incremented in check_convergence, which runs AFTER this on each
-    % iteration, so k1 = 0 on the first call: clamp every dalsave column index.
+    % check_convergence increments k1 AFTER this function runs each iteration,
+    % so k1 is still 0 on the first call; clamp so dalsave is never indexed at column 0.
     if Opt.AF >= 1 && max(abs(Opt.dalsave(:,max(Opt.k1,1)))) <= Opt.Conv*Opt.ConvF && ~isnan(Opt.dalsave(max(Mode.RunJ),max(Opt.k1,1)))
         [nzA, ] = find(StabRes.A(:,index));
         nfm = max(nzA) + 1;
@@ -106,9 +107,9 @@ end
 %% Calculate nonlinear terms (skip for linear runs)
 is_linear = isfield(Opt,'linear') && strcmpi(Opt.linear,'on');
 if ~is_linear
-    [Stab.f] = NLT_HNS(StabGrid, Mode.RunJ, StabRes, StabGrid.D1, Stab.HB);
+    [Stab.f] = NLT_HNS(StabGrid, Mode.RunJ, StabRes, StabGrid.D1, Stab.HB, strcmpi(Opt.parfor,'on'));
 
-    % Apply buffer attenuation (vectorised over active modes)
+    % Apply buffer attenuation (vectorized over active modes)
     ib = Bound.ibuff;
     bufcf_vec = repelem(Bound.bufcf(ib:nx_), nvar*ny_);
     idx = (ib-1)*nvar*ny_+1 : nx_*nvar*ny_;

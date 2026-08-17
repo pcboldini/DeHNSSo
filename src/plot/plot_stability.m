@@ -25,7 +25,7 @@ beta_vec  = StabRes.betavec;
 omega_f = min(omega_vec(omega_vec > 0));
 beta_f  = min(beta_vec(beta_vec > 0));
 
-% Skip only MFD; flag modes with invalid alpha for N-factor only
+% Skip only the MFD (mean-flow distortion) mode; flag modes with invalid alpha for N-factor only
 has_valid_alpha = true(1, nf);
 for j = 1:nf
     if any(~isfinite(StabRes.alpha(j, xr))); has_valid_alpha(j) = false; end

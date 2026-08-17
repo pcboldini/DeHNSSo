@@ -1,5 +1,5 @@
 function [Nmat, Mmat, Modevec,Mvec, Nvec] = Mint(M,N)
-%MINT  Set up the mode-interaction bookkeeping for harmonic balancing.
+%MINT  Set up the mode-interaction indexing for harmonic balancing.
 %
 %   [Nmat, Mmat, Modevec, Mvec, Nvec] = Mint(M, N)
 %

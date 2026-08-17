@@ -11,7 +11,7 @@ function plot_amplitudes(StabGrid, StabRes, ref_data, scholten_csv, plot_metric)
 %     .label  — legend prefix (e.g. 'NPSE', 'LPSE', 'DNS')
 %
 %   scholten_csv (optional) — set to true (or a path string) to overlay the
-%   digitised Scholten Fig. 1a data. Pass [] or omit to skip.
+%   digitized Scholten Fig. 1a data. Pass [] or omit to skip.
 %
 %   plot_metric (optional, default 'umax'):
 %     'umax'   — peak |u'|        (StabRes.A directly)
@@ -61,7 +61,7 @@ beta_f  = min(beta_vec(beta_vec > 0));    % fundamental wavenumber
 
 A_all = [];  % collect all plotted amplitudes for auto ylim
 
-% HNS modes (black), selected metric via A_get
+% HNS (harmonic Navier-Stokes) modes, plotted in black using the selected metric via A_get
 mk_count = 0;
 for j = 1:size(StabRes.A, 1)
     if ~any(StabRes.A(j,:)); continue; end
@@ -171,7 +171,8 @@ if nargin >= 4 && ~isempty(scholten_csv)
             T = readmatrix(scholten_path);   % cols: R_00 urms_00 R_10 urms_10 ...
             n_pairs = floor(size(T,2) / 2);
             tags = {'00','10','20','30','40','50'};
-            % Scholten data is u_rms; for 'umax' scale non-MFD by sqrt(2) (MFD/urms/energy as-is)
+            % Scholten data is u_rms; for 'umax' scale non-MFD (mean-flow distortion)
+            % modes by sqrt(2). MFD, urms, and energy metrics are left as-is.
             if strcmpi(plot_metric, 'umax')
                 for kk = 1:n_pairs
                     if strcmp(tags{kk}, '00'); continue; end   % MFD: leave as-is

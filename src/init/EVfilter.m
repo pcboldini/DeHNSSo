@@ -1,13 +1,14 @@
 function [eigenvalue,index] = EVfilter(EV,V,y,omega,beta,delta99,Mach,mode_select)
-%EVFILTER  Select the physical eigenvalue from a spectrum by decay-rate fit.
+%EVFILTER  Pick the physical eigenvalue from the spectrum by its decay rate.
 %
 %   [eigenvalue, index] = EVfilter(EV, V, y, omega, beta, delta99, Mach, mode_select)
 %
-%   Filters an eigenvalue spectrum for the physical mode using an
-%   exponential-decay fit: the disturbance decays as
-%   phi = exp(-i sqrt(alpha_r^2 + beta^2) y), so each eigenfunction is
-%   compared against that slope. Requires the OS mapping to resolve the full
-%   decay (y_max sufficiently high).
+%   The solver returns many candidate eigenvalues, but only one is the
+%   physical mode. Far from the wall the disturbance should decay like
+%   phi = exp(-i sqrt(alpha_r^2 + beta^2) y). This function checks each
+%   eigenfunction against that decay and keeps the closest match. The
+%   wall-normal grid must reach far enough (large y_max) to see the full
+%   decay.
 %
 %   Inputs:
 %     EV          — eigenvalue spectrum (candidate alpha values)

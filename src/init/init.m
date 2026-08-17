@@ -20,10 +20,10 @@ assert(isfield(Grid,'Re') && ~isempty(Grid.Re),      'Grid.Re (Reynolds number) 
 if ~isfield(Opt,'compressible'); Opt.compressible = 'off'; end
 is_compr  = strcmpi(Opt.compressible, 'on');
 nvar      = 4 + double(is_compr);      % (u,v,w,p) | (u,v,w,rho,T)
-n_bc_top  = 3 + double(is_compr);      % BC channels: u,v,w [,T]
+n_bc_top  = 3 + double(is_compr);      % boundary-condition (BC) channels: u,v,w [,T]
 if is_compr && ~isfield(Opt,'bc_wall_thermal'); Opt.bc_wall_thermal = 'isothermal'; end
 
-% Stab: Homogeneous BC's by default
+% Stab: homogeneous BCs by default
 if ~isfield(Stab,'bcx'); Stab.bcx = linspace(Grid.S,Grid.S+Grid.L,10); end
 if ~isfield(Stab,'bcw'); Stab.bcw = zeros(n_bc_top,10,(2*Stab.N+1)*(2*Stab.M+1)); end
 if ~isfield(Stab,'bct'); Stab.bct = zeros(n_bc_top,10,(2*Stab.N+1)*(2*Stab.M+1)); end
@@ -59,7 +59,7 @@ if isfield(Stab,'A0_fund') && ~isfield(Stab,'A0')
 end
 if ~isfield(Stab,'A0');  Stab.A0 = []; end
 
-% % Grid: Straight geometry without streamwise refinement by default
+% Grid: straight geometry without streamwise refinement by default
 if ~isfield(Grid,'ytype'),      Grid.ytype ="malik"; end
 if ~isfield(Grid,'xtype'),      Grid.xtype ="equidistant"; end
 if ~isfield(Grid,'mug'),        Grid.mug = 0; end
@@ -132,7 +132,7 @@ end
 % Define mode counter L and count total number of modes nf
 Mode.L = 1:(2*Stab.N+1)*(2*Stab.M+1); 
 Mode.nf = max(Mode.L); 
-Mode.Aactive = zeros(size(Mode.L));       % Active mode registrer
+Mode.Aactive = zeros(size(Mode.L));       % Active-mode register
 
 %% Initialisation of the matrices
 

@@ -1,12 +1,14 @@
 function [Bound]=setup_boundary(Grid,Opt,Stab)
-%SETUP_BOUNDARY  Set up outflow buffer zone and inhomogeneous boundary conditions.
+%SETUP_BOUNDARY  Set up the outflow buffer zone and inhomogeneous boundary conditions (BCs).
 %
 %   Bound = setup_boundary(Grid, Opt, Stab)
 %
-%   Constructs the buffer region (smooth damping towards the outflow). The
-%   buffer uses a polynomial ramp controlled by Opt.xb (start %) and Opt.kappa.
-%   Also interpolates inhomogeneous wall/freestream BCs (Stab.bcw, Stab.bct)
-%   onto the numerical grid and stores them in Bound.bcw, Bound.bct.
+%   Builds the buffer region near the outflow, where the solution is smoothly
+%   damped or parabolized to prevent reflections. The buffer ramp starts at
+%   Opt.xb (percent of the domain) and steepens with Opt.kappa. Also
+%   interpolates the inhomogeneous wall/freestream BCs (Stab.bcw, Stab.bct)
+%   from wherever they were defined onto the numerical grid and stores the
+%   result in Bound.bcw, Bound.bct.
 %
 %   Output: Bound struct with fields bufc, bufs, bufsp, bufcf, ibuf,
 %           bcw (3 x nx x nf), bct (3 x nx x nf).
@@ -15,10 +17,10 @@ function [Bound]=setup_boundary(Grid,Opt,Stab)
 
 switch lower(Opt.buffer)
 case 'on'
-    % Amplitude damping buffer: scales entire FD block by bufc -> 0
+    % Amplitude-damping buffer: scales the whole finite-difference (FD) block by bufc -> 0
     Bound.ibuf  = round(Opt.xb * Grid.nx / 100);
     Bound.bufc  = ones(1, Grid.nx);
-    Bound.bufp  = ones(1, Grid.nx);   % Fi not modified in 'on' mode
+    Bound.bufp  = ones(1, Grid.nx);   % Fi (streamwise diffusion term) is left unchanged in 'on' mode
     Bound.bufc  = buffer_ramp(Bound.bufc,  Bound.ibuf,  Grid.nx, Opt.kappa);
 
     % NLT forcing buffer
@@ -29,10 +31,11 @@ case 'on'
     fprintf(' Buffer: amplitude damping from %.3g%% to 100%%\n', Opt.xb);
 
 case 'para'
-    % Parabolisation buffer: zero Fi (streamwise diffusion) in the buffer; keeps
-    % advection + wall-normal diffusion (acts like LPSE at outflow, no reflections).
+    % Parabolization buffer: ramps Fi (streamwise diffusion) to zero in the buffer,
+    % keeping advection and wall-normal diffusion. This makes the outflow behave
+    % like a linear parabolized stability equation (LPSE) solve, avoiding reflections.
     Bound.ibuf  = round(Opt.xb * Grid.nx / 100);
-    Bound.bufc  = ones(1, Grid.nx);   % no amplitude damping
+    Bound.bufc  = ones(1, Grid.nx);   % no amplitude damping in this mode
 
     Bound.bufp  = ones(1, Grid.nx);
     Bound.bufp  = buffer_ramp(Bound.bufp,  Bound.ibuf,  Grid.nx, Opt.kappa);
@@ -53,7 +56,7 @@ case 'off'
     fprintf(' Buffer: off\n');
 end
 
-%% Wall masks (no sharp features supported in this release)
+%% Wall masks (this release does not support sharp wall features)
 Bound.bufs  = ones(Grid.ny, Grid.nx);
 Bound.bufsp = ones(Grid.ny, Grid.nx);
 Bound.stepi = 0;
@@ -86,7 +89,7 @@ end
 %% Local helpers
 
 function buf = buffer_ramp(buf, ib, nx, kappa)
-%BUFFER_RAMP  Apply tanh ramp over buf(ib:nx), normalised to 1 at ib.
+%BUFFER_RAMP  Apply a tanh ramp over buf(ib:nx), normalized to 1 at ib.
 i_vec        = ib:nx;
 span         = max(nx - ib, 1);
 buf(i_vec)   = 0.5*(1 + tanh(kappa*(1 - 2*(i_vec - ib)/span)));

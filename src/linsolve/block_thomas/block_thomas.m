@@ -1,15 +1,17 @@
 function varargout = block_thomas(op, varargin)
 %BLOCK_THOMAS  Dual-Schur block-pentadiagonal Thomas solver (Paredes et al. 2024).
 %   Direct solver for the station-major block-pentadiagonal HNS operator ML
-%   (block size b = Nq*Ny; blocks nonzero only for |i-j|<=2 from the 4th-order
-%   streamwise stencil). The domain is split into np partitions separated by
-%   two-station interfaces; each partition is factored by an unpivoted block-
-%   Thomas recursion (dense diagonal blocks inverted with pivoted LAPACK) and
-%   coupled through a Schur complement on the interface. The across-station
-%   recursion is unpivoted but stable because each partition marches only N/np
-%   stations, bounding the parasitic growth of an elliptic operator under a
-%   forward sweep (a single sweep, np=1, is NOT stable). Default np=2 (fewest
-%   partitions); verified exact against the banded LU through nx=1600.
+%   (block size b = Nq*Ny; a block is nonzero only for |i-j|<=2, a consequence
+%   of the 4th-order streamwise stencil). The domain is split into np
+%   partitions separated by two-station interfaces. Each partition is
+%   factored with an unpivoted block-Thomas recursion (the dense diagonal
+%   blocks are themselves inverted with pivoted LAPACK), and the partitions
+%   are coupled through a Schur complement on the interfaces. The
+%   across-station recursion is unpivoted but stays stable because each
+%   partition only marches N/np stations, which bounds the parasitic growth
+%   that an elliptic operator picks up under a forward sweep (a single sweep,
+%   np=1, is NOT stable). Default np=2 (fewest partitions); verified exact
+%   against the banded LU factorization through nx=1600.
 %
 %   Operations (the first argument selects the operation):
 %     x  = block_thomas('solve',  ML, b, rhs, np, oocdir)   one-shot factor+apply+free
@@ -20,10 +22,11 @@ function varargout = block_thomas(op, varargin)
 %     mk = block_thomas('free',   [], 'mark')               registry checkpoint
 %          block_thomas('free',   mk, 'sweep')              delete dirs registered after mk
 %
-%   Pass OOCDIR to stream the factor to disk (out-of-core): only O(few) blocks are
-%   held in RAM (Paredes et al. 2024), so resolutions whose in-core factor exceeds
-%   memory stay reachable. rhs may have multiple columns. The registry lets main()
-%   install an onCleanup that removes a run's streamed files on any in-MATLAB exit.
+%   Pass OOCDIR to stream the factor to disk (out-of-core, OOC): only a few
+%   blocks are ever held in RAM at once (Paredes et al. 2024), so resolutions
+%   whose in-core factor would exceed memory stay reachable. rhs may have
+%   multiple columns. The registry lets main() install a cleanup routine
+%   (onCleanup) that removes a run's streamed files whenever MATLAB exits.
 
 switch lower(op)
     case 'solve';  [varargout{1:nargout}] = bt_solve(varargin{:});
@@ -45,7 +48,7 @@ x = bt_apply(F, rhs);
 bt_free(F);
 end
 
-%% Factor: RHS-independent dual-Schur factor of ML (in-core, or streamed to OOCDIR)
+%% Factor: build a right-hand-side (RHS) independent dual-Schur factor of ML (in-core, or streamed to OOCDIR)
 function F = bt_factor(ML, b, np, oocdir)
 if nargin < 3 || isempty(np); np = 2; end
 if nargin < 4; oocdir = ''; end
@@ -53,7 +56,7 @@ ooc = ~isempty(oocdir);
 if ooc && ~exist(oocdir,'dir'); mkdir(oocdir); end
 n = size(ML,1); N = round(n/b);
 
-% beyond-pentadiagonal (boundary-stencil) stations go into the interface
+% stations whose stencil reaches past the pentadiagonal band (near a boundary) go into the interface
 [r,c] = find(ML); bi = ceil(r/b); bj = ceil(c/b); far = abs(bi-bj) > 2;
 bad = unique([bi(far); bj(far)]);
 istart = 1; iend = N;
@@ -62,7 +65,7 @@ if ~isempty(bad)
     hi = bad(bad >  N/2); if ~isempty(hi); iend  = min(hi) - 1; end
 end
 
-% partition the interior; boundary blocks + seams form the interface
+% partition the interior stations; the boundary blocks plus the seams between partitions form the interface
 label = zeros(N,1);
 Nin = iend - istart + 1; nint = Nin - 2*(np-1); chunk = floor(nint/np); pos = istart;
 for p = 1:np
@@ -118,13 +121,14 @@ function varargout = local_thomas_factor(D, b, Bcols, facfile, wfile)
 %LOCAL_THOMAS_FACTOR  Factor one partition and produce its interface response W.
 %   In-core (3 args): returns [W, part], part = {L_i,U_i,pv_i,Y_i,Z_i}.
 %   Out-of-core (5 args): streams the station factor blocks [L,U,Y,Z] to FACFILE
-%   and W block-by-block to WFILE (pv kept in RAM), holding only O(few) blocks;
-%   returns part = {pv, N, facfile}. Nothing partition-sized is materialized.
+%   and W block-by-block to WFILE (pv kept in RAM), holding only a few blocks in
+%   memory at a time; returns part = {pv, N, facfile}. Nothing the size of a
+%   whole partition is ever materialized in memory.
 stream = nargin >= 4 && ~isempty(facfile);
 n = size(D,1); N = round(n/b); zb = sparse(b,b); nc = size(Bcols,2);
 if stream
     fid = fopen(facfile,'w'); Pc = cell(N,1);
-    wfwd = [facfile '.wf']; fidWf = fopen(wfwd,'w');   % transient forward-W stream
+    wfwd = [facfile '.wf']; fidWf = fopen(wfwd,'w');   % scratch file for the forward W sweep, deleted after use
 else
     Lc = cell(N,1); Uc = cell(N,1); Pc = cell(N,1); Yc = cell(N,1); Zc = cell(N,1);
     Wc = cell(N,1);
@@ -161,8 +165,8 @@ qp1=zeros(b,nc); qp2=zeros(b,nc);
 if stream
     fid   = fopen(facfile,'r'); rec = 8*b*b; bb = b*b;
     fidWf = fopen(wfwd,'r');    recWf = 2*b*nc;
-    fidW  = fopen(wfile,'w');   recW = 2*b*nc;   % W streamed CONTIGUOUS, reverse order
-    for i = N:-1:1                               % record (N-i) holds station i
+    fidW  = fopen(wfile,'w');   recW = 2*b*nc;   % W is written out contiguously, in reverse station order
+    for i = N:-1:1                               % record (N-i) in the file holds station i
         fseek(fid,(i-1)*rec*8,'bof'); v = bt_fread(fid,rec,facfile);
         Yi = reshape(complex(v(4*bb+1:5*bb), v(5*bb+1:6*bb)), b, b);
         Zi = reshape(complex(v(6*bb+1:7*bb), v(7*bb+1:8*bb)), b, b);
@@ -216,9 +220,10 @@ end
 end
 
 function up = local_thomas_apply(part, D, b, rhsp, ooc)
-%LOCAL_THOMAS_APPLY  Particular solution up = D \ rhsp on one partition. K_i,A_i
-%   are recomputed from the (sparse) partition D and a rolling Y_{i-2} buffer, so
-%   only the G_i LU and Y_i,Z_i are needed (read from disk when OOC).
+%LOCAL_THOMAS_APPLY  Compute the particular solution up = D \ rhsp on one partition.
+%   K_i and A_i are recomputed from the sparse partition matrix D and a rolling
+%   Y_{i-2} buffer, so only the G_i LU factors and Y_i, Z_i need to be kept
+%   around (read from disk when OOC).
 n = size(rhsp,1); N = round(n/b); zb = sparse(b,b); nc = size(rhsp,2);
 rm1 = zeros(b,nc); rm2 = zeros(b,nc); rr = cell(N,1);
 blk = @(i,j) D((i-1)*b+(1:b),(j-1)*b+(1:b));
@@ -257,7 +262,7 @@ end
 if ooc; fclose(fid); end
 end
 
-%% Free / out-of-core temp-file registry (see the header for the modes)
+%% Free / out-of-core temporary-file registry (see the header above for what each mode does)
 function out = bt_free(F, mode)
 persistent reg
 if isempty(reg); reg = {}; end
@@ -288,7 +293,7 @@ if isstruct(F) && isfield(F,'ooc') && F.ooc && isfield(F,'oocdir') ...
 end
 end
 
-%% Guarded out-of-core I/O (turn a disk-full truncation into a clear error)
+%% Guarded out-of-core I/O (turns a disk-full truncation into a clear error message)
 function v = bt_fread(fid, n, fname)
 v = fread(fid, n, 'double');
 if numel(v) ~= n

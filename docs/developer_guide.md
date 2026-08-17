@@ -23,14 +23,14 @@ DeHNSSo/
 │   └── StabRes_SweptWing_Hump_AHLNS.mat — AHLNS for swept-wing hump CFI (Fig. 10)
 ├── src/
 │   ├── main.m                      — Main entry point (convergence loop)
-│   ├── init/                       — Initialisation
+│   ├── init/                       — Initialization
 │   │   ├── init.m                  — Defaults, mode numbering, grid setup
 │   │   ├── inflow.m                — Inflow dispatch + per-mode seeding (local fns ilst_inflow/clst_inflow)
 │   │   ├── EVfilter.m              — Physical-mode selection (shared by LST and PSE)
 │   │   ├── lst/                    — Local stability theory eigen-solvers
 │   │   │   ├── solver_ILST.m       — Incompressible Orr-Sommerfeld/Squire eigenproblem (shared with PSE)
 │   │   │   └── solver_CLST.m       — Compressible LST eigenproblem (assembly + polyeig; CLST_Matrix local)
-│   │   └── pse/                    — Parabolised stability equations inflow
+│   │   └── pse/                    — Parabolized stability equations inflow
 │   │       ├── solver_IPSE.m       — Incompressible linear PSE (folds in the PSE marcher; seeded by solver_ILST)
 │   │       └── solver_CPSE.m       — Compressible linear PSE (Chang & Malik)
 │   ├── boundary/                   — Boundary conditions
@@ -59,7 +59,7 @@ DeHNSSo/
 │   │   ├── check_convergence.m     — Convergence criterion, amplitude ramping
 │   │   └── update_modes.m          — Update u/v/w/p, amplitudes, active mode set
 │   ├── postprocess/
-│   │   ├── postprocess.m           — Normalise shape functions, compute wavenumbers
+│   │   ├── postprocess.m           — Normalize shape functions, compute wavenumbers
 │   │   └── ModeToModeNumber.m
 │   ├── plot/
 │   │   ├── plot_amplitudes.m       — Final amplitude vs x (with optional reference)
@@ -141,27 +141,36 @@ Solver control options.
 | `hr` | `[]` | Helmholtz-resonator impedance wall BC over a mouth (struct: `Y`, `mask`, optional `x`/`taper`/`uslip`); `[]` = rigid wall |
 | `buffer` | `'on'` | Buffer zone type |
 | `xb` | 85 | Buffer start (% of domain) |
+| `nltbufxb` | = `xb` | NLT-forcing buffer start (% of domain); begins the nonlinear buffer upstream of the linear buffer `xb` |
+| `kappa` | 6 | Buffer ramp steepness (larger = steeper) |
 | `Conv` | 1e-4 | Convergence criterion |
 | `ConvF` | 100 | Relaxation factor during ramping |
+| `relax` | off | Under-relaxation factor ω∈(0,1) for the Picard step; stabilizes oscillating cases (omit or ≥1 = off) |
+| `anderson` | 0 | Anderson acceleration depth m (0 = off, plain Picard; typical 3–6) |
+| `solver` | `'picard'` | Nonlinear solver: `'picard'` or `'newton'` (pseudo-arclength continuation), chosen up front |
 | `AFg` | 1.1 | Amplitude factor growth rate |
 | `AMAX` | 0.1 | Maximum amplitude factor |
 | `TH` | 1e-11 | NLT activation threshold |
-| `lu_mode` | `'full'` | LU strategy: `'lapack_band'`, `'full'`, `'auto'`, `'none'` |
+| `lu_mode` | `'full'` | LU strategy: `'full'`, `'auto'`, `'seq'`, `'none'`, `'lapack_band'`, `'block_thomas'` (compressible) |
 | `lu_max_cache` | 3 | Max cached LU entries for `'auto'` mode |
 | `rerun` | `'off'` | Reuse LHS from previous call |
 | `save_output` | `[]` | Path to save final `StabRes, StabGrid, Stab` after post-process |
 | `save_checkpoint` | `[]` | Path to save pre-postprocess state (`.q` intact) for `IC='LOAD'` |
 | `parfor` | auto | Parallel LHS/solve: `'on'` or `'off'` (auto-detected) |
 | `linear` | `'off'` | Linear mode: `'on'` (no NLT, 1 iter) or `'off'` |
+| `sym_inflow` | off | Inflow modes built as the 2D symmetry image of a canonical mode (`'on'`, `Wbar=0`) |
+| `alpha_shift` | `[]` | Compressible LST inflow: pick the eigenvalue nearest this α (continuation seed within a physical band) to de-spike a sweep |
+| `drop_alpha2` | false | Compressible LST inflow: `true` zeroes the α² block (CCxx) in the CLST eigenvalue problem to reproduce the old linear GEP; default keeps the full quadratic-in-α operator |
 | `plot` | `'on'` | Intermediate plots: `'on'` or `'off'` |
+| `verbose` | `'on'` | Console progress output: `'on'` or `'off'` |
 | `mmry` | 0 | Internal: 1 = skip LHS assembly (set by rerun) |
 | `AF` | scalar | Current amplitude factor (set internally) |
 | `dal` | vector | Current relative error per mode (set internally) |
-| `LU_cache` | struct | Cached LU factorisations (set internally) |
+| `LU_cache` | struct | Cached LU factorizations (set internally) |
 
 ### Mode
 
-Internal mode bookkeeping (set by `init.m`).
+Internal mode indexing (set by `init.m`).
 
 | Field | Description |
 |---|---|
@@ -222,7 +231,7 @@ callers/benchmark/<case>.m   (blasius / sweptwing_flat / sweptwing_hump / m3j)
 
 ## 4. LHS matrix structure
 
-The LHS is assembled by `LHS.m` for each mode `j`. The matrix encodes the linearised NS equations on the `(ny × nx)` grid, discretised with Chebyshev collocation in `y` and second-order finite differences in `x`. Layout (row block per streamwise station `i`, column block per station):
+The LHS is assembled by `LHS.m` for each mode `j`. The matrix encodes the linearised NS equations on the `(ny × nx)` grid, discretized with Chebyshev collocation in `y` and second-order finite differences in `x`. Layout (row block per streamwise station `i`, column block per station):
 
 - Variables per station: `[u, v, w, p]` each of length `ny` → 4*ny rows/cols per station.
 - Total size: `4*ny*nx × 4*ny*nx`.
@@ -238,7 +247,7 @@ bc_wall    = [ny, 2*ny, 3*ny];    % wall rows (u,v,w at y=0) — per station
 **Freestream BC** (per component via `Opt.bc_top{k}`):
 - `'H_DR'` / `'IH_DR'`: identity rows at `bc_top`. RHS injects `bct` value for `IH_DR`.
 - `'H_NM'`: rows from `D1f(1,:)` (Chebyshev derivative row at freestream, evaluating `d/dy = 0`).
-- `'free'`: no row replacement — the governing equation is kept at `y = H` (as the MFD does for v), used with the parabolisation buffer.
+- `'free'`: no row replacement — the governing equation is kept at `y = H` (as the MFD does for v), used with the parabolization buffer.
 
 **Wall BC:** always Dirichlet (no-slip), except over a resonator mouth when `Opt.hr` is set: `apply_resonator_wall` replaces the wall `v'`-row with the reactive relation `v' − Y·p' = 0` (compressible: on the `rho'`/`T'` columns via the EOS), applied to `MLA1` only so the `(0,0)` MFD keeps no-slip. Set `hr.uslip` for an optional free-slip `u'` (`du'/dy = 0`) over the mouth.
 
@@ -261,19 +270,20 @@ Freestream values are only injected for components where `Opt.bc_top{k} = 'IH_DR
 
 ## 6. LU strategies
 
-`solve_modes.m` dispatches on `Opt.lu_mode`. Two families:
+`solve_modes.m` dispatches on `Opt.lu_mode`. Every mode factors the same per-mode operator `ML(omega_j, beta_j)`; they differ in the factorization used and in how many factors are kept.
 
-**Cache-based** (`'full'`, `'auto'`, `'none'`): MATLAB `decomposition(ML,'lu')` cached in `Opt.LU_cache`, keyed by `(omega_j, beta_j)`. Reused across iterations.
+**Sparse LU** (`'full'`, `'auto'`, `'seq'`, `'none'`): `do_lu` runs MATLAB's sparse `lu` (symrcm reordering on the compressible operator, COLAMD otherwise).
 
-- `'full'`: unbounded cache. Fastest for repeated solves, memory scales with `nf × (4·ny·nx)² / 8`.
-- `'auto'`: LRU cache capped at `Opt.lu_max_cache`. Eviction skips keys still needed this iteration; cache grows past `lu_max_cache` if necessary (one-time warning).
-- `'none'`: no caching. MATLAB's `\` each time. Slowest, minimal memory.
+- `'full'`: cache every factor in `Opt.LU_cache`, keyed by `(omega_j, beta_j)`. Fastest for repeated solves; memory scales with `nf × (4·ny·nx)² / 8`.
+- `'auto'`: LRU cache capped at `Opt.lu_max_cache`. Eviction skips keys still needed this iteration; the cache grows past `lu_max_cache` if every active key is needed (one-time warning).
+- `'seq'`: one factor at a time — factor a key, solve every mode that uses it, then discard. No cache, minimal memory. Optional iterative refinement (`Opt.iterref`) recovers accuracy on the ill-conditioned operator.
+- `'none'`: no reuse, plain `\` each time. Slowest, minimal memory.
 
-**Per-call solvers** (`'lapack_band'`): no caching, one factor per mode-group.
+**Banded LU** (`'lapack_band'`): LAPACK banded factor/solve via MEX (`src/linsolve/lapack_band/`; `dgbsv_factor.c` → `zgbtrf`, `dgbsv_solve_cached.c` → `zgbtrs`). Exploits the block-pentadiagonal structure with Apple Accelerate / OpenBLAS dense-banded BLAS3. Factors once per `(omega_j, beta_j)` and caches the factor (LRU, `Opt.lu_max_cache`), so Picard iterations reuse it. ~3× faster than the sparse path on a single solve. See section 6a.
 
-- `'lapack_band'`: LAPACK `zgbsv`/`dgbsv` via MEX (`src/linsolve/lapack_band/dgbsv_solve.c`). Exploits the block-pentadiagonal structure with Apple Accelerate / OpenBLAS dense-banded BLAS3. ~3× faster than the cache-based path on a single solve; needs ~6-12 GB peak. See section 6a.
+**Block-Thomas** (`'block_thomas'`, compressible only): dual-Schur block-pentadiagonal factorization (Paredes 2024, `src/linsolve/block_thomas/`), partitioned by `Opt.bt_np` (default 2). Factors once per `(omega_j, beta_j)` and caches like the banded path; `Opt.lu_cache='off'` forces a one-shot factor+solve, and `Opt.bt_ooc='on'` streams the factor to disk (out-of-core) for minimal RAM. Errors on the incompressible operator, whose zero-diagonal continuity rows make the unpivoted block factorization silently wrong.
 
-**Rerun:** when `Opt.rerun = 'on'`, the LU cache from the previous run is passed back in via `LHS.LU_cache` (cache-based modes only). If `(omega_j, beta_j)` is unchanged (e.g., amplitude sweep), the factorisation is reused with no cost. If `omega_j` changes (frequency sweep), a new factorisation is computed for that mode. `'lapack_band'` always refactors since it doesn't cache.
+**Rerun:** when `Opt.rerun = 'on'`, the factor cache from the previous run is passed back in via `LHS.LU_cache`. If `(omega_j, beta_j)` is unchanged (e.g. an amplitude sweep) the factor is reused at no cost; if `omega_j` changes (frequency sweep) that mode is refactored. This applies to every caching mode (`'full'`, `'auto'`, `'lapack_band'`, `'block_thomas'`); `'seq'` and `'none'` never cache.
 
 ---
 
@@ -316,7 +326,7 @@ through OpenBLAS/MKL.
 **Factor caching:** each operator is factored once (`dgbsv_factor` -> `*gbtrf`)
 and the banded factor is cached in `Opt.LU_cache`, then reused across Picard
 iterations (`dgbsv_solve_cached` -> `*gbtrs`), so a nonlinear run pays the
-`O(N*KL*KU)` factorisation only once per mode. The bands are large, so the cache
+`O(N*KL*KU)` factorization only once per mode. The bands are large, so the cache
 is capped by `Opt.lu_max_cache` with LRU eviction (keys still needed by the
 current iteration are never evicted). Set `Opt.lu_cache = 'off'` (or
 `Opt.lu_max_cache <= 0`) for a one-shot factor+solve that keeps only one band
@@ -331,13 +341,13 @@ resident, at the cost of re-factoring on every solve.
 eigenfunction. `solver_ILST` is shared with the incompressible PSE inflow
 (`solver_IPSE`, which folds in the PSE marcher); the compressible path is
 `clst_inflow` → `solver_CLST.m`. The
-eigen-solvers live in `init/lst/`; mode selection, normalisation, and storage
+eigen-solvers live in `init/lst/`; mode selection, normalization, and storage
 into `StabRes` stay in `inflow.m`.
 
 **Key details:**
 - `solver_ILST` solves the quadratic (streamwise-viscous `alpha^2` retained) Orr-Sommerfeld/Squire problem; it rebuilds the Malik grid from `StabGrid.H`/`y_i` and returns the eigenfunction on `StabGrid.y`.
 - The eigenvalue is filtered by `EVfilter.m` based on the physical growth rate and spatial shape.
-- The eigenfunction is normalised so that `max(|u|) = 1` (using spline interpolation for accuracy).
+- The eigenfunction is normalized so that `max(|u|) = 1` (using spline interpolation for accuracy).
 - The phase is then set using `Stab.phaseRef`:
   - `'pwall'`: phase of wall pressure `p(end)` is zeroed.
   - `'umax'`: phase at the `u`-maximum is zeroed.
@@ -354,7 +364,7 @@ still governs the freestream BC of the HNS march itself.
 To add a method beyond the built-in `'ILST'`/`'CLST'`/`'PSE'`:
 
 1. Add the eigen-solver as a new file in `src/init/lst/` (or `src/init/pse/`) that returns the spectrum and eigenfunctions.
-2. Add an `elseif Stab.IC=="..."` branch in `inflow.m` (or a local seeding function like `ilst_inflow`) that calls it, selects the mode via `EVfilter`, and normalises by `max|u|`.
+2. Add an `elseif Stab.IC=="..."` branch in `inflow.m` (or a local seeding function like `ilst_inflow`) that calls it, selects the mode via `EVfilter`, and normalizes by `max|u|`.
 3. Populate `StabRes.phi(j,:,1)`, `StabRes.u/v/w/p(j,:,1)` at inflow and append active mode indices to `nonzeromodesic`.
 
 ---
@@ -366,9 +376,9 @@ The heritage version is the published DeHNSSo monolithic function (Westerbeek et
 | Feature | Heritage | v1.2 |
 |---|---|---|
 | Code structure | Single 900-line function | Modular: ~15 focused files |
-| LHS assembly | 6 redundant 14-line BC loops | Vectorised index vectors, no duplication |
+| LHS assembly | 6 redundant 14-line BC loops | Vectorized index vectors, no duplication |
 | LHS reuse | None | `Opt.rerun`: pass LHS across calls |
-| LU cache | Pre-factorised `dML` passed in | `Opt.LU_cache` keyed by `(omega,beta)` |
+| LU cache | Pre-factorized `dML` passed in | `Opt.LU_cache` keyed by `(omega,beta)` |
 | Inhomogeneous BCs | Not supported | `Stab.bcw`, `Stab.bct` interpolated and injected in RHS |
 | Freestream BC type | Dirichlet only | `Opt.bc_top`: per-component `{'H_DR','IH_DR','H_NM','free'}` |
 | ILST phase reference | Fixed (wall pressure) | `Stab.phaseRef`: `'pwall'` or `'umax'` |

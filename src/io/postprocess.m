@@ -1,36 +1,38 @@
 function StabRes = postprocess(StabGrid, Init, Mode, Opt, StabRes)
-%POSTPROCESS  Normalise shape functions, recover alpha, drop conjugate modes.
+%POSTPROCESS  Normalize shape functions, recover alpha, drop conjugate modes.
 %
 %   StabRes = postprocess(StabGrid, Init, Mode, Opt, StabRes)
 %
-%   Recovers the physical streamwise derivative of each mode by the chain
-%   rule, normalises the shape functions by max(|u|), extracts the streamwise
-%   wavenumber alpha a posteriori, evaluates the disturbance energy per mode,
-%   and removes the stored complex conjugates.
+%   Recovers the physical streamwise derivative of each mode via the chain
+%   rule, normalizes the shape functions by max(|u|), extracts the streamwise
+%   wavenumber alpha a posteriori (i.e., after the solve, from the computed
+%   shape), evaluates the disturbance energy per mode, and removes the stored
+%   complex conjugates.
 %
 %   Inputs:
 %     StabGrid  — stability grid (metrics, base flow, D1, coordinates)
-%     Init      — initialisation data (Init.iu is the imaginary unit)
-%     Mode      — mode bookkeeping (RunJ, nf)
+%     Init      — initialization data (Init.iu is the imaginary unit)
+%     Mode      — mode indexing (RunJ, nf)
 %     Opt       — run options (Opt.Sweep)
 %     StabRes   — stability results (updated in place)
 %   Outputs:
-%     StabRes   — normalised shape functions, alpha, energy, conjugates removed
+%     StabRes   — normalized shape functions, alpha, energy, conjugates removed
 
 iu = Init.iu;
 
-%% Physical du/dx = xix*du_dxi + etax*du_deta  (D_xi: 4th-order Fornberg FD; D1: spectral eta)
+%% Physical streamwise derivative via the chain rule: du/dx = xix*du_dxi + etax*du_deta
+% D_xi is the 4th-order Fornberg finite-difference matrix in xi; D1 is the spectral derivative matrix in eta.
 D_xi = fd1_matrix_nonuniform(StabGrid.x(:));
 for j = Mode.RunJ
     u_j     = squeeze(StabRes.u(j,:,:));          % [ny x nx]
-    du_dxi  = u_j * D_xi.';                       % derivative along rows (xi)
+    du_dxi  = u_j * D_xi.';                       % streamwise (xi) derivative
     du_deta = StabGrid.D1 * u_j;                  % spectral eta-derivative
     dux(j,:,:) = StabGrid.xix .* du_dxi + StabGrid.etax .* du_deta;
 end
 
-%% Normalise shape functions and compute amplitudes
-% Interpolate all stations at once with matrix interp1 (one spline per mode,
-% instead of 2*nx scalar spline calls per mode).
+%% Normalize shape functions and compute amplitudes
+% Interpolate all stations in one matrix call to interp1 (one spline per mode)
+% instead of looping over 2*nx individual scalar spline calls per mode.
 yinteg = linspace(0, max(StabGrid.eta1D), 4000);
 
 for j = Mode.RunJ
@@ -42,9 +44,10 @@ for j = Mode.RunJ
     absU_fine   = abs(U_fine);
     [~, k_all]  = max(absU_fine, [], 1);              % 1 x nx
     n_fine      = size(U_fine, 1);
-    k_all       = max(2, min(n_fine-1, k_all));       % keep k±1 in range
+    k_all       = max(2, min(n_fine-1, k_all));       % keep k-1 and k+1 inside the array bounds
 
-    % Quadratic sub-index peak refinement (parabola over k-1,k,k+1) -> smooth alpha_i
+    % Refine the peak position with a quadratic fit through k-1, k, k+1, so
+    % alpha_i varies smoothly between grid points instead of jumping in integer steps.
     jj   = 1:StabGrid.nx;
     idxm = sub2ind(size(absU_fine), k_all-1, jj);
     idx0 = sub2ind(size(absU_fine), k_all,   jj);
@@ -52,7 +55,7 @@ for j = Mode.RunJ
     um = absU_fine(idxm);  u0 = absU_fine(idx0);  up = absU_fine(idxp);
     denom = um - 2*u0 + up;
     denom(abs(denom) < eps) = eps;                    % avoid div-by-zero on flat peaks
-    delta = 0.5 * (um - up) ./ denom;                 % ∈ [-1, 1] for well-behaved peaks
+    delta = 0.5 * (um - up) ./ denom;                 % stays in [-1, 1] for well-behaved peaks
     delta = max(-1, min(1, delta));
     k_cont = k_all + delta;                           % continuous peak row
 
@@ -63,13 +66,14 @@ for j = Mode.RunJ
     umax_vec  = (1-frac) .* U_fine(idxf)  + frac .* U_fine(idxc);
     dumax_vec = (1-frac) .* DUX_fine(idxf) + frac .* DUX_fine(idxc);
 
-    % Alpha a posteriori (vectorised); guard zero-disturbance stations (umax=0) against 0/0 NaN
+    % Compute alpha a posteriori for all stations at once; guard against 0/0
+    % producing NaN at stations with no disturbance (umax = 0).
     umax_safe = umax_vec;  umax_safe(~(abs(umax_vec) > 0)) = 1;   % 0 or NaN -> 1
     StabRes.alpha(j,:) = (dumax_vec ./ umax_safe) / iu;
 
-    % Normalise shape functions and compute amplitudes (vectorised over stations)
+    % Normalize shape functions and compute amplitudes (vectorized over stations)
     absU      = abs(umax_vec);                       % 1 x nx (amplitude; 0 where no disturbance)
-    absU_safe = absU;  absU_safe(~(absU > 0)) = 1;   % avoid 0/0 in the shape normalisation
+    absU_safe = absU;  absU_safe(~(absU > 0)) = 1;   % avoid 0/0 in the shape normalization
     StabRes.u(j,:,:) = squeeze(StabRes.u(j,:,:)) ./ absU_safe;
     StabRes.v(j,:,:) = squeeze(StabRes.v(j,:,:)) ./ absU_safe;
     StabRes.w(j,:,:) = squeeze(StabRes.w(j,:,:)) ./ absU_safe;
@@ -98,7 +102,7 @@ if is_compr
 end
 for j = Mode.RunJ
     if j == half_nf
-        scale = StabRes.A(j, :);          % MFD: A = |u_max|
+        scale = StabRes.A(j, :);          % mean-flow distortion (MFD): A = |u_max|
     else
         scale = StabRes.A(j, :) / 2;      % non-MFD: A = 2|u_max|
     end

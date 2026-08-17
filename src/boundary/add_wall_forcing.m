@@ -3,26 +3,28 @@ function [Stab, info] = add_wall_forcing(Stab, StabGrid, Opt, spec)
 %
 %   [Stab, info] = add_wall_forcing(Stab, StabGrid, Opt, spec)
 %
-%   Grid-first wall forcing. gridgen defines WHAT is at the wall (an actuator or
-%   a v-distribution) via params.forcing, refines the mesh for it, and stores the
-%   unit-peak profile as StabGrid.forcing. This applies that profile scaled by an
-%   amplitude, doing all the Stab.bcw bookkeeping: component, mode index, sizing,
-%   Stab.bcx, the conjugate mode for nonlinear runs, and additive superposition.
+%   Grid-first wall forcing. gridgen already decides WHAT sits at the wall (an
+%   actuator or a v-distribution) via params.forcing, refines the mesh around
+%   it, and stores the unit-peak profile as StabGrid.forcing. This function
+%   scales that profile by an amplitude and writes it into Stab.bcw, handling
+%   the details: which velocity component, which mode index, sizing,
+%   Stab.bcx, the conjugate mode for nonlinear runs, and adding to (not
+%   overwriting) any forcing already stored there.
 %
 %   spec fields:
 %     A      peak amplitude, physical 2|u| convention like Stab.A0 (required)
 %     phi    phase [rad] (default 0)
 %     comp   velocity component 1 u / 2 v / 3 w (default 2)
 %     mode   [m n] mode the forcing drives (default [1 0], fundamental)
-%   Profile source (priority):
+%   Where the profile comes from (checked in this order):
 %     1. spec.x + spec.v      — a distribution given here (override)
 %     2. spec.xc + spec.w     — a raised-cosine actuator built here (override)
 %     3. StabGrid.forcing     — the profile gridgen stored (default, recommended)
-%   spec.which selects one when gridgen stored several (params.forcing a cell array).
+%   spec.which picks one if gridgen stored several (params.forcing a cell array).
 %
 %   The conjugate mode is added automatically for nonlinear runs (Opt.linear
 %   'off'); for linear runs only the fundamental is set (reconstruction supplies
-%   the conjugate). Call once per forcing to stack several.
+%   the conjugate later). Call this once per forcing to stack several of them.
 %
 %   Example (profile from gridgen):
 %     Stab = add_wall_forcing(Stab, StabGrid, Opt, struct('A', 2e-4));
@@ -49,7 +51,7 @@ elseif isfield(StabGrid, 'forcing') && ~isempty(StabGrid.forcing)
             'add_wall_forcing: grid has %d forcings — pass spec.which to pick one.', numel(F));
         F = F(spec.which);
     end
-    vprof = interp1(F.x, F.v, x, 'pchip', 0);   % F.x is the grid; interp is a safe no-op
+    vprof = interp1(F.x, F.v, x, 'pchip', 0);   % F.x is already the grid, so this interp is a no-op
     xc = F.xc;  w = F.w;  kind = F.kind;
 else
     error(['add_wall_forcing: no StabGrid.forcing and no override. Define ' ...
@@ -57,7 +59,7 @@ else
            'or spec.xc/spec.w (actuator).']);
 end
 
-% ---- resolution guard: is the grid fine enough where the profile lives? -----
+% ---- resolution check: does the grid resolve the profile? -------------------
 active = abs(vprof) > 1e-6 * max(abs(vprof));
 if nnz(active) < 4
     warning('add_wall_forcing:underResolved', ...

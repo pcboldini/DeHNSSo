@@ -3,10 +3,10 @@ function [ D ] = FD1d2o_uneven(x,y)
 %
 %   D = FD1d2o_uneven(x, y)
 %
-%   Differentiates y with respect to x using three-point finite differences
-%   that account for uneven spacing (central in the interior, forward at the
-%   first node, backward at the last). Data is provided in columns; for a
-%   matrix, the derivative is taken along each column independently.
+%   Computes dy/dx with a three-point finite-difference (FD) stencil that
+%   accounts for the uneven spacing between grid points: central differences
+%   in the interior, forward at the first node, backward at the last. Data is
+%   given in columns; for a matrix, each column is differentiated on its own.
 %
 %   Inputs:
 %     x  — grid coordinates (column vector)

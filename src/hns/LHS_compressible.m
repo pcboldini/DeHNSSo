@@ -1,7 +1,12 @@
 function [MLAMFD,MLA1,MLA2,MLA3,MLA4,MLA5] = LHS_compressible(BF,Bound,Grid,Init,Stab,StabRes,Opt)
-%LHS_COMPRESSIBLE  Curvilinear compressible HNS LHS in (u,v,w,rho,T), bsize=5*ny.
-%   Rows: 1=x-mom 2=y-mom 3=z-mom 4=continuity 5=energy.  Pressure eliminated via
-%   EOS p'=(T_bar*rho'+rho_bar*T')/(gamma*Ma^2).  Outputs MLAMFD, MLA1..MLA5.
+%LHS_COMPRESSIBLE  Assemble the global sparse left-hand-side (LHS) matrices for
+%   the compressible harmonic Navier-Stokes (HNS) system, in curvilinear
+%   coordinates with variables (u,v,w,rho,T) and block size bsize=5*ny.
+%   Rows: 1=x-momentum 2=y-momentum 3=z-momentum 4=continuity 5=energy.
+%   Pressure is eliminated using the equation of state (EOS)
+%   p'=(T_bar*rho'+rho_bar*T')/(gamma*Ma^2). Outputs MLAMFD, MLA1..MLA5
+%   (see LHS.m for the MLA1..4 convention; MLA5 is the extra beta*d/dxi
+%   cross-viscous block needed by the compressible operator).
 
 nx    = Grid.nx;
 ny    = Grid.ny;
@@ -219,7 +224,7 @@ KapTT = MuTT;
 % Energy equation in c_v form: rho*DT/Dt = -(ga-1)*rho*T*div(u)
 %   + ga/(Re*Pr)*div(Kap*grad(T)) + ga*(ga-1)*Ma^2/Re*Phi.
 % Coefficients: conduction ga*Kap/(Pr*Re), dissipation 2*gM2*(ga-1)/Re
-% (the 2 from linearising the quadratic Phi), pressure-work (ga-1)*Tb*divU.
+% (the 2 comes from linearizing the quadratic Phi), pressure-work (ga-1)*Tb*divU.
 
 % Inverse metrics (1st + 2nd order)
 xix  = Grid.xix(:,i);   etax = Grid.etax(:,i);
@@ -228,7 +233,7 @@ xixx = Grid.xixx(:,i);  xiyy = Grid.xiyy(:,i);
 etaxx= Grid.etaxx(:,i); etayy= Grid.etayy(:,i);
 xixy = Grid.xixy(:,i);  etaxy= Grid.etaxy(:,i);
 
-% Outflow-buffer weights (bufs damps; bufp fades streamwise visc)
+% Outflow-buffer weights (bufs damps the solution; bufp fades the streamwise viscous terms)
 bufs_i  = Bound.bufs(:,i);
 bufsp_i = Bound.bufsp(:,i);
 bufc_i  = Bound.bufc(i);
@@ -252,7 +257,7 @@ else
     Metax= spdiags(etax,0,ny,ny);  Metay= spdiags(etay,0,ny,ny);
 end
 
-% Curvilinear viscous operators (2nd-deriv chain rule); Vcross_* = mixed dilatation
+% Curvilinear viscous operators (second-derivative chain rule); Vcross_* = mixed dilatation
 gxx2 = xix.^2;   gyy2 = xiy.^2;
 hxx2 = etax.^2;  hyy2 = etay.^2;
 cxe  = 2*xix.*etax;  cye = 2*xiy.*etay;
@@ -296,7 +301,7 @@ PresG_Ax_rho = dxT/gM2;   PresG_Ax_T = dxR/gM2;
 PresG_Ay_rho = Tb*Metay*D1f/gM2 + dyT/gM2;
 PresG_Ay_T   = Rb*Metay*D1f/gM2 + dyR/gM2;
 
-% Ai: MLA1 diagonal (advection, reaction, pressure grad, eta-viscous)
+% Ai: MLA1 diagonal (advection, reaction, pressure gradient, eta-viscous)
 Ai = [ ...
     (Act_u + Rb*dxU).*bufs_i,       (Rb*dyU).*bufs_i,                 Zf,                   (UdU + PresG_Ax_rho + Tb*Metax*D1f/gM2).*bufs_i,   (PresG_Ax_T + Rb*Metax*D1f/gM2).*bufs_i;
     (Rb*dxV).*bufs_i,               (Act_v + Rb*dyV).*bufs_i,         Zf,                   (UdV + PresG_Ay_rho).*bufs_i,   (PresG_Ay_T).*bufs_i;
@@ -435,7 +440,7 @@ Fi = [ ...
 Fi(ru,rv) = Fi(ru,rv) + Vcross_F.*bufs_i.*bufp_i;
 Fi(rv,ru) = Fi(rv,ru) + Vcross_F.*bufs_i.*bufp_i;
 
-% Curvilinear var-mu cross-metric corrections (Ei + Ai)
+% Curvilinear variable-viscosity cross-metric corrections (added into Ei and Ai)
 MXc = Mxix - If;   MYc = Metay - If;
 vvE = @(X,Y) (X*MXc + Y*Mxiy).*bufs_i;
 vvA = @(X,Y) (X*Metax*D1f + Y*MYc*D1f).*bufs_i;
@@ -527,7 +532,7 @@ blk2(:, cur_off+1:cur_off+bsize) = Bi*bufc_i;
 blk3(:, cur_off+1:cur_off+bsize) = Ci*bufc_i;
 blk4(:, cur_off+1:cur_off+bsize) = Di*bufc_i;
 
-% 'free' components keep the governing equation (no imposed BC); see LHS.m.
+% 'free' components keep the governing equation (no imposed boundary condition, BC); see LHS.m.
 for k = 1:numel(bc_top)
     if strcmpi(bc_top_type{k}, 'free'); continue; end
     r      = bc_top(k);

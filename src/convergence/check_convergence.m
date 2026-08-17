@@ -17,7 +17,7 @@ function [Opt, Stab, StabRes] = check_convergence(StabGrid, Bound, Mode, Opt, St
 %     StabRes   — stability results (amplitudes A, Aold)
 
 %% Convergence measure
-ib = min(Bound.ibuf, StabGrid.nx);  % 'off' buffer sets ibuf = nx+1 as sentinel
+ib = min(Bound.ibuf, StabGrid.nx);  % when buffering is off, ibuf = nx+1 (sentinel for "no limit"); clamp to nx
 for j = Mode.RunJ
     numerator = abs(StabRes.A(j,1:ib) - StabRes.Aold(j,1:ib));
     numerator(numerator < 1e-14) = 0;   % absolute floor (paper Eq. 21)

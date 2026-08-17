@@ -3,26 +3,29 @@ function [StabRes, info] = solve_newton(Stab, StabGrid, Opt)
 %
 %   [StabRes, info] = solve_newton(Stab, StabGrid, Opt)
 %
-%   Continues the nonlinear HNS solution along the branch A0_fund = lambda,
-%   from Opt.newton_start up to Opt.newton_target, and returns the converged state at
-%   the target. Use when a direct solve at the target amplitude will not
-%   converge from a cold start (high-amplitude K-type / Scholten cases).
+%   Continues the nonlinear HNS (harmonic Navier-Stokes) solution along the
+%   branch A0_fund = lambda, from Opt.newton_start up to Opt.newton_target,
+%   and returns the converged state at the target. Use this when a direct
+%   solve at the target amplitude will not converge from a cold start
+%   (high-amplitude K-type / Scholten cases).
 %
-%   Method (Keller pseudo-arclength + Shamanskii corrector):
-%     predictor  — tangent + secant curvature extrapolation in (q, lambda)
+%   Method (Keller pseudo-arclength continuation with a Shamanskii corrector):
+%     predictor  — tangent plus secant curvature extrapolation in (q, lambda)
 %     corrector  — modified Newton on the full coupled real-form Jacobian,
-%                  factorised once with MUMPS and REUSED across steps
+%                  factorized once with MUMPS and REUSED across steps
 %                  (back-solves only) until it ages out or stalls.
 %
-%   The reuse is what makes this fast: the converged-state factorisation costs
-%   ~230x a back-solve, and along the branch the state moves little between
-%   steps, so one factor stays valid for several steps. Refactor triggers:
-%   age >= Opt.newton_reuse, or the previous step needed > Opt.newton_it_thresh
-%   corrector iterations, or the corrector fails (stale-factor fallback).
+%   Reusing the factorization is what makes this fast: factorizing at the
+%   converged state costs about 230x a back-solve, and along the branch the
+%   state moves little between steps, so one factor stays valid for several
+%   steps. A refactor is triggered when: age >= Opt.newton_reuse, or the
+%   previous step needed more than Opt.newton_it_thresh corrector
+%   iterations, or the corrector fails (the stale-factor fallback).
 %
-%   lambda enters F only through the inflow Dirichlet BC, hence affinely:
+%   lambda enters F only through the inflow Dirichlet boundary condition
+%   (BC), so it enters affinely:
 %       F(q,lambda) = residual_hns(q,ctx0) + (lambda-lam0)*F_lambda
-%   F_lambda is obtained once by finite difference and its linearity is
+%   F_lambda is computed once by finite difference, and its linearity is
 %   checked and reported.
 %
 %   Opt fields (defaults):
@@ -69,8 +72,9 @@ BF.U   = StabGrid.U;   BF.V   = StabGrid.V;   BF.W   = StabGrid.W;
 BF.dxU = StabGrid.dxU; BF.dxV = StabGrid.dxV; BF.dxW = StabGrid.dxW;
 BF.dyU = StabGrid.dyU; BF.dyV = StabGrid.dyV; BF.dyW = StabGrid.dyW;
 
-% Compressible base flow requires the extra thermodynamic/transport fields
-% (LHS_compressible reads BF.Ma, rho, T and their derivatives). Mirror main.m.
+% A compressible base flow needs the extra thermodynamic/transport fields,
+% since LHS_compressible reads BF.Ma, rho, T and their derivatives. This
+% mirrors what main.m does.
 if isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on')
     req = {'rho','T','dxrho','dyrho','dxT','dyT','dxxU','dxxV','dxxW','dxxT', ...
            'ddyU','ddyV','ddyW','ddyT','dxyU','dxyV', ...
@@ -79,9 +83,10 @@ if isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on')
 end
 
 %% Context at a given lambda
-% Names here are deliberately disjoint from the parent workspace: this is a
-% nested function, so any name shared with the parent is the SAME variable
-% (an internal `qc`/`q0`/`Mode` would clobber the continuation state).
+% mkctx is a nested function, so any variable name it shares with the parent
+% workspace refers to the SAME variable, not a fresh local. The names below
+% are deliberately kept distinct from the parent's for this reason: reusing
+% e.g. `qc`/`q0`/`Mode` here would silently overwrite the continuation state.
     function [ctx_o, qv_o, SG_o, Bnd_o, Mode_o, Opt_o, Stab_o, SR_o] = mkctx(lam)
         S_l = Stab; S_l.A0_fund = lam;
         [SG_o, Init_l, Mode_o, Opt_o, Stab_o, SR_o] = init(StabGrid, Opt, S_l);
@@ -105,13 +110,14 @@ ML = blkdiag(ctx0.ML{:});
 fprintf(' N(complex)=%d  2N=%d  nphys=%d bsize=%d nf=%d\n', ...
         N, twoN, ctx0.nphys, ctx0.bsize, ctx0.nf);
 
-% MUMPS ordering must follow the wall-normal discretisation, or it fails with
-% INFOG(1)=-13 on the other operator (measured Jul 2026, lsl, filled M=4):
+% The MUMPS matrix-ordering choice must match the wall-normal discretization,
+% or factorization fails with INFOG(1)=-13 on the other operator type
+% (measured Jul 2026, lsl, filled M=4):
 %   Chebyshev (dense D1, ny-cliques)   AMD  123 GB ok / METIS 216 GB -13
 %   FD        (sparse D1, 2D stencil)  METIS 181 GB ok / AMD   311 GB -13
-% Detect by whether the wall-normal operator is sparse (FD) or dense (Cheb),
-% and set the default that mumps_factor reads via get_o. Explicit
-% Opt.newton_mumps_ordering still overrides.
+% Detect this by whether the wall-normal operator is sparse (FD) or dense
+% (Chebyshev), and set the default that mumps_factor reads via get_o. An
+% explicit Opt.newton_mumps_ordering still overrides this default.
 if ~isfield(Opt,'newton_mumps_ordering') || isempty(Opt.newton_mumps_ordering)
     is_fd = isfield(ctx0,'D1') && issparse(ctx0.D1);
     Opt.newton_mumps_ordering = tern(is_fd, 7, 0);   % 7=auto(->METIS on FD), 0=AMD
@@ -135,11 +141,12 @@ evalF = @(q,lam) residual_hns(q, ctx0) + (lam - lam0)*Flam;
         [Jh, Ja] = build_JNL(qcx, ctx0); A = ML - Jh; B = -Ja;
         Jr = [real(A)+real(B), -imag(A)+imag(B); imag(A)+imag(B), real(A)-real(B)];
     end
-% Natural-parameter Newton for the two seed points. All locals are suffixed
-% _n: this is a nested function, so an unsuffixed `id`/`Jr`/`F` would BE the
-% parent's held MUMPS instance/Jacobian. natnewton destroys its instance each
-% iteration, so sharing `id` would leave the parent holding a destroyed handle
-% and the first cross-step back-solve would run on freed memory.
+% Natural-parameter Newton, used for the two seed points. All locals here
+% are suffixed _n: this is a nested function, so an unsuffixed `id`/`Jr`/`F`
+% would be the SAME variable as the parent's held MUMPS instance/Jacobian.
+% natnewton destroys its own MUMPS instance every iteration, so sharing `id`
+% with the parent would leave the parent holding a destroyed handle, and the
+% first cross-step back-solve after that would run on freed memory.
     function q_out = natnewton(q_in, lam, tol, mx)
         q_out = q_in;
         for it_n = 1:mx
@@ -156,9 +163,10 @@ evalF = @(q,lam) residual_hns(q, ctx0) + (lam - lam0)*Flam;
 %% Two seed points
 % Skipped entirely when resuming: the seeds exist only to build the initial
 % tangent, and the resume branch below discards q0/q1 and recomputes the
-% tangent from the checkpointed state. Running them anyway costs two cold-start
-% natural-parameter solves at the resume amplitude (the regime the continuation
-% exists to avoid), which on a refined grid is hours of wasted factorisations.
+% tangent from the checkpointed state instead. Computing them anyway would
+% cost two cold-start natural-parameter solves at the resume amplitude
+% (exactly the regime this continuation method exists to avoid), which on a
+% refined grid means hours of wasted factorizations.
 have_ck = do_resume && ~isempty(ckfile) && exist(ckfile,'file') == 2;
 if have_ck
     fprintf('\n -- seed points skipped (resuming from %s) --\n', ckfile);
@@ -302,11 +310,12 @@ for k = 1:ctx0.nphys
 end
 [StabRes, ~, ~] = update_modes(SG0, Bnd0, Mode, Opt0, Stab0, StabRes);
 
-% Apply the SAME postprocessing as the Picard path (main.m) so both solvers
-% return an identical StabRes convention: shape functions normalised to unit
-% max|u'|, amplitudes A = 2|u'|_max (mean-flow distortion = |u'|_max), and
-% conjugate modes dropped. Uses the internal, fully-active Mode0 (RunJ=1:nf).
-% main.m skips its own postprocess on the Newton path to avoid doubling this.
+% Apply the SAME postprocessing as the Picard path (main.m), so both solvers
+% return StabRes in an identical convention: shape functions normalized to
+% unit max|u'|, amplitudes A = 2|u'|_max (mean-flow distortion = |u'|_max),
+% and conjugate modes dropped. Uses the internal, fully-active Mode0
+% (RunJ=1:nf). main.m skips its own postprocess step on the Newton path to
+% avoid doing this twice.
 Init_pp.iu = 1i;
 StabRes = postprocess(SG0, Init_pp, Mode, Opt0, StabRes);
 
@@ -323,15 +332,17 @@ if c, s = a; else, s = b; end
 end
 
 %% MUMPS helpers
-%  JOB=4 (analyse+factor), JOB=3 (solve), JOB=-2 (destroy). The factor is held
-%  across steps, so the id/Jr pair is threaded explicitly through the caller
-%  rather than captured in a closure: refactoring destroys the instance, and a
-%  closure over a destroyed id segfaults on the next solve.
+%  JOB=4 (analyze+factor), JOB=3 (solve), JOB=-2 (destroy). The factor is
+%  held across continuation steps, so the id/Jr pair is threaded explicitly
+%  through the caller rather than captured in a closure: refactoring destroys
+%  the MUMPS instance, and a closure holding a destroyed id would segfault on
+%  the next solve.
 function id = mumps_factor(Jr, Opt)
-% Guard: a NaN/Inf in the Jacobian (e.g. the state overshot into a nonphysical
-% rho'/T' excursion) makes dmumps hard-crash. Fail with a clear message instead.
-% Check only stored nonzeros (structural zeros are finite; ~isfinite on the full
-% sparse matrix would densify it and blow up memory).
+% Guard against a NaN/Inf entry in the Jacobian (e.g. the state overshot into
+% a nonphysical rho'/T' excursion), which makes dmumps crash hard. Fail with
+% a clear error message instead. Check only the stored nonzeros: structural
+% zeros are always finite, and running ~isfinite on the full sparse matrix
+% would densify it and blow up memory.
 nbad = nnz(~isfinite(nonzeros(Jr)));
 if nbad > 0
     error('mumps_factor:badJacobian', ...
@@ -339,14 +350,16 @@ if nbad > 0
            'is nonphysical (likely a cold-start overshoot). Lower Opt.newton_start ' ...
            'or newton_dsmax.'], nbad);
 end
-% Attempt schedule, columns = [ICNTL(14) relax, ICNTL(22) out-of-core].
-% In-core first, out-of-core last: the factor grows ~6x along the branch
-% (21.9 GB at the ILST seed -> 123 GB at u_rms=4e-3, ny=40), so most steps fit
-% in RAM and only the few near saturation pay the ~1.7x disk penalty. OOC drops
-% the in-core need to roughly one front, so it cannot fail on memory; it spills
-% to /tmp. Nothing else survived measurement: BLR does not compress this
-% operator (13% mem, 1.5x slower, solve destroyed) and block/polynomial-
-% preconditioned Krylov diverges at saturation. See project_m4_memory_wall.
+% Attempt schedule, columns = [ICNTL(14) relax, ICNTL(22) out-of-core (OOC)].
+% Try in-core first, out-of-core last: the factor grows about 6x along the
+% branch (21.9 GB at the ILST seed to 123 GB at u_rms=4e-3, ny=40), so most
+% steps fit in RAM and only the few steps near saturation pay the ~1.7x disk
+% penalty of OOC. OOC needs only about one front's worth of memory in core,
+% so it cannot fail from lack of memory; it spills to /tmp instead. Nothing
+% else survived measurement: block low-rank (BLR) compression does not help
+% on this operator (13% memory saved, 1.5x slower, and the solve degraded),
+% and block/polynomial-preconditioned Krylov diverges once memory saturates.
+% See project_m4_memory_wall.
 sched = [100 0; 200 0; 100 1];
 if isfield(Opt,'newton_mumps_relax') && ~isempty(Opt.newton_mumps_relax)
     r = Opt.newton_mumps_relax(:);
@@ -364,16 +377,18 @@ for attempt = 1:size(sched,1)
     crashed = false; info2 = NaN;
     try
         id = initmumps; id.SYM = 0; id = dmumps(id);
-        % ICNTL(7)=0 (AMD), not METIS: the saturated M=4 Jacobian does not fit
-        % under METIS. Measured Jul 2026 on lsl, ny=40, A0=2.834e-3 (u_rms=4e-3),
-        % real JOB=4:   AMD 9.29 min / 123 GB  vs  METIS 14.52 min / 216 GB.
-        % The box has 188 GB, so METIS sits just over the line -> intermittent
-        % INFOG(1)=-13. AMD leaves 65 GB headroom.
-        % NB the seed (Stab.IC='ILST') Jacobian is ~6x sparser than the saturated
-        % one (nnz 9.1e7 vs 5.5e8): ILST populates only the fundamental, so the
-        % convolution blocks are empty until Newton fills them in on step 1.
-        % Never size this solver from a seed-state probe. ICNTL(7)=4 (PORD)
-        % segfaults this MUMPS 5.3.5 build.
+        % Default ordering is ICNTL(7)=0 (AMD), not METIS: the saturated M=4
+        % Jacobian does not fit in memory under METIS. Measured Jul 2026 on
+        % lsl, ny=40, A0=2.834e-3 (u_rms=4e-3), real JOB=4:
+        %   AMD 9.29 min / 123 GB  vs  METIS 14.52 min / 216 GB.
+        % The box has 188 GB, so METIS sits just over the line and fails
+        % intermittently with INFOG(1)=-13. AMD leaves 65 GB of headroom.
+        % Note: the seed Jacobian (Stab.IC='ILST') is about 6x sparser than
+        % the saturated one (nnz 9.1e7 vs 5.5e8), since ILST populates only
+        % the fundamental mode and the convolution blocks stay empty until
+        % Newton fills them in on step 1. Never size this solver from a
+        % seed-state probe. Also, ICNTL(7)=4 (PORD) segfaults this MUMPS
+        % 5.3.5 build.
         vrb = get_o(Opt,'newton_mumps_verbose',0);   % 0=silent; >0 -> MUMPS diagnostics
         id.ICNTL(3) = tern(vrb>0,6,0); id.ICNTL(4) = vrb; id.ICNTL(16) = 1;
         id.ICNTL(7) = get_o(Opt, 'newton_mumps_ordering', 0);

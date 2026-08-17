@@ -3,12 +3,18 @@ function [Mode,StabRes] = inflow(Mode,Stab,StabGrid,StabRes,Opt)
 %
 %   [Mode, StabRes] = inflow(Mode, Stab, StabGrid, StabRes, Opt)
 %
-%   Dispatches on Stab.IC: 'ILST'/'CLST' (local eigenmode, via local functions
-%   ilst_inflow/clst_inflow), 'PSE' (non-parallel seed via solver_IPSE/solver_CPSE),
-%   'LOAD' (warm-start from file), or 'ZERO' (disturbance from wall/freestream
-%   forcing only). Scales each mode by Stab.A0, sets the phase reference (wall
-%   pressure or max|u|), populates StabRes.u/v/w/p(/rho/T)/phi at station 1, and
-%   updates Mode.RunJ (active modes = seeded + wall-forced).
+%   Builds the disturbance at the inlet station, one mode at a time. The
+%   method is chosen by Stab.IC: 'ILST'/'CLST' (incompressible/compressible
+%   LST, linear stability theory) compute a local eigenmode (via local
+%   functions ilst_inflow/clst_inflow), 'PSE' (parabolized stability
+%   equations) marches a non-parallel seed instead (via
+%   solver_IPSE/solver_CPSE), 'LOAD' warm-starts from a saved file, and
+%   'ZERO' leaves the inlet undisturbed so the field is generated entirely
+%   by wall/freestream forcing. Each mode is scaled by Stab.A0, given a
+%   phase reference (wall pressure or max|u|), and written into
+%   StabRes.u/v/w/p(/rho/T)/phi at station 1. Mode.RunJ is then updated to
+%   list the active modes (those seeded here plus those forced at the
+%   wall).
 
 nonzeromodeswall = [];
 nonzeromodesic   = [];
@@ -211,39 +217,39 @@ if Stab.IC=="LOAD"
 elseif Stab.IC=="ILST"
     [~,nonzeromodesic]= find(Stab.A0>0);
 
-    for j = flip(nonzeromodesic) %Run initial condition for all nonzero modes
-    if j >= round(Mode.nf/2)% Mode is physical
+    for j = flip(nonzeromodesic) % Compute the inflow condition for every nonzero mode
+    if j >= round(Mode.nf/2)% Physical mode (not its complex conjugate)
         [StabRes]=ilst_inflow(j,1,StabGrid,StabRes,bc_top,Opt);
-    
-        % ilst_inflow returns unit-max|u'|; superimpose the physical amplitude
+
+        % ilst_inflow returns the shape normalised to unit-max|u'|; scale it by the physical amplitude
         StabRes.u(j,:,1) = A0s(j).*StabRes.u(j,:,1);
         StabRes.v(j,:,1) = A0s(j).*StabRes.v(j,:,1);
         StabRes.w(j,:,1) = A0s(j).*StabRes.w(j,:,1);
         StabRes.p(j,:,1) = A0s(j).*StabRes.p(j,:,1);
         StabRes.phi(j,:,1) = [StabRes.u(j,:,1) StabRes.v(j,:,1) StabRes.w(j,:,1) StabRes.p(j,:,1)];
-        switch lower(Stab.phaseRef)  % e.g. 'pwall' or 'umax'
+        switch lower(Stab.phaseRef)  % phase reference: 'pwall' or 'umax'
         case 'pwall'
-            theta0 = angle(StabRes.p(j,end,1));  % wall pressure
+            theta0 = angle(StabRes.p(j,end,1));  % phase of the wall pressure
         case 'umax'
-            [~,iy] = max(abs(StabRes.u(j,:,1))); % max |u'|
+            [~,iy] = max(abs(StabRes.u(j,:,1))); % location of max |u'|
             theta0 = angle(StabRes.u(j,iy,1));
         otherwise
             error('Unknown phaseRef option');
         end
-        % reference the phase of the inflow perturbation
+        % Rotate the inflow perturbation to this phase reference
         StabRes.phi(j,:,1) = StabRes.phi(j,:,1) * exp(-1i*theta0);
-    
-    else % Apply symmetry for conjugate mode
-        j2 = round(Mode.nf/2)-(j-round(Mode.nf/2));% Defines conjugate mode
-        
+
+    else % Conjugate mode: build it by symmetry from its physical partner
+        j2 = round(Mode.nf/2)-(j-round(Mode.nf/2));% Index of the physical partner mode
+
         StabRes.u(j,:,1) = conj(StabRes.u(j2,:,1));
         StabRes.v(j,:,1) = conj(StabRes.v(j2,:,1));
         StabRes.w(j,:,1) = conj(StabRes.w(j2,:,1));
         StabRes.p(j,:,1) = conj(StabRes.p(j2,:,1));
-        StabRes.alpha(j,1) = -conj(StabRes.alpha(j,1)); % growth rates should be equal between conjugate modes so -conj
+        StabRes.alpha(j,1) = -conj(StabRes.alpha(j,1)); % conjugate mode: alpha_r flips sign, alpha_i (growth rate) unchanged
         StabRes.phi(j,:,1) = conj(StabRes.phi(j2,:,1));
-    end                                                                            
-    end 
+    end
+    end
     
     if max(abs(Stab.bcw(2:end,:)))==0
         fprintf('Initialising with ILST solution at inflow. \n')
@@ -418,7 +424,7 @@ end
 % nonzero modes are those initiated at inflow + those forced at wall
 nonzeromodes = unique([nonzeromodesic, nonzeromodeswall]);
 Mode.RunJ = nonzeromodes;            % Used in loops to assess only active modes
-Mode.Aactive(Mode.RunJ) = 1;      % Set active modes to introduced modes
+Mode.Aactive(Mode.RunJ) = 1;      % Flag these modes as active
 
 % Define phiIC
 StabRes.phiIC = squeeze(StabRes.phi(:,:,1));

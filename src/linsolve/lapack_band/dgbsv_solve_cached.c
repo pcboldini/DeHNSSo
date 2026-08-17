@@ -1,14 +1,16 @@
 /* dgbsv_solve_cached.c
  *
- * Banded LU SOLVE (LAPACK *gbtrs) using a factorisation produced by
- * dgbsv_factor. Reuses the cached band across right-hand sides / Picard
- * iterations (no re-factorisation).
+ * Banded LU (LU factorization) SOLVE step (LAPACK *gbtrs), using a factor
+ * already produced by dgbsv_factor. Reuses the cached band matrix across
+ * right-hand sides (RHS) and Picard iterations, with no re-factorization.
  *
  *   x = dgbsv_solve_cached(ABf, IPIV, KL, KU, rhs)
  *
- * ABf : [LDAB x N] double from dgbsv_factor (real or complex)
- * IPIV: [N x 1] int64 from dgbsv_factor
- * rhs : dense N-by-1 double (real or complex)
+ * ABf : [LDAB x N] double matrix from dgbsv_factor (real or complex); LDAB
+ *       (leading dimension of the banded array) = 2*KL+KU+1, with KL and KU
+ *       the lower and upper bandwidth.
+ * IPIV: [N x 1] int64 pivot indices from dgbsv_factor
+ * rhs : dense N-by-1 double vector (real or complex)
  *
  * If ABf is real but rhs is complex (the MFD (0,0) case), the real factor is
  * applied to the real and imaginary parts separately.

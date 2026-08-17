@@ -1,12 +1,13 @@
 function [prof, alpha0, out] = solver_IPSE(omega, beta, StabGrid, Opt)
-%SOLVER_IPSE  Incompressible linear PSE inflow condition (de Groot & Kotsonis).
+%SOLVER_IPSE  Incompressible linear PSE (parabolized stability equations) inflow condition (de Groot & Kotsonis).
 %
 %   [prof, alpha0, out] = solver_IPSE(omega, beta, StabGrid, Opt)
 %
-%   Incompressible analogue of solver_CPSE, with state (u,v,w,p). A self-similar
-%   precursor stretches the inflow plane onto [Rstart, R0], a local ILST
-%   (Orr-Sommerfeld/Squire) eigenmode seeds an incompressible PSE march
-%   (local function solver_PSE, below) up to R0, normalised by max|u|.
+%   Incompressible analogue of solver_CPSE, with state (u,v,w,p). A self-
+%   similar precursor first stretches the inflow plane onto [Rstart, R0];
+%   a local ILST (incompressible LST, Orr-Sommerfeld/Squire) eigenmode
+%   seeds an incompressible PSE march (local function solver_PSE, below)
+%   up to R0, normalized by max|u|.
 %
 %   Inputs:
 %     omega     — angular frequency of the mode
@@ -139,8 +140,8 @@ function [alpha,u,v,w,p,y] = solver_PSE(Re,Ur,Vr,Wr,dxUr,dxVr,dxWr,dyUr,dyVr,dyW
 [y,D1,D2] = MappingMalik(y_max,y_i,eta',DM(:,:,1),DM(:,:,2));
 clear DM eta
 
-% The PSDMs will generally pop up with the size (N-2)x(N-2), accordingly 
-% define the identity and zero column and row
+% The PSDMs generally have size (N-2)x(N-2); define the matching identity
+% and zero column/row accordingly
 I      = eye(N-2);
 Zc     = zeros(N-2,1);
 Zr     = zeros(1,N-2);

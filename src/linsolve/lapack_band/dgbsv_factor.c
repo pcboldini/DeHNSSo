@@ -1,17 +1,20 @@
 /* dgbsv_factor.c
  *
- * Banded LU FACTORISATION (LAPACK *gbtrf), to be cached and reused by
- * dgbsv_solve_cached. Companion to dgbsv_solve.c (which factors+solves in one
- * call). Splitting factor from solve lets the nonlinear HNS iteration factor
- * each per-mode operator once and reuse it across Picard iterations.
+ * Banded LU (LU factorization) FACTORIZATION step (LAPACK *gbtrf). Produces a
+ * factor that is cached and reused by dgbsv_solve_cached. Companion to
+ * dgbsv_solve.c, which factors and solves in one call. Splitting factor from
+ * solve lets the nonlinear HNS iteration factor each per-mode operator once
+ * and reuse it across Picard iterations, instead of re-factoring every time.
  *
  *   [ABf, IPIV, KL, KU] = dgbsv_factor(ML)            % auto-detect kl, ku
  *   [ABf, IPIV, KL, KU] = dgbsv_factor(ML, kl, ku)    % user-supplied bandwidth
  *
- * ML  : sparse N-by-N double (real or complex)
- * ABf : [LDAB x N] double (real if ML real, complex if ML complex) — the
- *       LAPACK banded LU factors, ready for *gbtrs. LDAB = 2*KL+KU+1.
- * IPIV: [N x 1] int64 pivot indices.
+ * ML  : sparse N-by-N double matrix (real or complex)
+ * ABf : [LDAB x N] double matrix (real if ML is real, complex if ML is
+ *       complex), holding the LAPACK banded LU factors, ready for *gbtrs.
+ *       KL and KU are the lower and upper bandwidth; LDAB, the leading
+ *       dimension of the banded array, equals 2*KL+KU+1.
+ * IPIV: [N x 1] int64 vector of pivot indices.
  *
  * Compile via src/linsolve/lapack_band/mexbuild_dgbsv.m (-lmwlapack).
  */
@@ -54,7 +57,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     /* Allocate the factored band as a MATLAB array (so it can be cached). */
     mxArray *ABm = mxCreateDoubleMatrix((mwSize)LDAB, N, is_cplx ? mxCOMPLEX : mxREAL);
 
-    /* Fill the band: AB[KL+KU+i-j, j] = A[i,j] (col-major, 0-indexed). */
+    /* Fill the band: AB[KL+KU+i-j, j] = A[i,j] (column-major storage, 0-indexed). */
     if (is_cplx) {
         mxComplexDouble *AB = mxGetComplexDoubles(ABm);   /* zeroed */
         mxComplexDouble *Pr = mxGetComplexDoubles(ML);
