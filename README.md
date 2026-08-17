@@ -19,6 +19,7 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://doi.org
 - **`gridgen/src` reorganised** — split into role-based subfolders (`io`, `grid`, `resample`, `forcing`, `math`, `util`, `plot`)
 - **`src/` reorganised** — inflow eigen-solvers split into `src/init/lst/` (`solver_ILST`, `solver_CLST`) and `src/init/pse/` (`solver_IPSE`, `solver_CPSE`), with per-mode seeding in `inflow.m`; boundary conditions under `src/boundary/`; direct linear-solver backends under `src/linsolve/` (`lapack_band/`, `block_thomas/`)
 - **Bundled MUMPS 5.3.5** — under `src/external/` for the Newton factorisations
+- and more
 
 ## Recent updates (June 2026)
 
