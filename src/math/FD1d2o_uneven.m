@@ -1,30 +1,38 @@
 function [ D ] = FD1d2o_uneven(x,y)
-% First derivative of numerical data "y" at "x", with respect to "x".
-% Suited for uneven spacing of x, not fundamentally second order.
-% http://websrv.cs.umt.edu/isis/index.php/Finite_differencing:_Introduction
-% Data has to be provided in columns. If a matrix is inserted, derivatives are
-% taken along each columns for all columns separately.
+%FD1D2O_UNEVEN  First derivative of tabulated data on a non-uniform grid.
+%
+%   D = FD1d2o_uneven(x, y)
+%
+%   Differentiates y with respect to x using three-point finite differences
+%   that account for uneven spacing (central in the interior, forward at the
+%   first node, backward at the last). Data is provided in columns; for a
+%   matrix, the derivative is taken along each column independently.
+%
+%   Inputs:
+%     x  — grid coordinates (column vector)
+%     y  — sampled data (column vector or matrix)
+%   Outputs:
+%     D  — dy/dx, same size as y
 
 dx = diff(x);
 D = y;
 
-% Central differences
+%% Central differences (interior nodes)
 D(2:end-1,:) = (   dx(1:end-1,:).^2                  .* y(3:end  ,:) ...
                 + (dx(2:end  ,:).^2-dx(1:end-1,:).^2).* y(2:end-1,:) ...
                 -  dx(2:end  ,:).^2                  .* y(1:end-2,:)  ) ...
                ./ (dx(1:end-1,:).*dx(2:end,:).*(dx(1:end-1,:) + dx(2:end,:)));
-          
-% Forward differences
+
+%% Forward differences (first node)
 D(1,:)       = (-  dx(1,:).^2                        .* y(3,:) ...
                 + (dx(1,:)    +    dx(2,:)).^2       .* y(2,:) ...
                 - (dx(2,:).^2 + 2.*dx(1,:).*dx(2,:)) .* y(1,:)  ) ...
                ./ (dx(1,:).*dx(2,:).*(dx(1,:) + dx(2,:)));
-    
-% Backward differences
+
+%% Backward differences (last node)
 D(end,:)     = (  (dx(end-1,:).^2 + 2.*dx(end-1,:).*dx(end,:)) .* y(end,:) ...
                 - (dx(end-1,:)    +    dx(end  ,:)).^2         .* y(end-1,:) ...
                 +  dx(end  ,:).^2                              .* y(end-2,:)   ) ...
                ./ (dx(end-1,:).*dx(end,:).*(dx(end-1,:)+dx(end,:)));
 
 end
-

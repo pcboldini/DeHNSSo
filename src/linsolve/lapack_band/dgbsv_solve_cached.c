@@ -1,0 +1,94 @@
+/* dgbsv_solve_cached.c
+ *
+ * Banded LU SOLVE (LAPACK *gbtrs) using a factorisation produced by
+ * dgbsv_factor. Reuses the cached band across right-hand sides / Picard
+ * iterations (no re-factorisation).
+ *
+ *   x = dgbsv_solve_cached(ABf, IPIV, KL, KU, rhs)
+ *
+ * ABf : [LDAB x N] double from dgbsv_factor (real or complex)
+ * IPIV: [N x 1] int64 from dgbsv_factor
+ * rhs : dense N-by-1 double (real or complex)
+ *
+ * If ABf is real but rhs is complex (the MFD (0,0) case), the real factor is
+ * applied to the real and imaginary parts separately.
+ *
+ * Compile via src/linsolve/lapack_band/mexbuild_dgbsv.m (-lmwlapack).
+ */
+
+#include "mex.h"
+#include "lapack.h"
+#include <string.h>
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
+{
+    if (nrhs != 5)
+        mexErrMsgIdAndTxt("dgbsv_solve_cached:nrhs",
+                          "Usage: x = dgbsv_solve_cached(ABf, IPIV, KL, KU, rhs)");
+    const mxArray *ABm = prhs[0];
+    const mxArray *IPm = prhs[1];
+    ptrdiff_t KL = (ptrdiff_t)mxGetScalar(prhs[2]);
+    ptrdiff_t KU = (ptrdiff_t)mxGetScalar(prhs[3]);
+    const mxArray *RHS = prhs[4];
+
+    if (!mxIsDouble(ABm))
+        mexErrMsgIdAndTxt("dgbsv_solve_cached:ABf", "ABf must be double.");
+    if (!mxIsInt64(IPm))
+        mexErrMsgIdAndTxt("dgbsv_solve_cached:IPIV", "IPIV must be int64.");
+
+    mwSize N = mxGetN(ABm);                 /* ABf is [LDAB x N] */
+    ptrdiff_t LDAB = 2*KL + KU + 1;
+    if ((ptrdiff_t)mxGetM(ABm) != LDAB)
+        mexErrMsgIdAndTxt("dgbsv_solve_cached:dim", "size(ABf,1) must equal 2*KL+KU+1.");
+    if (mxGetM(RHS)*mxGetN(RHS) != N)
+        mexErrMsgIdAndTxt("dgbsv_solve_cached:rhs", "rhs length must equal size(ABf,2).");
+
+    ptrdiff_t *IPIV = (ptrdiff_t*)mxGetInt64s(IPm);
+    ptrdiff_t Nl = (ptrdiff_t)N, NRHS = 1, LDB = (ptrdiff_t)N, INFO = 0;
+    char trans = 'N';
+
+    int ab_cplx  = mxIsComplex(ABm);
+    int rhs_cplx = mxIsComplex(RHS);
+
+    if (ab_cplx) {
+        /* complex factor -> zgbtrs; ensure rhs is complex */
+        plhs[0] = mxCreateDoubleMatrix(N, 1, mxCOMPLEX);
+        mxComplexDouble *out = mxGetComplexDoubles(plhs[0]);
+        const mxArray *Rin = RHS; mxArray *Rc = NULL;
+        if (!rhs_cplx) {
+            mxArray *a[1] = { (mxArray*)RHS };
+            mexCallMATLAB(1, &Rc, 1, a, "complex");
+            Rin = Rc;
+        }
+        memcpy(out, mxGetComplexDoubles(Rin), (size_t)N*sizeof(mxComplexDouble));
+        if (Rc) mxDestroyArray(Rc);
+        zgbtrs(&trans, &Nl, &KL, &KU, &NRHS,
+               (double*)mxGetComplexDoubles(ABm), &LDAB, IPIV,
+               (double*)out, &LDB, &INFO);
+    } else if (rhs_cplx) {
+        /* real factor, complex rhs -> solve real & imaginary parts separately */
+        plhs[0] = mxCreateDoubleMatrix(N, 1, mxCOMPLEX);
+        mxComplexDouble *rz = mxGetComplexDoubles(RHS);
+        mxComplexDouble *out = mxGetComplexDoubles(plhs[0]);
+        double *AB = mxGetDoubles(ABm);
+        double *br = (double*)mxMalloc((size_t)N*sizeof(double));
+        double *bi = (double*)mxMalloc((size_t)N*sizeof(double));
+        for (mwSize i = 0; i < N; i++) { br[i] = rz[i].real; bi[i] = rz[i].imag; }
+        dgbtrs(&trans, &Nl, &KL, &KU, &NRHS, AB, &LDAB, IPIV, br, &LDB, &INFO);
+        if (INFO == 0)
+            dgbtrs(&trans, &Nl, &KL, &KU, &NRHS, AB, &LDAB, IPIV, bi, &LDB, &INFO);
+        for (mwSize i = 0; i < N; i++) { out[i].real = br[i]; out[i].imag = bi[i]; }
+        mxFree(br); mxFree(bi);
+    } else {
+        /* real factor, real rhs -> dgbtrs */
+        plhs[0] = mxCreateDoubleMatrix(N, 1, mxREAL);
+        double *out = mxGetDoubles(plhs[0]);
+        memcpy(out, mxGetDoubles(RHS), (size_t)N*sizeof(double));
+        dgbtrs(&trans, &Nl, &KL, &KU, &NRHS, mxGetDoubles(ABm), &LDAB, IPIV,
+               out, &LDB, &INFO);
+    }
+
+    if (INFO != 0)
+        mexErrMsgIdAndTxt("dgbsv_solve_cached:gbtrs",
+            "*gbtrs returned INFO=%td.", INFO);
+}

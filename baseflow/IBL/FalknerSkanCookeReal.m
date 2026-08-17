@@ -1,22 +1,19 @@
 function [y,u,v] = FalknerSkanCookeReal(eta_inf,n,beta,nu,x,Ue,halfsine,tolerance)
-% Produces the Falkner-Skan-Cooke solution in real coordinates.
-% - eta_inf: input to Falkner-Skan-Cooke function
-% - n: input to Falkner-Skan-Cooke function
-% - beta: Hartree parameter
-% - nu: kinematic viscosity
-% - x: station being evaluated
-% - Ue: local streamwise reference velocity
-% - We: spanwise reference velocity
-% - halfsine: input to Falkner-Skan-Cooke function
+%FALKNERSKANCOOKEREAL  Falkner-Skan-Cooke solution in physical coordinates.
 %
-% Using transform:
-%  eta = y*sqrt((m+1)/2 * Ue/(nu*x))
+%   [y,u,v] = FalknerSkanCookeReal(eta_inf, n, beta, nu, x, Ue, halfsine, tolerance)
 %
-% inversed relations:
-%  y = eta*sqrt(nu*x/Ue * 2/(m+1))
-%  u = f' * Ue
-%  v = -sqrt(nu*Ue/(2*x*(m+1))) * ((m+1)*f+(m-1)*f'*eta)
-%  w = g  * We
+%   Solves the similarity problem (FalknerSkanCooke) and maps it to physical
+%   coordinates at station x, with m = beta/(2-beta):
+%     y = eta sqrt(2 nu x / ((m+1) Ue)),   u = f' Ue,
+%     v = -sqrt(nu Ue/(2 x (m+1))) ((m+1) f + (m-1) f' eta).
+%
+%   Inputs:
+%     eta_inf, n, halfsine, tolerance  — passed to FalknerSkanCooke
+%     beta  — Hartree parameter,  nu — kinematic viscosity
+%     x     — station,            Ue — local streamwise edge velocity
+%   Outputs:
+%     y, u, v  — physical wall-normal grid and velocity components
 
 
 if nargin < 8
@@ -39,9 +36,4 @@ m = beta/(2-beta); % beta = 2*m/(1+m)
 y = sol.x * sqrt(nu*x/Ue * 2/(m+1));
 u = sol.y(2,:) * Ue;
 v = -sqrt(nu*Ue/(2*x*(m+1))) * ((m+1)*sol.y(1,:)+(m-1)*sol.y(2,:).*sol.x);
-
-% Gradient guess using manually derived relations (by JYB)
-ddf = 1.1*(beta+0.2).^0.53;
-dg = (beta+0.2).^0.05-0.45;
-
 end

@@ -14,12 +14,15 @@ function D = fd1_matrix_nonuniform(x)
 %       i = n-1      : 4-point backward-biased, x(n-3:n)
 %       i = n        : 3-point backward, x(n-2:n)
 
+%% Validate input
 x = x(:);
 n = length(x);
 if n < 5
     error('fd1_matrix_nonuniform: need at least 5 stations (got %d).', n);
 end
 
+%% Assemble stencil weights row by row
+% Triplet lists (row, col, val); at most 5 non-zeros per row.
 nnz_est = 5 * n;
 row = zeros(nnz_est, 1);
 col = zeros(nnz_est, 1);
@@ -38,6 +41,7 @@ for i = 1:n
     else
         cols  = (n-2) : n;
     end
+    % Fornberg weights for the 1st derivative (column 2 of c) at station i
     c  = fornberg_weights(x(i), x(cols), 1);
     w1 = c(:, 2).';
     idx = k + (1:numel(cols));
@@ -47,6 +51,7 @@ for i = 1:n
     k = k + numel(cols);
 end
 
+%% Build sparse derivative matrix
 row = row(1:k); col = col(1:k); val = val(1:k);
 D = sparse(row, col, val, n, n);
 end

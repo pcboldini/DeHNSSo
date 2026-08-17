@@ -1,31 +1,7 @@
 function [MLAMFD,MLA1,MLA2,MLA3,MLA4,MLA5] = LHS_compressible(BF,Bound,Grid,Init,Stab,StabRes,Opt)
-%LHS_COMPRESSIBLE  Full compressible HNS LHS in (u,v,w,rho,T) variables.
-%
-%   State per station: q = (u, v, w, rho, T), bsize = 5*ny.
-%   Row order: 1=x-mom, 2=y-mom, 3=z-mom, 4=continuity, 5=energy.
-%
-%   Pressure perturbation eliminated via EOS:
-%       p' = (T_bar * rho' + rho_bar * T') / (gamma * Ma^2)
-%
-%   Formulation follows Scholten et al. (2024), AIAA J., Appendix A.
-%
-%   Boundary conditions:
-%     Wall      u = v = w = T = 0 (no-slip isothermal), rho free
-%     Far-field rho = u = w = T = 0, v free (permits acoustic radiation /
-%                                            outgoing mass flux)
-%
-%   Assumptions:
-%     - Variable viscosity (Sutherland): BF.mu, BF.dmuT, BF.d2muT2.
-%       Falls back to mu=1, derivatives 0 if BF.mu not provided.
-%     - Flat-plate identity metrics (warning if not).
-%
-%   Outputs (same shape as LHS.m, plus MLA5):
-%     MLAMFD  mean-flow-distortion LHS (omega=0, beta=0)
-%     MLA1    base LHS
-%     MLA2    omega coefficient
-%     MLA3    beta coefficient
-%     MLA4    beta^2 coefficient
-%     MLA5    beta * d_x coefficient (iβ×d_x cross viscous terms)
+%LHS_COMPRESSIBLE  Curvilinear compressible HNS LHS in (u,v,w,rho,T), bsize=5*ny.
+%   Rows: 1=x-mom 2=y-mom 3=z-mom 4=continuity 5=energy.  Pressure eliminated via
+%   EOS p'=(T_bar*rho'+rho_bar*T')/(gamma*Ma^2).  Outputs MLAMFD, MLA1..MLA5.
 
 nx    = Grid.nx;
 ny    = Grid.ny;
@@ -33,28 +9,15 @@ bsize = 5*ny;
 
 if ~isfield(Opt,'parfor'); Opt.parfor = 'off'; end
 
-% Pre-allocate cell arrays for sparse triplets (avoid O(n^2) concatenation)
 cell_i1MFD = cell(nx,1);  cell_j1MFD = cell(nx,1);  cell_s1MFD = cell(nx,1);
 cell_i1    = cell(nx,1);  cell_j1    = cell(nx,1);  cell_s1    = cell(nx,1);
 cell_i2    = cell(nx,1);  cell_j2    = cell(nx,1);  cell_s2    = cell(nx,1);
 cell_i3    = cell(nx,1);  cell_j3    = cell(nx,1);  cell_s3    = cell(nx,1);
 cell_i4    = cell(nx,1);  cell_j4    = cell(nx,1);  cell_s4    = cell(nx,1);
 
-% BC indices within one bsize block (state slots u,v,w,rho,T):
-%   u: 1..ny, v: ny+1..2ny, w: 2ny+1..3ny, rho: 3ny+1..4ny, T: 4ny+1..5ny
-%
-% BC physics:
-%   Wall     : u = v = w = T = 0  (no-slip isothermal), rho free
-%   Far-field: rho = u = w = T = 0  (subsonic decay / hypersonic below shock);
-%              v free (permits acoustic radiation / outgoing mass flux)
-%
-% Cell-array user ordering follows the state-vector slot order (u,v,w,rho,T),
-% skipping the free slot:
-%   Opt.bc_top  = { u-type, w-type, rho-type, T-type }  (v is free, omitted)
-%   bc_wall_type= { u-type, v-type, w-type, T-type }    (rho is free, omitted)
-bc_top      = [1, 2*ny+1, 3*ny+1, 4*ny+1];   % (u, w, rho, T) at freestream (v free)
-bc_top_mfd  = bc_top;                          % same for MFD (rho pinned at top)
-bc_wall     = [ny, 2*ny, 3*ny, 5*ny];          % (u, v, w, T) at wall (rho free)
+bc_top      = [1, 2*ny+1, 3*ny+1, 4*ny+1];
+bc_top_mfd  = bc_top;
+bc_wall     = [ny, 2*ny, 3*ny, 5*ny];
 
 if isfield(Opt,'bc_top') && iscell(Opt.bc_top) && numel(Opt.bc_top) >= 4
     bc_top_type = Opt.bc_top(1:4);
@@ -80,25 +43,15 @@ if ~isfield(BF,'Ma')
 end
 Ma  = BF.Ma;
 gM2 = ga*Ma^2;
-% 4/3 compressible normal-stress factor (Stokes hypothesis, always active).
-% Cross terms in E_i/C_i complete the tensor and recover (1/Re)*nabla^2 at Ma→0.
 
-% Streamwise BF second derivatives (viscous Laplacians) are provided by
-% gridgen: Grid.dxxU/V/W/T (see compute_bf_derivatives).
-
-% Sanity check: this function assumes flat-plate metrics
-is_flat = all(abs(Grid.xix(:)-1) < 1e-10) && all(abs(Grid.etay(:)-1) < 1e-10) && ...
-          all(abs(Grid.xiy(:)) < 1e-10)   && all(abs(Grid.etax(:)) < 1e-10);
-if ~is_flat
-    warning('LHS_compressible:NotFlat', ['LHS_compressible assumes flat-plate identity metrics ' ...
-        '(xix=etay=1, xiy=etax=0). Non-flat metrics detected; results may be wrong.']);
+if ~isfield(Grid,'xixy') || ~isfield(Grid,'etaxy')
+    error('LHS_compressible:NoMixedMetrics', ...
+        'Grid.xixy/etaxy missing; rebuild the grid with build_stab_grid (mixed metrics).');
 end
 
-% Use full (dense) arithmetic for large Chebyshev operators
 D1_is_sparse = issparse(Grid.D1) && (nnz(Grid.D1) < 0.2 * ny^2);
 use_full = (ny >= 60) && ~D1_is_sparse;
 
-% Streamwise FD order — derived from Grid.FD_eta_order (single knob: same as wall-normal)
 fd_order_x = 4;
 if isfield(Grid,'FD_eta_order') && Grid.FD_eta_order == 6; fd_order_x = 6; end
 if use_full
@@ -107,7 +60,32 @@ else
     D1f = D1;  D2f = D2;  If = I;  Zf = Z;
 end
 
-%% Station i=1: inflow — identity block
+% Per-station Fornberg weights for xi derivatives (1st: W1, 2nd: W2), matching the
+% base flow (compute_bf_derivatives) and NLT_HNS; correct on non-uniform xi grids
+% (replaces the hardcoded uniform-dxi stencils; on a uniform grid they are identical).
+% Stencils mirror the assembly branches below: i=2 forward-5, i=nx-1 back-4, i=nx
+% back-3, 6th-order interior centered-7, else centered-5. Left-aligned to stenr order.
+x_xi = Grid.x(:);
+W1 = zeros(nx, 7);  W2 = zeros(nx, 7);
+for i = 2:nx
+    if i == 2
+        cols = 1:5;
+    elseif i == nx-1
+        cols = nx-3:nx;
+    elseif i == nx
+        cols = nx-2:nx;
+    elseif (fd_order_x == 6) && (i >= 4) && (i <= nx-3)
+        cols = i-3:i+3;
+    else
+        cols = i-2:i+2;
+    end
+    c = fornberg_weights(x_xi(i), x_xi(cols), 2);
+    np = numel(cols);
+    W1(i, 1:np) = c(:, 2).';
+    W2(i, 1:np) = c(:, 3).';
+end
+
+%% Station i=1: inflow identity block
 [ii,jj,ss] = find(speye(bsize));
 cell_i1MFD{1} = reshape(ii,[],1);  cell_j1MFD{1} = reshape(jj,[],1);  cell_s1MFD{1} = reshape(ss,[],1);
 cell_i1{1}    = reshape(ii,[],1);  cell_j1{1}    = reshape(jj,[],1);  cell_s1{1}    = reshape(ss,[],1);
@@ -123,7 +101,7 @@ if strcmpi(Opt.parfor, 'on')
         [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4, ci5,cj5,cs5] = ...
             lhs_station_full(i, nx, bsize, ny, BF, Grid, Bound, use_full, ...
                 D1f, D2f, If, Zf, Re, ga, Pr, gM2, iu, dxi, ...
-                bc_top, bc_top_mfd, bc_wall, bc_top_type, wall_thermal, fd_order_x);
+                bc_top, bc_top_mfd, bc_wall, bc_top_type, wall_thermal, fd_order_x, W1(i,:), W2(i,:));
         cell_i1MFD{i}=ci1MFD; cell_j1MFD{i}=cj1MFD; cell_s1MFD{i}=cs1MFD;
         cell_i1{i}=ci1; cell_j1{i}=cj1; cell_s1{i}=cs1;
         cell_i2{i}=ci2; cell_j2{i}=cj2; cell_s2{i}=cs2;
@@ -139,7 +117,7 @@ else
         [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4, ci5,cj5,cs5] = ...
             lhs_station_full(i, nx, bsize, ny, BF, Grid, Bound, use_full, ...
                 D1f, D2f, If, Zf, Re, ga, Pr, gM2, iu, dxi, ...
-                bc_top, bc_top_mfd, bc_wall, bc_top_type, wall_thermal, fd_order_x);
+                bc_top, bc_top_mfd, bc_wall, bc_top_type, wall_thermal, fd_order_x, W1(i,:), W2(i,:));
         cell_i1MFD{i}=ci1MFD; cell_j1MFD{i}=cj1MFD; cell_s1MFD{i}=cs1MFD;
         cell_i1{i}=ci1; cell_j1{i}=cj1; cell_s1{i}=cs1;
         cell_i2{i}=ci2; cell_j2{i}=cj2; cell_s2{i}=cs2;
@@ -187,19 +165,15 @@ clear cell_i3 cell_j3 cell_s3 cell_i4 cell_j4 cell_s4 cell_i5 cell_j5 cell_s5
 
 end
 
-
 %% Local function: assemble triplets for one station i (i >= 2)
-%
-%  q = (u, v, w, rho, T).   bsize = 5*ny.
-%  Full compressible flat-plate operator; pressure perturbation eliminated
-%  via linearised ideal-gas EOS  p' = (T_bar*rho' + rho_bar*T')/(gamma*Ma^2).
-function [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4, ci5,cj5,cs5] = ...
+function [ci1MFD,cj1MFD,cs1MFD, ci1,cj1,cs1, ci2,cj2,cs2, ci3,cj3,cs3, ci4,cj4,cs4, ci5,cj5,cs5, ...
+          Araw,Braw,Craw,Draw,Eraw,Fraw,Kraw] = ...
     lhs_station_full(i, nx, bsize, ny, BF, Grid, Bound, use_full, ...
                 D1f, D2f, If, Zf, Re, ga, Pr, gM2, iu, dxi, ...
-                bc_top, bc_top_mfd, bc_wall, bc_top_type, wall_thermal, fd_order_x)
+                bc_top, bc_top_mfd, bc_wall, bc_top_type, wall_thermal, fd_order_x, w1, w2)
 if nargin < 24; fd_order_x = 4; end
 
-% Base flow diagonal matrices
+% Base-flow fields + x/y gradients as diagonals
 if use_full
     U   = diag(BF.U(:,i));    dxU = diag(BF.dxU(:,i));  dyU = diag(BF.dyU(:,i));
     V   = diag(BF.V(:,i));    dxV = diag(BF.dxV(:,i));  dyV = diag(BF.dyV(:,i));
@@ -216,11 +190,7 @@ else
     dxT = spdiags(BF.dxT(:,i),  0,ny,ny); dyT = spdiags(BF.dyT(:,i),  0,ny,ny);
 end
 
-% Density form: rho is a direct state variable (slot 4); pressure is
-% eliminated via EOS. Pressure-gradient terms are written directly in the
-% momentum rows using Tb, Rb, dxT, dxR.
-
-% Variable viscosity (Sutherland law): mu_bar(y) and dmu/dT(y)
+% Viscosity mu(T) + T-derivatives (conductivity Kap=mu)
 if isfield(BF, 'mu')
     Mu_v   = BF.mu(:,i);
     MuT_v  = BF.dmuT(:,i);
@@ -243,116 +213,108 @@ else
     MuT  = spdiags(MuT_v,  0, ny, ny);
     MuTT = spdiags(MuTT_v, 0, ny, ny);
 end
-% Thermal conductivity: kappa = mu (ideal gas, constant Pr); see equations.tex
 Kap   = Mu;
 KapT  = MuT;
 KapTT = MuTT;
+% Energy equation in c_v form: rho*DT/Dt = -(ga-1)*rho*T*div(u)
+%   + ga/(Re*Pr)*div(Kap*grad(T)) + ga*(ga-1)*Ma^2/Re*Phi.
+% Coefficients: conduction ga*Kap/(Pr*Re), dissipation 2*gM2*(ga-1)/Re
+% (the 2 from linearising the quadratic Phi), pressure-work (ga-1)*Tb*divU.
 
-% Metric coefficients (kept for compatibility with LHS.m structure;
-% lhs_full assumes flat-plate values: xix=etay=1, xiy=etax=0, all 2nd zero)
+% Inverse metrics (1st + 2nd order)
 xix  = Grid.xix(:,i);   etax = Grid.etax(:,i);
 xiy  = Grid.xiy(:,i);   etay = Grid.etay(:,i);
 xixx = Grid.xixx(:,i);  xiyy = Grid.xiyy(:,i);
 etaxx= Grid.etaxx(:,i); etayy= Grid.etayy(:,i);
+xixy = Grid.xixy(:,i);  etaxy= Grid.etaxy(:,i);
 
-% Buffer
+% Outflow-buffer weights (bufs damps; bufp fades streamwise visc)
 bufs_i  = Bound.bufs(:,i);
 bufsp_i = Bound.bufsp(:,i);
 bufc_i  = Bound.bufc(i);
 bufp_i  = Bound.bufp(i);
 
-% ---- Reusable scalar combinations ----
-UdU  = U*dxU + V*dyU;            % ubar . grad U
-UdV  = U*dxV + V*dyV;            % ubar . grad V
-UdW  = U*dxW + V*dyW;            % ubar . grad W
-UdT  = U*dxT + V*dyT;            % ubar . grad T
-divU = dxU + dyV;                % div ubar (W-independent of z for 2D base)
-EnT  = UdT + (ga-1)*Tb*divU;     % energy ρ'-coupling: u.grad T + (γ-1) T div u
+% Base-flow convection U.grad, divergence, Cxi/Ceta
+UdU  = U*dxU + V*dyU;
+UdV  = U*dxV + V*dyV;
+UdW  = U*dxW + V*dyW;
+UdT  = U*dxT + V*dyT;
+divU = dxU + dyV;
+EnT  = UdT + (ga-1)*Tb*divU;
 
-% ---- Per-equation wall-normal Act-like operators ----
-% Compressible: rho_bar on inertia, mu_bar=1 on viscous, with the (4/3)
-% factor on the normal-stress component of each momentum equation.
-%   Act_u: x-mom diagonal (1·D2 + 4/3 in Fi-x)
-%   Act_v: y-mom diagonal (4/3·D2 + 1   in Fi-x)
-%   Act_w: z-mom diagonal (1·D2 + 1   in Fi-x; 4/3 on β² in Di)
-%   Act_T: energy diagonal (γκ/(RePr)·D2)
-% (Flat plate: η_x=0, η_y=1.)
-visc_fac_v  = 4/3/Re;   % 4/3/Re: normal-stress factor (Stokes hypothesis)
-Act_u = Rb*V*D1f -      Mu/Re*D2f;
-Act_v = Rb*V*D1f - Mu*visc_fac_v*D2f;
-Act_w = Rb*V*D1f -      Mu/Re*D2f;
-Act_T = Rb*V*D1f - ga*Kap/(Pr*Re)*D2f;
+Cxi  = U.*xix  + V.*xiy;
+Ceta = U.*etax + V.*etay;
 
-% ---- Coefficient matrices: full compressible 5x5 in (u,v,w,p,T) ----
+if use_full
+    Mxix = diag(xix);  Mxiy = diag(xiy);  Metax = diag(etax);  Metay = diag(etay);
+else
+    Mxix = spdiags(xix,0,ny,ny);   Mxiy = spdiags(xiy,0,ny,ny);
+    Metax= spdiags(etax,0,ny,ny);  Metay= spdiags(etay,0,ny,ny);
+end
 
-% Base-flow stress tensor S_ij = tau_ij / mu_bar (general 3D base flow):
-% Used for variable-viscosity T̂ couplings and viscous dissipation Phi'.
-tau_xx = 4/3*dxU - 2/3*dyV;   % S_xx diagonal matrix
-tau_yy = 4/3*dyV - 2/3*dxU;   % S_yy
-tau_xy = dyU + dxV;             % S_xy
-tau_xz = dxW;                   % S_xz = d_x W_bar  (zero for flat plate W=0)
-tau_yz = dyW;                   % S_yz = d_y W_bar
-tau_zz = -2/3*divU;             % S_zz = -2/3 div U_bar (nonzero for compressible)
+% Curvilinear viscous operators (2nd-deriv chain rule); Vcross_* = mixed dilatation
+gxx2 = xix.^2;   gyy2 = xiy.^2;
+hxx2 = etax.^2;  hyy2 = etay.^2;
+cxe  = 2*xix.*etax;  cye = 2*xiy.*etay;
+gxx1 = xixx;     gyy1 = xiyy;
+hxx1 = etaxx;    hyy1 = etayy;
+ViscA   = @(a,b,coef) -coef*((a*hxx2 + b*hyy2).*D2f + (a*hxx1 + b*hyy1).*D1f);
+ViscED1 = @(a,b,coef) -coef*((a*cxe  + b*cye ).*D1f);
+ViscEI  = @(a,b,coef) -coef*((a*gxx1 + b*gyy1).*If);
+ViscF   = @(a,b,coef) -coef*((a*gxx2 + b*gyy2).*If);
 
-% Phi_b / mu_bar: base-flow dissipation normalised by mu_bar.
-% Phi_b = tau_ij * d(U_i)/d(x_j), sum over i in {u,v,w}, j in {x,y} (d_z(Ubar)=0).
+pxy_F  = xix.*xiy;
+pxy_E1 = xix.*etay + xiy.*etax;
+pxy_E0 = xixy;
+pxy_A2 = etax.*etay;
+pxy_A0 = etaxy;
+Vcross_E = -Mu/3/Re*(pxy_E1.*D1f + pxy_E0.*If);
+Vcross_A = -Mu/3/Re*(pxy_A2.*D2f + pxy_A0.*D1f);
+Vcross_F = -Mu/3/Re*(pxy_F.*If);
+
+% Wall-normal (eta) advection + viscous, per row
+Act_u = Rb*Ceta*D1f + ViscA(4/3, 1,   Mu/Re);
+Act_v = Rb*Ceta*D1f + ViscA(1,   4/3, Mu/Re);
+Act_w = Rb*Ceta*D1f + ViscA(1,   1,   Mu/Re);
+Act_T = Rb*Ceta*D1f + ViscA(1,   1,   ga*Kap/(Pr*Re));
+
+% Base-flow stress tau + dissipation Phi (energy source)
+tau_xx = 4/3*dxU - 2/3*dyV;
+tau_yy = 4/3*dyV - 2/3*dxU;
+tau_xy = dyU + dxV;
+tau_xz = dxW;
+tau_yz = dyW;
+tau_zz = -2/3*divU;
+
 Phi_b_norm = tau_xx.*dxU + tau_xy.*(dyU+dxV) + tau_yy.*dyV ...
-           + tau_xz.*dxW + tau_yz.*dyW;     % dxW.*dxW + dyW.*dyW at W!=0
+           + tau_xz.*dxW + tau_yz.*dyW;
 
-% Continuity row 4: direct rho' evolution
-%   rho'_t + ubar.grad rho' + rho' div ubar + rho_bar div u' + u'.grad rho_bar = 0
-% Wall-normal operator on rho': V*D1 (advection) + divU (local).
-% Streamwise advection Ubar*d_x rho' goes to E_i; spanwise iβ*Wbar*rho' to C_i.
-Cont_rho_local = V*D1f + divU;   % A_i row-4, rho-col (local + D1 on rho')
+Cont_rho_local = Ceta*D1f + divU;
 
-% Pressure-gradient chain-rule helpers:
-%   p' = (Tbar*rho' + rhobar*T') / (gamma Ma^2)
-%   d_j p' = (Tbar d_j rho' + rho_bar d_j T' + d_j Tbar * rho' + d_j rho_bar * T') / gM2
-% We only need the LOCAL (no-derivative-of-pert) part for A_i chain rule,
-% plus the D1 (wall-normal derivative-of-pert) for y-mom.  Streamwise (x-mom)
-% and spanwise (z-mom) derivatives of p' go into E_i and C_i respectively.
-PresG_Ax_rho = dxT/gM2;   PresG_Ax_T = dxR/gM2;  % d_x p' chain-rule -> A_i x-mom (row 1)
-PresG_Ay_rho = Tb*D1f/gM2 + dyT/gM2;             % d_y p' -> A_i y-mom (row 2) rho-col
-PresG_Ay_T   = Rb*D1f/gM2 + dyR/gM2;             % d_y p' -> A_i y-mom (row 2) T-col
+% Pressure-gradient blocks (EOS p'=(Tb*rho'+Rb*T')/gM2)
+PresG_Ax_rho = dxT/gM2;   PresG_Ax_T = dxR/gM2;
+PresG_Ay_rho = Tb*Metay*D1f/gM2 + dyT/gM2;
+PresG_Ay_T   = Rb*Metay*D1f/gM2 + dyR/gM2;
 
-% A_i (no-derivative + ∂_y via D1 + ∂²_y via D2)
+% Ai: MLA1 diagonal (advection, reaction, pressure grad, eta-viscous)
 Ai = [ ...
-    (Act_u + Rb*dxU).*bufs_i,       (Rb*dyU).*bufs_i,                 Zf,                   (UdU + PresG_Ax_rho).*bufs_i,   (PresG_Ax_T).*bufs_i;
+    (Act_u + Rb*dxU).*bufs_i,       (Rb*dyU).*bufs_i,                 Zf,                   (UdU + PresG_Ax_rho + Tb*Metax*D1f/gM2).*bufs_i,   (PresG_Ax_T + Rb*Metax*D1f/gM2).*bufs_i;
     (Rb*dxV).*bufs_i,               (Act_v + Rb*dyV).*bufs_i,         Zf,                   (UdV + PresG_Ay_rho).*bufs_i,   (PresG_Ay_T).*bufs_i;
     (Rb*dxW).*bufs_i,               (Rb*dyW).*bufs_i,                 (Act_w).*bufs_i,      (UdW).*bufs_i,                   Zf;
-    (dxR).*bufsp_i,                 (Rb*D1f + dyR).*bufsp_i,          Zf,                   (Cont_rho_local).*bufsp_i,       Zf;
-    (Rb*dxT).*bufs_i,               (Rb*dyT + (ga-1)*Tb*Rb*D1f).*bufs_i, Zf,                (EnT).*bufs_i,                   (Act_T + (ga-1)*Rb*divU).*bufs_i ];
+    (dxR + Rb*Metax*D1f).*bufsp_i,  (Rb*Metay*D1f + dyR).*bufsp_i,    Zf,                   (Cont_rho_local).*bufsp_i,       Zf;
+    (Rb*dxT + (ga-1)*Tb*Rb*Metax*D1f).*bufs_i,  (Rb*dyT + (ga-1)*Tb*Rb*Metay*D1f).*bufs_i, Zf,   (EnT).*bufs_i,   (Act_T + (ga-1)*Rb*divU).*bufs_i ];
 
-% ---- Variable-viscosity additions to Ai ----
-% Index ranges within bsize block (state order: u, v, w, rho, T)
-% Slot 4 is rho (not p); variable-viscosity terms below only touch
-% u, v, w, T blocks so indices ru/rv/rw/rT are unchanged.
 ru = 1:ny;  rv = ny+1:2*ny;  rw = 2*ny+1:3*ny;  rT = 4*ny+1:5*ny;
 
-% 1. Product-rule D1 terms: ∂_y(mu_bar * ∂_y q̂) = mu_bar*D2*q̂ + mu_T*(∂_y T̄)*D1*q̂
-%    The D2 part is already in Act_*; the new D1 part goes on the LHS with a
-%    minus sign (same sign as the existing -mu_bar/Re*D2 viscous term):
-%    (u,u): -mu_T*(∂_y T̄)/Re * D1      (coeff 1, wall-normal stress on û)
-%    (v,v): -4/3*mu_T*(∂_y T̄)/Re * D1  (4/3 normal stress on v̂)
-%    (w,w): -mu_T*(∂_y T̄)/Re * D1
-%    (T,T): -2*γκ_T*(∂_y T̄)/Re * D1  (factor 2: two contributions)
+% Variable-mu mu'(T) corrections into Ai (T-column)
 Ai(ru,ru) = Ai(ru,ru) - (MuT*dyT/Re*D1f).*bufs_i;
 Ai(rv,rv) = Ai(rv,rv) - (4/3*MuT*dyT/Re*D1f).*bufs_i;
 Ai(rw,rw) = Ai(rw,rw) - (MuT*dyT/Re*D1f).*bufs_i;
 Ai(rT,rT) = Ai(rT,rT) - (2*ga*KapT/(Pr*Re)*dyT*D1f).*bufs_i;
 
-% 2. D1 T̂ couplings: ∂_y(mu' * τ̄_ij) contributes mu_T*τ̄_ij * D1*T̂
-%    (u,T): -mu_T*τ̄_xy/Re * D1    (from ∂_y(mu'*τ̄_xy) in x-mom)
-%    (v,T): -mu_T*τ̄_yy/Re * D1    (from ∂_y(mu'*τ̄_yy) in y-mom)
 Ai(ru,rT) = Ai(ru,rT) + (-MuT*tau_xy/Re*D1f).*bufs_i;
 Ai(rv,rT) = Ai(rv,rT) + (-MuT*tau_yy/Re*D1f).*bufs_i;
 
-% 3. Local T̂ couplings: mu_T*T̂ * (base-flow viscous Laplacian).
-%    Full form with ∂_xx of base flow precomputed in BF.dxxU/V/W/T.
-%    (u,T): -mu_T * [(4/3)*∂_xx Ū + ∂_yy Ū + (1/3)*∂_xy V̄] / Re
-%    (v,T): -mu_T * [∂_xx V̄ + (4/3)*∂_yy V̄ + (1/3)*∂_xy Ū] / Re
-%    (w,T): -mu_T * [∂_xx W̄ + ∂_yy W̄] / Re
-%    (T,T): -γκ_T/(Re Pr) * [∂_xx T̄ + ∂_yy T̄] - γκ_TT/(Re Pr) * |∇T̄|²
 d2yU_v = BF.ddyU(:,i);
 d2yV_v = BF.ddyV(:,i);
 d2yW_v = BF.ddyW(:,i);
@@ -364,8 +326,8 @@ d2xV_v = BF.dxxV(:,i);
 d2xW_v = BF.dxxW(:,i);
 d2xT_v = BF.dxxT(:,i);
 gradT2_v = BF.dyT(:,i).^2 + BF.dxT(:,i).^2;
-KapT_v  = MuT_v;   % kappa_T = mu_T (ideal gas, const Pr)
-KapTT_v = MuTT_v;  % kappa_TT = mu_TT
+KapT_v  = MuT_v;
+KapTT_v = MuTT_v;
 
 Lu_v = (4/3)*d2xU_v + d2yU_v + (1/3)*dxyV_v;
 Lv_v = d2xV_v + (4/3)*d2yV_v + (1/3)*dxyU_v;
@@ -384,13 +346,6 @@ else
     Ai(rT,rT) = Ai(rT,rT) + spdiags(LT_v, 0, ny, ny).*bufs_i;
 end
 
-% 3b. μ_TT × T̂ scalar couplings in momentum rows.
-%     2D base reduction (∂_z(.)̄=0 → T_ζ=u_ζ=v_ζ=w_ζ=0):
-%       (u,T): -(μ_TT/Re) × [τ_xx · ∂_x T̄ + τ_xy · ∂_y T̄]
-%       (v,T): -(μ_TT/Re) × [τ_yy · ∂_y T̄ + τ_xy · ∂_x T̄]
-%       (w,T): -(μ_TT/Re) × [∂_y W̄ · ∂_y T̄ + ∂_x W̄ · ∂_x T̄]   (W̄-dependent)
-%     τ_ij here is the base-flow strain-rate-like quantity (no μ̄ baked in),
-%     same definition as the matrix `tau_*` used in the dissipation block below.
 tau_xx_v = (4/3)*BF.dxU(:,i) - (2/3)*BF.dyV(:,i);
 tau_yy_v = (4/3)*BF.dyV(:,i) - (2/3)*BF.dxU(:,i);
 tau_xy_v = BF.dyU(:,i) + BF.dxV(:,i);
@@ -410,35 +365,17 @@ else
     Ai(rw,rT) = Ai(rw,rT) + spdiags(LMTT_w_v, 0, ny, ny).*bufs_i;
 end
 
-% 4. Non-parallel variable-viscosity additions to Ai: ∂_x μ̄ × ∂_y q̂ terms.
-%    Source: (∂_x μ̄)(∂_y v̂) in x-mom from ∂_x τ'_xx,
-%            (∂_x μ̄)(∂_y û) in y-mom from ∂_x τ'_xy.
-%    (u,v): +(2/3)*mu_T*(∂_x T̄)/Re * D1
-%    (v,u): -mu_T*(∂_x T̄)/Re * D1
-%    W̄-dependent:
-%    (w,T): -mu_T*(∂_y W̄)/Re * D1  (from ∂_y(mu_T T̂ ∂_y W̄) in z-mom)
 Ai(ru,rv) = Ai(ru,rv) + (2/3*MuT*dxT/Re*D1f).*bufs_i;
 Ai(rv,ru) = Ai(rv,ru) - (MuT*dxT/Re*D1f).*bufs_i;
 Ai(rw,rT) = Ai(rw,rT) - (MuT*dyW/Re*D1f).*bufs_i;
 
-% 5. Viscous dissipation Phi' in energy equation.
-%    Phi' = 2 * tau_ij * d(u_hat_i)/d(x_j) + mu_T*T_hat * Phi_b/mu_bar
-%    Prefactor from energy eq: -gamma*(gamma-1)*Ma^2/Re (LHS sign, moving RHS to left).
-%    Factor 2 comes from linearisation of Phi = tau_ij * dU_i/dx_j:
-%      bar_tau_ij * d_xj(u_hat_i)   [Part 1: base stress x perturb grad]
-%      mu_bar * S_hat_ij * d_xj(Ubar_i) = bar_tau_ij * d_xj(u_hat_i) [Part 2: same]
-%    The mu_T*T_hat part contributes a scalar (T,T) coupling via Phi_b/mu_bar.
-pref_diss = 2*gM2*(ga-1)/Re;   % = 2*gamma*(gamma-1)*Ma^2/Re
-% d_y u_hat terms -> Ai row (energy):
+pref_diss = 2*gM2*(ga-1)/Re;
 Ai(rT,ru) = Ai(rT,ru) - (pref_diss * Mu * tau_xy * D1f).*bufs_i;
 Ai(rT,rv) = Ai(rT,rv) - (pref_diss * Mu * tau_yy * D1f).*bufs_i;
-Ai(rT,rw) = Ai(rT,rw) - (pref_diss * Mu * tau_yz * D1f).*bufs_i;  % zero if W=0
-% T_hat scalar coupling from mu_T * Phi_b / mu_bar:
+Ai(rT,rw) = Ai(rT,rw) - (pref_diss * Mu * tau_yz * D1f).*bufs_i;
 Ai(rT,rT) = Ai(rT,rT) - (gM2*(ga-1)/Re * MuT * Phi_b_norm).*bufs_i;
 
-% B_i: -iω coefficient (diag(1, rho, rho, rho, rho)).
-% Continuity slot-4 is direct: rho'_t = -iω rho'.  All other rows carry
-% rho_bar on the time derivative (ρ u_t etc.).
+% Bi: MLA2 (x omega): d/dt -> -i*omega
 Bi = [ ...
     (-iu*Rb*If).*bufs_i,  Zf,                  Zf,                  Zf,                  Zf;
     Zf,                   (-iu*Rb*If).*bufs_i, Zf,                  Zf,                  Zf;
@@ -446,41 +383,19 @@ Bi = [ ...
     Zf,                   Zf,                  Zf,                  (-iu*If).*bufsp_i,   Zf;
     Zf,                   Zf,                  Zf,                  Zf,                  (-iu*Rb*If).*bufs_i ];
 
-% C_i: iβ coefficient (G).  Includes spanwise advection (W-dependent),
-% pressure gradient ∂_z p' = iβ p' in z-mom, ρ̄ ∂_z w' in continuity, and
-% iβ viscous cross-terms:
-%   y-mom (row 2, w-col): -(1/3/Re)*iβ*D1f          (1/3 μ̄ ∂_y∂_z ŵ)
-%   z-mom (row 3, v-col): -(1/3/Re)*iβ*D1f          (1/3 μ̄ ∂_y∂_z v̂)
-% Variable-viscosity iβ scalar terms (∂_y μ̄):
-%   y-mom (row 2, w-col): +(2/3)*iβ*mu_T*(∂_y T̄)/Re  (G34)
-%   z-mom (row 3, v-col): -iβ*mu_T*(∂_y T̄)/Re         (G43)
-% Non-parallel variable-viscosity iβ scalar terms (∂_x μ̄):
-%   x-mom (row 1, w-col): +(2/3)*iβ*mu_T*(∂_x T̄)/Re  (from -(2/3)∂_x μ̄ iβŵ in x-mom)
-%   z-mom (row 3, u-col): -iβ*mu_T*(∂_x T̄)/Re         (from ∂_x μ̄ iβû in z-mom)
-% iβ T̂ scalar terms (variable-viscosity × base-flow):
-%   x-mom (row 1, T-col): -iβ*mu_T*(∂_x W̄)/Re         (from ∂_z τ'_xz, W̄-dependent)
-%   y-mom (row 2, T-col): -iβ*mu_T*(∂_y W̄)/Re         (from ∂_z τ'_yz, W̄-dependent)
-%   z-mom (row 3, T-col): +(2/3)*iβ*mu_T*(∂_x Ū+∂_y V̄)/Re  (from ∂_z τ'_zz, compressible)
-% Pressure gradient ∂p'/∂z = iβ*(T̄ρ'+ρ̄T')/gM2
-% replaces the direct (iu*If) in the old p-column of z-mom.
-% Continuity row: iβ*ρ̄ on w-col (ρ̄·∂_z w'), iβ*W̄ on rho-col (W̄·∂_z ρ'),
-% T-col = 0 (no EOS substitution).
+% Ci: MLA3 (x beta): i*beta convection/pressure/cross-viscous
 Ci = [ ...
     (iu*Rb*W*If).*bufs_i, Zf,  (2/3*iu*MuT*dxT/Re*If).*bufs_i,  Zf,  (-iu*MuT*dxW/Re*If).*bufs_i;
-    Zf,  (iu*Rb*W*If).*bufs_i, (-iu*Mu/3/Re*D1f + 2/3*iu*MuT*dyT/Re*If).*bufs_i, Zf, (-iu*MuT*dyW/Re*If).*bufs_i;
-    (-iu*MuT*dxT/Re*If).*bufs_i, (-iu*Mu/3/Re*D1f - iu*MuT*dyT/Re*If).*bufs_i, (iu*Rb*W*If).*bufs_i, (iu*Tb/gM2*If).*bufs_i, (iu*Rb/gM2*If + 2/3*iu*MuT*divU/Re*If).*bufs_i;
+    Zf,  (iu*Rb*W*If).*bufs_i, (-iu*Mu/3/Re*Metay*D1f + 2/3*iu*MuT*dyT/Re*If).*bufs_i, Zf, (-iu*MuT*dyW/Re*If).*bufs_i;
+    (-iu*MuT*dxT/Re*If).*bufs_i, (-iu*Mu/3/Re*Metay*D1f - iu*MuT*dyT/Re*If).*bufs_i, (iu*Rb*W*If).*bufs_i, (iu*Tb/gM2*If).*bufs_i, (iu*Rb/gM2*If + 2/3*iu*MuT*divU/Re*If).*bufs_i;
     Zf,  Zf,  (iu*Rb).*bufsp_i,  (iu*W*If).*bufsp_i, Zf;
     Zf,  Zf,  (iu*(ga-1)*Tb*Rb).*bufs_i, Zf, (iu*Rb*W*If).*bufs_i ];
 
-% Viscous dissipation iβ terms in energy row (Ci additions).
-% iβ*u_hat terms: -pref_diss * tau_xz * iβ (zero if W=0)
 Ci(rT,ru) = Ci(rT,ru) - (iu * pref_diss * Mu * tau_xz).*bufs_i;
-% iβ*v_hat terms: -pref_diss * tau_yz * iβ (zero if W=0)
 Ci(rT,rv) = Ci(rT,rv) - (iu * pref_diss * Mu * tau_yz).*bufs_i;
-% iβ*w_hat terms: -pref_diss * tau_zz * iβ
 Ci(rT,rw) = Ci(rT,rw) - (iu * pref_diss * Mu * tau_zz).*bufs_i;
 
-% D_i: +β² coefficient (M, viscous spanwise diffusion).  4/3 on z-mom.
+% Di: MLA4 (x beta^2): -mu*beta^2
 Di = [ ...
     (Mu/Re*If).*bufs_i,    Zf,                     Zf,                    Zf, Zf;
     Zf,                    (Mu/Re*If).*bufs_i,      Zf,                    Zf, Zf;
@@ -488,52 +403,56 @@ Di = [ ...
     Zf,                    Zf,                      Zf,                    Zf, Zf;
     Zf,                    Zf,                      Zf,                    Zf, (ga*Kap/(Pr*Re)*If).*bufs_i ];
 
-% E_i: ∂_ξ coefficient.  Streamwise advection (with ρ̄), pressure
-% gradient ∂_x p' in x-mom, ρ̄ ∂_x u' in continuity, energy pressure work.
-% Viscous cross-derivative terms (∂_y∂_x):
-%   x-mom (row 1, v-col): -(1/3)μ̄/Re * D1f
-%   y-mom (row 2, u-col): -(1/3)μ̄/Re * D1f
-% Variable-viscosity ∂_y T̄ scalar terms:
-%   x-mom (row 1, v-col): -mu_T*(∂_y T̄)/Re   (D23)
-%   y-mom (row 2, u-col): +(2/3)*mu_T*(∂_y T̄)/Re  (D32)
-% Non-parallel variable-viscosity ∂_x T̄ diagonal terms (∂_x μ̄ × ∂_x q̂):
-%   x-mom (row 1, u-col): -(4/3)*mu_T*(∂_x T̄)/Re
-%   y-mom (row 2, v-col): -mu_T*(∂_x T̄)/Re
-%   z-mom (row 3, w-col): -mu_T*(∂_x T̄)/Re
-% mu' * τ̄_ij * ∂_x T̂ couplings (T̂-column):
-%   x-mom (row 1, T-col): -mu_T*τ̄_xx/Re
-%   y-mom (row 2, T-col): -mu_T*τ̄_xy/Re
-%   z-mom (row 3, T-col): -mu_T*(∂_x W̄)/Re  (W̄-dependent, from τ̄_xz=μ̄∂_x W̄)
-% Pressure gradient ∂p'/∂x streamwise-derivative
-% contribution becomes Tb/gM2 on rho-col (x-mom) and Rb/gM2 on T-col (x-mom).
-% Continuity (row 4) gets Ubar*∂_x rho' on rho-col (direct advection), no T-col.
+% Ei: MLA1 d/dxi: advection + cross-metric viscous
 Ei = [ ...
-    (Rb*U - 4/3*MuT*dxT/Re*If).*bufs_i, (-Mu/3/Re*D1f - MuT*dyT/Re*If).*bufs_i, Zf, (Tb/gM2*If).*bufs_i, (Rb/gM2*If - MuT*tau_xx/Re).*bufs_i;
-    (-Mu/3/Re*D1f + 2/3*MuT*dyT/Re*If).*bufs_i, (Rb*U - MuT*dxT/Re*If).*bufs_i,  Zf, Zf,                   (-MuT*tau_xy/Re).*bufs_i;
-    Zf,  Zf,  (Rb*U - MuT*dxT/Re*If).*bufs_i,  Zf,  (-MuT*dxW/Re*If).*bufs_i;
-    (Rb).*bufsp_i, Zf, Zf, (U).*bufsp_i, Zf;
-    ((ga-1)*Tb*Rb).*bufs_i, Zf, Zf, Zf, (Rb*U - 2*ga*KapT/(Pr*Re)*dxT).*bufs_i ];
+    (Rb*Cxi - 4/3*MuT*dxT/Re*If).*bufs_i, (Vcross_E - MuT*dyT/Re*If).*bufs_i, Zf, (Tb*Mxix/gM2).*bufs_i, (Rb*Mxix/gM2 - MuT*tau_xx/Re).*bufs_i;
+    (Vcross_E + 2/3*MuT*dyT/Re*If).*bufs_i, (Rb*Cxi - MuT*dxT/Re*If).*bufs_i,  Zf, (Tb*Mxiy/gM2).*bufs_i,  (Rb*Mxiy/gM2 - MuT*tau_xy/Re).*bufs_i;
+    Zf,  Zf,  (Rb*Cxi - MuT*dxT/Re*If).*bufs_i,  Zf,  (-MuT*dxW/Re*If).*bufs_i;
+    (Rb*Mxix).*bufsp_i, (Rb*Mxiy).*bufsp_i, Zf, (Cxi).*bufsp_i, Zf;
+    ((ga-1)*Tb*Rb*Mxix).*bufs_i, ((ga-1)*Tb*Rb*Mxiy).*bufs_i, Zf, Zf, (Rb*Cxi - 2*ga*KapT/(Pr*Re)*dxT).*bufs_i ];
 
-% Viscous dissipation d_x u_hat terms in energy row (Ei additions):
-%   -pref_diss * tau_xx * d_x u_hat  (always nonzero)
-%   -pref_diss * tau_xy * d_x v_hat  (always nonzero)
-%   -pref_diss * tau_xz * d_x w_hat  (zero if W=0)
 Ei(rT,ru) = Ei(rT,ru) - (pref_diss * Mu * tau_xx).*bufs_i;
 Ei(rT,rv) = Ei(rT,rv) - (pref_diss * Mu * tau_xy).*bufs_i;
 Ei(rT,rw) = Ei(rT,rw) - (pref_diss * Mu * tau_xz).*bufs_i;
 
-% F_i: ∂²_ξ coefficient (streamwise viscous diffusion).
-%   x-mom diagonal has the 4/3 factor (normal stress on u).
-%   y-mom, z-mom, energy: factor 1.
-visc_fac_u_fi = 4/3/Re;   % 4/3/Re: streamwise normal stress on u
-Fi = [ ...
-    (-Mu*visc_fac_u_fi*If).*bufs_i.*bufp_i, Zf,                               Zf,                               Zf, Zf;
-    Zf,                                      (-Mu/Re*If).*bufs_i.*bufp_i,      Zf,                               Zf, Zf;
-    Zf,                              Zf,                              (-Mu/Re*If).*bufs_i.*bufp_i,      Zf, Zf;
-    Zf,                              Zf,                              Zf,                              Zf, Zf;
-    Zf,                              Zf,                              Zf,                              Zf, (-ga*Kap/(Pr*Re)*If).*bufs_i.*bufp_i ];
+Ei(ru,ru) = Ei(ru,ru) + (ViscED1(4/3,1,Mu/Re)         + ViscEI(4/3,1,Mu/Re)).*bufs_i;
+Ei(rv,rv) = Ei(rv,rv) + (ViscED1(1,4/3,Mu/Re)         + ViscEI(1,4/3,Mu/Re)).*bufs_i;
+Ei(rw,rw) = Ei(rw,rw) + (ViscED1(1,1,Mu/Re)           + ViscEI(1,1,Mu/Re)).*bufs_i;
+Ei(rT,rT) = Ei(rT,rT) + (ViscED1(1,1,ga*Kap/(Pr*Re))  + ViscEI(1,1,ga*Kap/(Pr*Re))).*bufs_i;
 
-% G_i: buffer / identity terms (same construction as LHS.m)
+Ai(ru,rv) = Ai(ru,rv) + Vcross_A.*bufs_i;
+Ai(rv,ru) = Ai(rv,ru) + Vcross_A.*bufs_i;
+
+
+% Fi: MLA1 d2/dxi2: streamwise viscous
+Fi = [ ...
+    (ViscF(4/3,1,Mu/Re)).*bufs_i.*bufp_i, Zf,                               Zf,                               Zf, Zf;
+    Zf,                              (ViscF(1,4/3,Mu/Re)).*bufs_i.*bufp_i,   Zf,                               Zf, Zf;
+    Zf,                              Zf,                              (ViscF(1,1,Mu/Re)).*bufs_i.*bufp_i,      Zf, Zf;
+    Zf,                              Zf,                              Zf,                              Zf, Zf;
+    Zf,                              Zf,                              Zf,                              Zf, (ViscF(1,1,ga*Kap/(Pr*Re))).*bufs_i.*bufp_i ];
+
+Fi(ru,rv) = Fi(ru,rv) + Vcross_F.*bufs_i.*bufp_i;
+Fi(rv,ru) = Fi(rv,ru) + Vcross_F.*bufs_i.*bufp_i;
+
+% Curvilinear var-mu cross-metric corrections (Ei + Ai)
+MXc = Mxix - If;   MYc = Metay - If;
+vvE = @(X,Y) (X*MXc + Y*Mxiy).*bufs_i;
+vvA = @(X,Y) (X*Metax*D1f + Y*MYc*D1f).*bufs_i;
+Xc=-4/3*MuT*dxT/Re;             Yc=-MuT*dyT/Re;            Ei(ru,ru)=Ei(ru,ru)+vvE(Xc,Yc); Ai(ru,ru)=Ai(ru,ru)+vvA(Xc,Yc);
+Xc=-MuT*dxT/Re;                 Yc=-4/3*MuT*dyT/Re;        Ei(rv,rv)=Ei(rv,rv)+vvE(Xc,Yc); Ai(rv,rv)=Ai(rv,rv)+vvA(Xc,Yc);
+Xc=-MuT*dxT/Re;                 Yc=-MuT*dyT/Re;            Ei(rw,rw)=Ei(rw,rw)+vvE(Xc,Yc); Ai(rw,rw)=Ai(rw,rw)+vvA(Xc,Yc);
+Xc=-2*ga*KapT/(Pr*Re)*dxT;      Yc=-2*ga*KapT/(Pr*Re)*dyT; Ei(rT,rT)=Ei(rT,rT)+vvE(Xc,Yc); Ai(rT,rT)=Ai(rT,rT)+vvA(Xc,Yc);
+Xc=-MuT*dyT/Re;                 Yc= 2/3*MuT*dxT/Re;        Ei(ru,rv)=Ei(ru,rv)+vvE(Xc,Yc); Ai(ru,rv)=Ai(ru,rv)+vvA(Xc,Yc);
+Xc= 2/3*MuT*dyT/Re;             Yc=-MuT*dxT/Re;            Ei(rv,ru)=Ei(rv,ru)+vvE(Xc,Yc); Ai(rv,ru)=Ai(rv,ru)+vvA(Xc,Yc);
+Xc=-MuT*tau_xx/Re;              Yc=-MuT*tau_xy/Re;         Ei(ru,rT)=Ei(ru,rT)+vvE(Xc,Yc); Ai(ru,rT)=Ai(ru,rT)+vvA(Xc,Yc);
+Xc=-MuT*tau_xy/Re;             Yc=-MuT*tau_yy/Re;          Ei(rv,rT)=Ei(rv,rT)+vvE(Xc,Yc); Ai(rv,rT)=Ai(rv,rT)+vvA(Xc,Yc);
+Xc=-MuT*dxW/Re;                 Yc=-MuT*dyW/Re;            Ei(rw,rT)=Ei(rw,rT)+vvE(Xc,Yc); Ai(rw,rT)=Ai(rw,rT)+vvA(Xc,Yc);
+Xc=-pref_diss*Mu*tau_xx;        Yc=-pref_diss*Mu*tau_xy;   Ei(rT,ru)=Ei(rT,ru)+vvE(Xc,Yc); Ai(rT,ru)=Ai(rT,ru)+vvA(Xc,Yc);
+Xc=-pref_diss*Mu*tau_xy;        Yc=-pref_diss*Mu*tau_yy;   Ei(rT,rv)=Ei(rT,rv)+vvE(Xc,Yc); Ai(rT,rv)=Ai(rT,rv)+vvA(Xc,Yc);
+Xc=-pref_diss*Mu*tau_xz;        Yc=-pref_diss*Mu*tau_yz;   Ei(rT,rw)=Ei(rT,rw)+vvE(Xc,Yc); Ai(rT,rw)=Ai(rT,rw)+vvA(Xc,Yc);
+
+% Gi: freestream/buffer identity; Pres = continuity outflow stencil
 if use_full
     Pres = diag(1-bufsp_i) + diag(-1*(1-Bound.bufsp(2:end,i)), -1);
 else
@@ -550,85 +469,57 @@ Gi = [Gi_u  Zf   Zf   Zf   Zf
        Zf   Zf   Zf  Pres  Zf
        Zf   Zf   Zf   Zf  Gi_T];
 
-% K_i: iβ × ∂_x coefficient (cross-viscous block).
-% These are the (1/3)/Re cross terms coupling x-mom↔w and z-mom↔u via iβ*∂_x.
-% Assembled into MLA5 (β-linear, ∂_x stencil), analogous to Ei for MLA1.
-Ki = [Zf, Zf,              (-Mu/3/Re*If).*bufs_i, Zf, Zf;
+% Ki: MLA5 (x beta*d/dxi): cross-viscous
+Ki = [Zf, Zf,              (-iu*Mu/3/Re*Mxix).*bufs_i, Zf, Zf;
       Zf, Zf,              Zf,                     Zf, Zf;
-      (-Mu/3/Re*If).*bufs_i, Zf, Zf,              Zf, Zf;
+      (-iu*Mu/3/Re*Mxix).*bufs_i, Zf, Zf,              Zf, Zf;
       Zf, Zf,              Zf,                     Zf, Zf;
       Zf, Zf,              Zf,                     Zf, Zf];
+Ci(ru,rw) = Ci(ru,rw) + (-iu*Mu/3/Re*Metax*D1f).*bufs_i;
+Ci(rw,ru) = Ci(rw,ru) + (-iu*Mu/3/Re*Metax*D1f).*bufs_i;
+Ki(rv,rw) = Ki(rv,rw) + (-iu*Mu/3/Re*Mxiy).*bufs_i;
+Ki(rw,rv) = Ki(rw,rv) + (-iu*Mu/3/Re*Mxiy).*bufs_i;
 
-% ---- Assemble FD stencil (same structure as LHS.m) ----
 sten = bsize*(i-1)+1 : bsize*i;
 
-% Boundary edges (i=2, nx-1, nx) keep 4th-order biased regardless of fd_order_x.
-% For 6th-order interior, also keep i=3 and i=nx-2 at 4th-order central
-% (they don't have enough room for the 7-point stencil).
 is_6th_interior = (fd_order_x == 6) && (i >= 4) && (i <= nx-3);
 
+% Streamwise stencil stations + current-station index. Weights come from the
+% precomputed Fornberg W1/W2 (passed as w1/w2), correct on non-uniform xi grids;
+% on a uniform grid they reduce to the classical 4th/6th-order coefficients.
 if i == 2
     stenr   = [sten-bsize, sten, sten+bsize, sten+2*bsize, sten+3*bsize];
     cur_blk = 2;
-    blk1MFD = [-3*Ei/(12*dxi)+11*Fi/(12*dxi^2), ...
-               (Ai-10*Ei/(12*dxi)-20*Fi/(12*dxi^2))+Gi/bufc_i, ...
-                18*Ei/(12*dxi)+ 6*Fi/(12*dxi^2), ...
-               - 6*Ei/(12*dxi)+ 4*Fi/(12*dxi^2), ...
-                   Ei/(12*dxi)- 1*Fi/(12*dxi^2)]*bufc_i;
-    blk5 = [-3*Ki/(12*dxi), -10*Ki/(12*dxi), 18*Ki/(12*dxi), ...
-             -6*Ki/(12*dxi),    Ki/(12*dxi)]*bufc_i;
-
 elseif i == nx-1
     stenr   = [sten-2*bsize, sten-bsize, sten, sten+bsize];
     cur_blk = 3;
-    blk1MFD = [   Ei/(6*dxi), ...
-               -6*Ei/(6*dxi)+  Fi/(dxi^2), ...
-               (Ai+3*Ei/(6*dxi)-2*Fi/(dxi^2))+Gi/bufc_i, ...
-                2*Ei/(6*dxi)+  Fi/(dxi^2)]*bufc_i;
-    blk5 = [Ki/(6*dxi), -6*Ki/(6*dxi), 3*Ki/(6*dxi), 2*Ki/(6*dxi)]*bufc_i;
-
 elseif i == nx
     stenr   = [sten-2*bsize, sten-bsize, sten];
     cur_blk = 3;
-    blk1MFD = [   Ei/(2*dxi)+  Fi/(dxi^2), ...
-               -4*Ei/(2*dxi)-2*Fi/(dxi^2), ...
-               (Ai+3*Ei/(2*dxi)+  Fi/(dxi^2))+Gi/bufc_i]*bufc_i;
-    blk5 = [Ki/(2*dxi), -4*Ki/(2*dxi), 3*Ki/(2*dxi)]*bufc_i;
-
 elseif is_6th_interior
-    % 6th-order central, 7-point stencil [j-3, j-2, j-1, j, j+1, j+2, j+3]
-    % 1st-deriv coeffs: (-1, 9, -45, 0, 45, -9, 1)/(60*dxi)
-    % 2nd-deriv coeffs: ( 2,-27, 270,-490, 270,-27, 2)/(180*dxi^2)
     stenr   = [sten-3*bsize, sten-2*bsize, sten-bsize, sten, sten+bsize, sten+2*bsize, sten+3*bsize];
     cur_blk = 4;
-    blk1MFD = [  -Ei/(60*dxi) +   2*Fi/(180*dxi^2), ...   % j-3
-                9*Ei/(60*dxi) -  27*Fi/(180*dxi^2), ...   % j-2
-              -45*Ei/(60*dxi) + 270*Fi/(180*dxi^2), ...   % j-1
-              (Ai            - 490*Fi/(180*dxi^2)) + Gi/bufc_i, ...
-               45*Ei/(60*dxi) + 270*Fi/(180*dxi^2), ...   % j+1
-               -9*Ei/(60*dxi) -  27*Fi/(180*dxi^2), ...   % j+2
-                  Ei/(60*dxi) +   2*Fi/(180*dxi^2)] * bufc_i; % j+3
-    blk5 = [  -Ki/(60*dxi),  9*Ki/(60*dxi), -45*Ki/(60*dxi), ...
-              zeros(bsize,bsize), ...
-              45*Ki/(60*dxi), -9*Ki/(60*dxi),    Ki/(60*dxi)] * bufc_i;
-
-else   % i in {3, nx-2} when fd_order_x=6, OR all interior when fd_order_x=4
+else
     stenr   = [sten-2*bsize, sten-bsize, sten, sten+bsize, sten+2*bsize];
     cur_blk = 3;
-    blk1MFD = [ Ei/(12*dxi)- 1*Fi/(12*dxi^2), ...
-               -8*Ei/(12*dxi)+16*Fi/(12*dxi^2), ...
-               (Ai             -30*Fi/(12*dxi^2))+Gi/bufc_i, ...
-                8*Ei/(12*dxi)+16*Fi/(12*dxi^2), ...
-               -  Ei/(12*dxi)- 1*Fi/(12*dxi^2)]*bufc_i;
-    blk5 = [ Ki/(12*dxi), -8*Ki/(12*dxi), zeros(bsize,bsize), ...
-              8*Ki/(12*dxi),   -Ki/(12*dxi)]*bufc_i;
 end
+
+% blk1 (MLA1): Ei*d/dxi + Fi*d2/dxi2 across the stencil, Ai on the current block;
+% blk5 (MLA5, spanwise Ki): first-derivative only (Ki*d/dxi).
+nblk = numel(stenr) / bsize;         % number of stencil stations (blocks)
+blk1MFD = cell(1, nblk);  blk5c = cell(1, nblk);
+for kk = 1:nblk
+    blk1MFD{kk} = Ei*w1(kk) + Fi*w2(kk);
+    if kk == cur_blk; blk1MFD{kk} = blk1MFD{kk} + Ai + Gi/bufc_i; end
+    blk5c{kk} = Ki*w1(kk);
+end
+blk1MFD = cell2mat(blk1MFD) * bufc_i;
+blk5    = cell2mat(blk5c)    * bufc_i;
 
 ncols     = numel(stenr);
 blk1      = blk1MFD;
 cur_off   = (cur_blk-1)*bsize;
 
-% ML2/ML3/ML4 only write to the diagonal (current station) block
 blk2 = zeros(bsize, ncols);
 blk3 = zeros(bsize, ncols);
 blk4 = zeros(bsize, ncols);
@@ -636,31 +527,24 @@ blk2(:, cur_off+1:cur_off+bsize) = Bi*bufc_i;
 blk3(:, cur_off+1:cur_off+bsize) = Ci*bufc_i;
 blk4(:, cur_off+1:cur_off+bsize) = Di*bufc_i;
 
-% ---- Apply freestream BCs per component ----
-% bc_top_type cell-array entries map to (u, w, rho, T) in that order
-% -- following the state-vector slot ordering (u,v,w,rho,T) with v omitted.
-blk1MFD(bc_top_mfd,:) = 0;
-blk1(bc_top,:)   = 0;
-blk2(bc_top,:)   = 0;
-blk3(bc_top,:)   = 0;
-blk4(bc_top,:)   = 0;
-blk5(bc_top,:)   = 0;
-
+% 'free' components keep the governing equation (no imposed BC); see LHS.m.
 for k = 1:numel(bc_top)
-    r  = bc_top(k);
+    if strcmpi(bc_top_type{k}, 'free'); continue; end
+    r      = bc_top(k);
     is_mfd = ismember(r, bc_top_mfd);
+    blk1(r,:) = 0;  blk2(r,:) = 0;  blk3(r,:) = 0;  blk4(r,:) = 0;  blk5(r,:) = 0;
+    if is_mfd; blk1MFD(r,:) = 0; end
     if strcmpi(bc_top_type{k}, 'H_NM')
-        cs = cur_off + r;
-        ce = cur_off + r + ny - 1;
-        blk1(r, cs:ce) = D1f(1,:);
-        if is_mfd; blk1MFD(r, cs:ce) = D1f(1,:); end
-    else  % H_DR or IH_DR -> identity row
+        cols = cur_off + r + (0:ny-1);
+        blk1(r, cols) = D1f(1,:);
+        if is_mfd; blk1MFD(r, cols) = D1f(1,:); end
+    else
         blk1(r, cur_off+r) = 1;
         if is_mfd; blk1MFD(r, cur_off+r) = 1; end
     end
 end
 
-% ---- Apply wall BCs (u=v=w=0, T isothermal/adiabatic; rho free) ----
+
 blk1MFD(bc_wall,:) = 0;
 blk1(bc_wall,:)    = 0;
 blk2(bc_wall,:)    = 0;
@@ -672,7 +556,6 @@ for r = bc_wall
     blk1(r,    cur_off+r) = 1;
 end
 
-% Adiabatic wall: replace T Dirichlet with Neumann dT'/dy = 0
 if strcmpi(wall_thermal, 'adiabatic')
     r  = 5*ny;
     cs = cur_off + 4*ny + 1;
@@ -683,7 +566,6 @@ if strcmpi(wall_thermal, 'adiabatic')
     blk1MFD(r, cs:ce) = D1f(ny,:);
 end
 
-% ---- Extract sparse triplets ----
 row_off = bsize*(i-1);
 
 [ii,jj,ss] = find(blk1MFD);  ci1MFD=reshape(ii+row_off,[],1); cj1MFD=reshape(stenr(jj),[],1); cs1MFD=reshape(ss,[],1);
@@ -692,5 +574,11 @@ row_off = bsize*(i-1);
 [ii,jj,ss] = find(blk3);     ci3   =reshape(ii+row_off,[],1); cj3   =reshape(stenr(jj),[],1); cs3   =reshape(ss,[],1);
 [ii,jj,ss] = find(blk4);     ci4   =reshape(ii+row_off,[],1); cj4   =reshape(stenr(jj),[],1); cs4   =reshape(ss,[],1);
 [ii,jj,ss] = find(blk5);     ci5   =reshape(ii+row_off,[],1); cj5   =reshape(stenr(jj),[],1); cs5   =reshape(ss,[],1);
+
+% Raw per-station operator blocks (pre-stencil, pre-BC), for the WKB-marched
+% (PSE-form) re-solve of DeHNSSo's own operator. P/Q built by the marcher.
+if nargout > 18
+    Araw = Ai; Braw = Bi; Craw = Ci; Draw = Di; Eraw = Ei; Fraw = Fi; Kraw = Ki;
+end
 
 end

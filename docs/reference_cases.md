@@ -10,9 +10,9 @@ Three reference cases ship with the repository. Each reproduces a published vali
 
 The base flows are committed in `baseflow/output/benchmark/`. Both the gridgen and stability scripts read from there directly, so no manual file copying is required.
 
-> **Defaults vs paper-faithful.** The unified callers in `callers/benchmark/` ship with **fast smoke** defaults (linear, single fundamental mode, medium grid). To reproduce the Westerbeek 2024 paper figures exactly, edit the spectral content (`Stab.M`, `Stab.N`), set `Opt.linear = 'off'`, and where noted regenerate the base flow at finer resolution. Each case below has a "To reproduce Fig. X" callout listing the specific changes.
+> **Shipped configuration.** The unified callers in `callers/benchmark/` ship configured to reproduce the paper figures (nonlinear where the paper is nonlinear), on the medium grid committed in `baseflow/output/benchmark/`. To match a paper figure exactly, only the grid resolution usually needs increasing (regenerate the base flow); each case below notes where.
 
-> **Amplitude convention.** `Stab.A0_fund` is the amplitude of the **fundamental mode only**; `init.m` mirrors it onto the conjugate. The peak `u'` in the paper therefore corresponds to `2 · Stab.A0_fund` for a single-fundamental case.
+> **Amplitude convention.** `Stab.A0_fund` is the **physical peak amplitude** `2|û|` of the disturbance — what you set in equals what post-process reports (`StabRes.A`). *(Changed in v2: it was previously the complex amplitude `|û|`, i.e. half this value; see the user guide "Amplitude convention".)*
 
 ## Workflow (all three cases)
 
@@ -51,16 +51,16 @@ Tollmien-Schlichting waves in a flat-plate Blasius boundary layer with zero pres
 
 | Knob | Default (shipped) | Paper (Fig. 8) |
 |---|---|---|
-| Spectral truncation `(M, N)` | `(1, 0)` — linear single TS wave | `(5, 0)` — 5 harmonics + MFD |
-| `Opt.linear` | `'on'` | `'off'` |
-| `Stab.A0_fund` | `0.00125·√2` (paper A0 = `2·A0_fund` = `0.0025·√2`) | `0.00125·√2` |
-| Streamwise grid `nx` | 800 (medium, from `bf_blasius.mat`) | 2674 (refined) or 800 (medium) |
-| Wall-normal grid `ny` | 40 (medium) | 100 (refined) or 40 (medium) |
-| Buffer | `Opt.buffer = 'para'`, starts at 85% | same |
+| Spectral truncation `(M, N)` | `(5, 0)` — 5 harmonics + MFD | same |
+| `Opt.linear` | `'off'` (nonlinear) | same |
+| `Stab.A0_fund` | `0.0025·√2` (physical peak) | same |
+| Streamwise grid `nx` | 800 (medium, from `bf_blasius.mat`) | 2674 (refined) |
+| Wall-normal grid `ny` | 40 (medium) | 100 (refined) |
+| Buffer | `Opt.buffer = 'on'`, starts at 70% | same |
 
-### To reproduce Fig. 8 (M=5 nonlinear, medium grid)
+### To reproduce Fig. 8 exactly (refined grid)
 
-In `callers/benchmark/blasius.m`: set `Stab.M = 5` and `Opt.linear = 'off'`. For the refined paper grid, regenerate `bf_blasius.mat` at `nx=2674`, `ny=100` via `baseflow/caller/caller_IBL.m`.
+The shipped caller is already the M=5 nonlinear configuration. For the refined paper grid, regenerate `bf_blasius.mat` at `nx=2674`, `ny=100` via `baseflow/caller/caller_IBL.m`.
 
 ### Expected output (paper-faithful run)
 
@@ -100,17 +100,17 @@ Stationary crossflow instabilities (CFI) in a swept-wing boundary layer with fav
 
 | Knob | Default (shipped) | Paper (Fig. 9) |
 |---|---|---|
-| Spectral truncation `(M, N)` | `(0, 1)` — fundamental + conjugate + MFD | `(0, 5)` — 5 harmonics + MFD |
-| `Opt.linear` | `'on'` | `'off'` |
-| `Stab.A0_fund` | `1.75×10⁻³` (= `3.5e-3 / 2`) | `1.75×10⁻³` |
+| Spectral truncation `(M, N)` | `(0, 5)` — 5 harmonics + MFD | same |
+| `Opt.linear` | `'off'` (nonlinear) | same |
+| `Stab.A0_fund` | `3.5×10⁻³` (physical peak) | same |
 | Streamwise grid `nx` | 1200 (after gridgen Cartesian resample) | 1272 |
 | Wall-normal grid `ny` | 60 (Chebyshev) | 100 |
-| Buffer | `Opt.buffer = 'para'`, starts at 85% | same |
-| Amplitude ramp | `Opt.linear = 'on'` skips it; for nonlinear runs, cold-start at `A0 ≈ 2.6×10⁻⁴` and ramp by `γ = 1.10` per iteration |
+| Buffer | `Opt.buffer = 'on'`, starts at 85%; `Opt.anderson = 5` (required for the cascade) | same |
+| Amplitude ramp | cold-starts and ramps by `γ = 1.10` per iteration (nonlinear) | same |
 
-### To reproduce Fig. 9 (N=5 nonlinear)
+### To reproduce Fig. 9 exactly (refined grid)
 
-In `callers/benchmark/sweptwing_flat.m`: set `Stab.N = 5`, `Opt.linear = 'off'`, `Opt.buffer = 'on'`, and `Opt.anderson = 5`. The `anderson = 5` is **required** — without it plain Picard diverges during the mode cascade near saturation (`max_A` runs away). For the paper's wall-normal resolution, increase `params.n_eta_new = 100` in `gridgen/benchmark/sweptwing_flat.m` and re-run gridgen.
+The shipped caller is already the N=5 nonlinear configuration with `Opt.anderson = 5` — **required**, since without it plain Picard diverges during the mode cascade near saturation (`max_A` runs away). For the paper's wall-normal resolution, increase `params.n_eta_new = 100` in `gridgen/benchmark/sweptwing_flat.m` and re-run gridgen.
 
 ### Expected output (paper-faithful run)
 
@@ -148,7 +148,7 @@ The hump is shallow enough to avoid flow separation; the base flow is taken from
 |---|---|
 | Spectral truncation `(M, N)` | `(0, 1)` — fundamental + conjugate + MFD (3 modes; MFD inactive in linear mode) |
 | `Opt.linear` | `'on'` (linear analysis only) |
-| `Stab.A0_fund` | `1.75×10⁻³` (linear regime — value sets only the absolute scale) |
+| `Stab.A0_fund` | `3.5×10⁻³` (linear regime — value sets only the absolute scale) |
 | Streamwise grid `nx` | 1200 (curvilinear, Gaussian-clustered around `x_m = 859`) |
 | Wall-normal grid `ny` | 80 (FD, 4th-order, sparse) |
 | Buffer | `Opt.buffer = 'para'`, starts at 85% |
@@ -207,7 +207,7 @@ cd ../../gridgen/benchmark/; blasius_compressible              % DeHNSSo_input_c
 cd ../../callers/benchmark/; blasius_compressible              % HNS + Zanus/Bertolotti overlay
 ```
 
-If `Opt.lu_mode = 'lapack_band'`: build the MEX once per machine with `run('src/hns/mexbuild_dgbsv.m')`. Requires MATLAB ≥ R2018a and a C compiler configured for `mex`. Fall back to `Opt.lu_mode = 'seq'` if no compiler is available (≈3× slower).
+If `Opt.lu_mode = 'lapack_band'`: build the MEX once per machine with `run('src/linsolve/lapack_band/mexbuild_dgbsv.m')`. Requires MATLAB ≥ R2018a and a C compiler configured for `mex`. Fall back to `Opt.lu_mode = 'seq'` if no compiler is available (≈3× slower).
 
 ### Expected output
 
@@ -227,6 +227,6 @@ v2 single-thread on a 32 GB Apple Silicon laptop:
 ## Notes for replication
 
 - **Reference benchmark data.** NPSE (Cases 1, 2) and AHLNS (Case 3) reference curves are shipped in `literature/` and auto-loaded by the unified callers via `ref_file`. To override or skip the overlay, edit the `ref_file = ...` line near the top of the post-processing block in `callers/benchmark/<case>.m`.
-- **Buffer treatment.** All three cases use parabolisation (`Opt.buffer = 'para'`) at the outflow. The buffer starts at 85% of the streamwise domain by default.
+- **Buffer treatment.** The hump (Case 3) and compressible (Case 4) cases use parabolisation (`Opt.buffer = 'para'`); the Blasius and swept-wing-flat cases use amplitude damping (`'on'`). The buffer starts at 70–90% of the streamwise domain depending on the case.
 - **Convergence criterion.** `Opt.Conv = 1e-4` (default); for the nonlinear CFI case the absolute floor `1e-14` in `check_convergence.m` is what allows the harmonics to fully converge despite their tiny amplitudes.
 - **Memory.** Cases 1 and 3 fit comfortably on a laptop. Case 2 (nonlinear CFI, 6 modes) needs roughly 15 GB of RAM at peak.

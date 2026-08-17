@@ -1,5 +1,21 @@
 function [StabRes, Mode, Stab] = update_modes(StabGrid, Bound, Mode, Opt, Stab, StabRes)
-%UPDATE_MODES  Extract solution, compute amplitudes, activate new modes, compute NLT.
+%UPDATE_MODES  Unpack solution, compute amplitudes, activate modes, build NLT.
+%
+%   [StabRes, Mode, Stab] = update_modes(StabGrid, Bound, Mode, Opt, Stab, StabRes)
+%
+%   Reshapes the solution vector q into the primitive fields (recovering the
+%   pressure perturbation from the equation of state in the compressible case),
+%   computes the modal amplitudes, decides which new harmonics have grown large
+%   enough to be advanced, and evaluates the nonlinear forcing term (skipped for
+%   linear runs).
+%
+%   Inputs:
+%     StabGrid  — grid structure (ny, nx, D1, base flow, gamma, Ma)
+%     Bound     — boundary/buffer structure (ibuff, bufcf)
+%     Mode      — mode structure (RunJ, Aactive, nf)
+%     Opt       — options (compressible, linear, allmodes, Sweep, thresholds)
+%     Stab      — stability data (harmonic-balancing HB, A0, forcing f)
+%     StabRes   — stability results (updated with u, v, w, p, rho, T, A)
 
 ny_      = StabGrid.ny;
 nx_      = StabGrid.nx;
@@ -30,6 +46,12 @@ for j = Mode.RunJ
 end
 
 %% Determine active modes
+if isfield(Opt,'allmodes') && strcmpi(Opt.allmodes,'on')
+    % 2D cascade (oblique breakdown): the 1D harmonic ladder misses off-axis
+    % modes (2,0)/(0,2)/(2,2); activate the full (m,n) set.
+    Mode.Aactive(:) = 1;
+    Mode.RunJ = 1:Mode.nf;
+else
 % Outer product of per-mode amplitude maxima
 Amax = max(StabRes.A, [], 2);
 Amat = Amax * Amax';
@@ -43,7 +65,9 @@ if Opt.Sweep == 1
     nfm = max(nzA) + 1;
     nfl = min(nzA) - 1;
 else
-    if Opt.AF >= 1 && max(abs(Opt.dalsave(:,max(Opt.k1,1)))) <= Opt.Conv*Opt.ConvF && ~isnan(Opt.dalsave(max(Mode.RunJ),Opt.k1))
+    % k1 is incremented in check_convergence, which runs AFTER this on each
+    % iteration, so k1 = 0 on the first call: clamp every dalsave column index.
+    if Opt.AF >= 1 && max(abs(Opt.dalsave(:,max(Opt.k1,1)))) <= Opt.Conv*Opt.ConvF && ~isnan(Opt.dalsave(max(Mode.RunJ),max(Opt.k1,1)))
         [nzA, ] = find(StabRes.A(:,index));
         nfm = max(nzA) + 1;
         nfl = min(nzA) - 1;
@@ -77,6 +101,7 @@ for j = 1:Mode.nf
 end
 NewModes = find(Mode.Aactive - Aactive_old > 0);
 Mode.RunJ = sort([Mode.RunJ NewModes]);
+end
 
 %% Calculate nonlinear terms (skip for linear runs)
 is_linear = isfield(Opt,'linear') && strcmpi(Opt.linear,'on');

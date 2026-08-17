@@ -11,6 +11,7 @@ function c = fornberg_weights(z, x, m)
 %   Implements B. Fornberg, "Generation of finite difference formulas on
 %   arbitrarily spaced grids", Math. Comp. 51 (1988) 699-706.
 
+%% Initialise
 x = x(:);
 n = length(x) - 1;
 c = zeros(n+1, m+1);
@@ -19,6 +20,7 @@ c1 = 1;
 c4 = x(1) - z;
 c(1, 1) = 1;
 
+%% Fornberg recurrence over the stencil points
 for i = 1:n
     mn = min(i, m);
     c2 = 1;

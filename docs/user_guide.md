@@ -39,17 +39,19 @@ blasius       % reads bf_blasius.mat from baseflow/output/benchmark/, writes DeH
 
 For other supported cases (`blasius_csv`, `sweptwing_flat`, `sweptwing_hump`, `m3j` / OpenFOAM): see [README.md](../README.md).
 
-### Step 1b — Optional streamwise clustering (curvilinear cases)
+### Step 1b — Optional streamwise clustering (all cases)
 
-By default the gridgen scripts distribute `nx` stations uniformly along the wall arc length. For cases with a localized geometric feature (hump, leading-edge curvature, roughness element) you can cluster stations around one or more centres via a Gaussian step-size modulation. Configured in the per-case gridgen script via three `params` fields:
+By default the gridgen scripts distribute `nx` stations uniformly in ξ (wall arc length for curvilinear cases, `x` for the flat plate). For cases with a localized feature (hump, leading-edge curvature, roughness element) — or simply to concentrate stations where the disturbance grows fastest — you can cluster stations around one or more centres via a Gaussian step-size modulation. Configured in the per-case gridgen script via three `params` fields:
 
 | Parameter | Meaning |
 |---|---|
-| `params.mug` | Hump centre(s) in physical x (scalar or vector for multiple humps) |
-| `params.sig` | Gaussian width as a fraction of the half-domain (default 0.2). Scalar broadcasts to all humps; vector must match `mug` length |
+| `params.mug` | Clustering centre(s) in physical x (scalar or vector for multiple centres) |
+| `params.sig` | Gaussian width as a fraction of the half-domain (default 0.2). Scalar broadcasts to all centres; vector must match `mug` length |
 | `params.ag` | Step-size modulation at the peak: `<1` denser, `=1` no refinement, `>1` sparser (default 1). Scalar or vector |
 
-Algorithm (consumed by `gridgen/src/resample_curvilinear.m`):
+The same three fields work for both the curvilinear (`resample_curvilinear.m`) and flat-plate (`resample_cartesian.m`) paths, which share one implementation in `gridgen/src/resample/cluster_xi.m`.
+
+Algorithm (`gridgen/src/resample/cluster_xi.m`):
 
 1. Map each `mug` into normalized ξ ∈ [-1, 1].
 2. At every candidate ξ, compute `G_k(ξ) = exp(−½·((ξ − μ_n)/σ)²)` for each hump `k`.
@@ -73,11 +75,11 @@ params.sig = [0.2, 0.15];         % per-hump widths
 params.ag  = [0.5, 0.7];          % per-hump strengths
 ```
 
-Leave `params.mug = []` or `params.ag = 1` everywhere to fall back to uniform wall-arc-length spacing.
+Leave `params.mug = []` or `params.ag = 1` everywhere to fall back to uniform spacing (wall arc length for curvilinear, `x` for the flat plate).
 
 ### Step 1c — Cartesian / OpenFOAM CSV input
 
-The cartesian path (`gridgen/src/resample_cartesian.m`) reads either a heritage `.mat` (e.g. `bf_blasius.mat`) or a flat-lattice CSV from a CFD code (e.g. OpenFOAM `midPlane_*.csv`). For CSV input a few extra `params` fields are usually needed in the gridgen script:
+The cartesian path (`gridgen/src/resample/resample_cartesian.m`) reads either a heritage `.mat` (e.g. `bf_blasius.mat`) or a flat-lattice CSV from a CFD code (e.g. OpenFOAM `midPlane_*.csv`). For CSV input a few extra `params` fields are usually needed in the gridgen script:
 
 | Parameter | Meaning |
 |---|---|
@@ -135,7 +137,7 @@ Per-case stability scripts live in `callers/benchmark/` (`blasius.m`, `sweptwing
 | **Boundary conditions** | `Opt.bc_top`; optional `Stab.bcw`/`Stab.bct` for actuation/forcing |
 | **Buffer** | `Opt.buffer` (`'on'`/`'para'`/`'off'`), `Opt.xb` |
 | **Solver options** | `Opt.plot`, `Opt.Conv`, `Opt.TH` |
-| **Performance** | `Opt.lu_mode`, `Opt.parfor`, `Opt.gpu` |
+| **Performance** | `Opt.lu_mode`, `Opt.parfor` |
 | **Nonlinear solver choice** | `Opt.solver` (`'picard'`/`'newton'`) |
 | **Run** | `Opt.rerun`, `Opt.save_output`, call to `main()` |
 | **Post-processing** | `plot_amplitudes`, `plot_stability` |
@@ -203,7 +205,76 @@ Stab.A0(ModeToModeNumber( 1, 0, Stab.M, Stab.N)) = 0.00125*sqrt(2);
 Stab.A0(ModeToModeNumber(-1, 0, Stab.M, Stab.N)) = 0.00125*sqrt(2);
 ```
 
-Always set both the mode and its conjugate (index `-m`, `-n`) to ensure real physical fields. The amplitude is the max streamwise velocity perturbation, normalized by the freestream velocity.
+Always set both the mode and its conjugate (index `-m`, `-n`) to ensure real physical fields.
+
+### Amplitude convention
+
+`Stab.A0_fund`, `Stab.A0`, and the wall/freestream forcing `Stab.bcw`/`Stab.bct` are the **physical peak amplitude** `2|û|` of the real disturbance `q'(x,y,t) = q̂(x,y) e^{-iωt} + c.c.`, normalised by the freestream velocity. Internally the solver seeds the complex amplitude `û = A0/2`, and post-process reports `StabRes.A = 2|û|` — so **what you put in is what you get out**:
+
+- `StabRes.A` at the inlet equals `A0_fund`;
+- the reconstructed wall velocity `StabRes.v .* StabRes.A` over an actuator equals the `bcw` you imposed.
+
+So set `A0_fund`/`bcw` to the physical amplitude you want and compare directly.
+
+**Porting a case from DeHNSSo-v1 (Westerbeek et al. 2024).** The *stored* meaning of `Stab.A0` changed, so do not paste a v1 literal verbatim. In v1 the code seeded `û = A0` directly (no halving) and doubled only at output, so `Stab.A0` held the complex amplitude `|û|`; the user was expected to type **half** the physical amplitude in the caller, which is why every v1 caller reads e.g. `Stab.A0(...) = 0.00125*sqrt(2); % Half the desired inflow amplitude` or `= 3.5e-3/2`. v2 keeps the seeded `û` identical but moves that `/2` into the solver, so `Stab.A0` now holds the physical `2|û|`. Carry over the **desired physical** amplitude (the value *before* the v1 `/2`), not the raw v1 number:
+
+| case | v1 caller (`A0 = |û|`) | v2 caller (`A0 = 2|û|`) |
+|------|------------------------|--------------------------|
+| Blasius TS | `0.00125*sqrt(2)` | `0.0025*sqrt(2)` |
+| swept-wing CFI | `3.5e-3/2` | `3.5e-3` |
+
+Pasting the v1 literal into v2 unchanged halves it a second time (a 4× weaker fundamental for nonlinear runs). The physics and results are otherwise identical between v1 and v2 for the same physical amplitude — only the input label moved.
+
+### Restarting from a previous solution (`Stab.IC = 'LOAD'`)
+
+`Stab.IC='LOAD'` warm-starts the whole domain from a converged solution instead of the ILST inflow. Its main use is **amplitude continuation**: converge at a low `A0_fund`, then restart at a higher one. The loaded field is rescaled by the amplitude ratio, giving Picard a far better initial guess than a cold start.
+
+**The file must be a checkpoint** (`Opt.save_checkpoint`), *not* a results file (`Opt.save_output`) — see §10. Post-processing strips `q`/`phi`/`R`, drops the conjugate modes and normalises the shapes, so a results file cannot restore the solver state. Loading one raises `inflow:ICfileNotCheckpoint`.
+
+Run 1 — converge at the seed amplitude and write the checkpoint:
+
+```matlab
+Stab.IC             = 'ILST';
+Stab.A0_fund        = 0.00125*sqrt(2);
+Opt.anderson        = 5;                       % see §8
+Opt.save_checkpoint = '<...>/ckpt_seed.mat';   % NOT save_output
+```
+
+Run 2 — continue at the higher amplitude:
+
+```matlab
+Stab.IC      = 'LOAD';
+Stab.ICfile  = '<...>/ckpt_seed.mat';
+Stab.A0_fund = 0.002;                          % target; field is rescaled by 0.002/A0_seed
+Opt.anderson = 5;
+```
+
+`inflow` reports what it restored:
+
+```
+LOAD: full-domain warm-start (11 modes -> 11 incl. conjugates, 40 x 800), A0 scale = 1.131
+```
+
+If it instead prints `LOAD: inflow-only (station 1) — no downstream warm-start`, the checkpoint's `nx` does not match the current grid and only the inflow station was used — there is no continuation benefit.
+
+**Anderson is not optional here.** Near saturation plain Picard can diverge at the target amplitude even though the continuation gives it a good initial guess; set `Opt.anderson = 5` on both runs (§8).
+
+A complete working example is `tests/warmstart/test_load_warmstart.m` — `callers/benchmark/blasius.m` plus a `restart` flag. On the Blasius benchmark (800×40, M=5), continuing `A0 = 0.00125√2 → 0.002` reaches the same solution as a cold run at 0.002 (`max(A)` agreeing to 7e-05) in 43 iterations instead of 57.
+
+The same mechanism serves parameter sweeps: restart at a new `omega_0`, `beta_0` or grid-independent parameter from a nearby converged state. The checkpoint must come from a run with the same `M`/`N` and grid.
+
+### No inflow disturbance (`Stab.IC = 'ZERO'`)
+
+`Stab.IC='ZERO'` seeds **no** disturbance at the inflow — the entire field is generated by wall/freestream forcing (`Stab.bcw` / `Stab.bct`). Use it when the quantity of interest is the receptivity of a wall source *in isolation*: a synthetic-jet or plasma actuator, a roughness element, or the resonator impedance BC, with **no incoming instability wave**. It works in both incompressible and compressible mode, and needs no `Stab.A0_fund` (there is no inflow mode to scale).
+
+```matlab
+Stab.IC  = 'ZERO';
+Stab.bcx = x;
+Stab.bcw = zeros(3, numel(x), (2*Stab.N+1)*(2*Stab.M+1));
+Stab.bcw(2, :, j_fund) = vjet;   % e.g. a wall-normal velocity actuator on the fundamental
+```
+
+The inflow plane is clamped to zero, so the active modes come from the wall forcing alone. `inflow` warns (`inflow:zeroNoForcing`) if there is no forcing at all, since the field would then be identically zero. A minimal example is `tests/test_zero_ic.m` — a wall synthetic jet driving a Blasius BL with no incoming TS wave.
 
 ---
 
@@ -221,22 +292,81 @@ Stab.bct(k,ix,j)  % (3 x nx_bc x nf)  freestream BC: k=1 u, k=2 v, k=3 w
 
 ### Wall actuation (blowing/suction)
 
-Model a wall-normal velocity slot (e.g., to control TS waves):
+Wall forcing follows a **grid-first** workflow: you describe what is at the wall **in the gridgen script**, gridgen refines the mesh to resolve it and stores the profile on the grid, and the caller applies it in one line. Location, width and shape are defined **once**, in gridgen; only the strength (amplitude, phase) lives in the caller. The reference pair is `gridgen/benchmark/synthetic_jet.m` + `callers/benchmark/synthetic_jet.m`.
+
+This works on **any grid** — cartesian, curvilinear, and unstructured. On a flat plate `xc`/`x_data` are the physical `x`; on a curved or unstructured wall (swept-wing, hump, M3J/CSV) they are still physical `x` — gridgen samples the profile at the physical wall-x per station, so it lands geometrically correctly even though the grid runs in arc-length.
+
+**Step 1 — gridgen: define the forcing.** `params.forcing` is either a parameterized actuator or a measured/CFD distribution; gridgen sizes the clustering to it automatically:
+
+```matlab
+% (a) raised-cosine actuator, centre xc, half-width w (physical x)
+params.forcing = struct('xc', xc, 'w', w, 'shape', 'cosine');
+
+% (b) an arbitrary v-distribution — any shape; xc/w inferred from its support
+params.forcing = struct('x', x_data, 'v', v_data);   % v_data may be complex (phase)
+
+params.ag = 0.3;   % ~3x denser over the forcing (density knob)
+```
+
+For **several forcings**, give `xc` a vector (many same-type actuators) or pass a cell array (mixed actuators and distributions); gridgen refines for all of them and stores one profile each:
+
+```matlab
+params.forcing = struct('xc', [xc1, xc2, xc3], 'w', 18);          % w scalar broadcasts, or a vector
+params.forcing = { struct('xc', xc1, 'w', 18), struct('x', x_data, 'v', v_data) };
+```
+
+gridgen stores `StabGrid.forcing` (the unit-peak profile(s) sampled on the refined grid) plus `StabGrid.cluster.xc/.w`. The distribution's `v` values need only encode the **shape**; the amplitude is set in the caller. Note the fixed station budget is shared across all centres, so raise `params.n_xi_new` when refining several spots.
+
+**Step 2 — caller: apply the strength.** `add_wall_forcing` reads `StabGrid.forcing`, scales it, and does all the `Stab.bcw` bookkeeping — component, mode index, `Stab.bcx`, sizing, and the conjugate mode (added automatically for nonlinear runs):
+
+```matlab
+Stab = add_wall_forcing(Stab, StabGrid, Opt, struct('A', 1e-4));   % xc/w/shape from gridgen
+```
+
+`spec` fields: `A` (amplitude, physical `2|û|` like `Stab.A0`, required), optional `phi` (phase), `comp` (1 u / 2 v / 3 w, default 2), `mode` (`[m n]`, default `[1 0]`), and `which` to pick one forcing when gridgen stored several. The forcing is **added** to any existing `Stab.bcw`, so call once per source to stack several:
+
+```matlab
+Stab = add_wall_forcing(Stab, StabGrid, Opt, struct('A', 2e-4, 'which', 1));
+Stab = add_wall_forcing(Stab, StabGrid, Opt, struct('A', 5e-4, 'which', 2, 'phi', pi/2));
+```
+
+`which` is required once the grid holds more than one forcing (the call errors otherwise) and unnecessary for a single one. You can also override the profile here for a quick test — pass `x`/`v` (distribution) or `xc`/`w` (actuator) — but the mesh is only refined where gridgen put it, so an override off the refined patch is coarser (`add_wall_forcing` warns if it lands on too few stations).
+
+Because the mesh is static, the width is capped by what you refined for: a narrower forcing than `w_act` stays resolved; a **wider** one, or a moved centre, needs a new grid. Size the gridgen `w`/support for the widest case you intend to run, then sweep amplitude/phase freely with no re-mesh.
+
+**Low-level fallback.** `Stab.bcw`/`Stab.bcx` is ultimately just an array over the wall, cubic-interpolated onto `Grid.xun` (zero outside `bcx`). You can set it by hand if you need full control — but you are then responsible for the mode/conjugate/convention bookkeeping and for refining the grid where the profile varies:
 
 ```matlab
 j_fund = ModeToModeNumber(1, 0, Stab.M, Stab.N);
 j_conj = ModeToModeNumber(-1, 0, Stab.M, Stab.N);
-x_dom  = StabGrid.xun;
-x0_act = x_dom(1) + 0.3*(x_dom(end) - x_dom(1));  % actuator centre
-sig    = 0.01*(x_dom(end) - x_dom(1));              % actuator half-width
-A_act  = 1e-4;
-Stab.bcx             = x_dom;
-Stab.bcw             = zeros(3, numel(x_dom), (2*Stab.N+1)*(2*Stab.M+1));
-Stab.bcw(2,:,j_fund) = A_act * exp(-(x_dom - x0_act).^2 / sig^2);
-Stab.bcw(2,:,j_conj) = conj(Stab.bcw(2,:,j_fund));
+Stab.bcx             = x_data;                        % your x locations
+Stab.bcw             = zeros(3, numel(x_data), (2*Stab.N+1)*(2*Stab.M+1));
+Stab.bcw(2,:,j_fund) = v_data;                        % k=2 = wall-normal; physical 2|û|
+Stab.bcw(2,:,j_conj) = conj(v_data);                 % nonlinear runs only
 ```
 
-`k=2` is the wall-normal velocity. Set `k=1` for streamwise, `k=3` for spanwise.
+`k=1/2/3` = `u/v/w`.
+
+### Helmholtz-resonator wall (impedance BC)
+
+A Helmholtz-resonator neck in the wall is imposed as a reactive impedance BC through `Opt.hr`. Over the mouth the wall `v'`-row of the operator is replaced by
+
+```
+v'(x) − Y·p'(x) = 0,
+```
+
+coupling the mouth wall-normal velocity to the wall pressure through the resonator admittance `Y` (the closed-loop resonator response). It is applied to the base operator only, so the `(0,0)` mean-flow distortion keeps no-slip while the fluctuations see the resonator.
+
+```matlab
+Opt.hr = struct( ...
+    'Y',     Ynd, ...          % non-dim resonator admittance (a fixed value in the caller)
+    'mask',  in_neck, ...      % logical, nx: the mouth streamwise stations
+    'x',     StabGrid.xun, ... % optional: grid-exact flux-preserving edge taper
+    'taper', 0.1, ...          % optional: raised-cosine mouth edge taper (0 = hard)
+    'uslip', false);           % optional: free-slip u' over the mouth
+```
+
+Cluster the streamwise mesh at the neck in gridgen exactly as for a wall actuator (`params.forcing = struct('xc', Xc, 'w', w)`), so the mouth carries enough stations for the impedance row. The reference pair is `gridgen/benchmark/resonator.m` + `callers/benchmark/resonator.m` (validated against Michelis 2023).
 
 ### Freestream forcing
 
@@ -311,7 +441,7 @@ Opt.TH    = 1e-11;  % nonlinear term activation threshold
 
 ### Picard acceleration & Newton fallback
 
-The nonlinear convergence loop is Picard iteration with AF (amplitude factor) continuation. Two optional accelerators speed it up; a JFNK Newton fallback handles cases where Picard stalls.
+The nonlinear convergence loop is Picard iteration with AF (amplitude factor) continuation. Two optional accelerators speed it up. There is no Newton fallback: `Opt.solver` selects Picard or Newton up front and they never mix (see below).
 
 **Anderson acceleration** (Walker & Ni, 2011). A least-squares fixed-point accelerator that combines the last `m` Picard iterates to produce a faster update.
 
@@ -329,16 +459,40 @@ How it behaves:
 
 Often turns the linear convergence of plain Picard into a superlinear one near saturation, halving the iteration count on M=5 nonlinear cases.
 
-**Newton takeover** (`Opt.newton_takeover`). When Picard stalls at AF < 1 (typically near saturation), DeHNSSo switches to a JFNK Newton solver to push to AF = 1.
+**No Newton takeover.** `Opt.solver` is either `'picard'` or `'newton'`, never a mix — Picard no longer switches to Newton when it stalls. If Picard stalls at AF < 1 (typically near saturation) it reports once and keeps going; for high amplitudes use `Opt.solver='newton'` (pseudo-arclength continuation, below) instead. `Opt.newton_takeover` is gone.
+
+**There is no fixed-amplitude Newton.** The old backends (JFNK, `direct`, `matlab_direct`, `lu_krylov`) and `solve_newton.m` have been removed: a cold-start solve at a fixed high amplitude does not converge, which is precisely what the continuation exists to solve. Setting those `Opt.solver` values now raises an error. `Opt.solver='newton'` means `src/newton/solve_newton.m`.
+
+### Pseudo-arclength continuation (`solve_newton`)
+
+For high-amplitude K-type cases (Scholten), a direct solve at the target amplitude does not converge from a cold start. `src/newton/solve_newton.m` continues the solution along the branch in the inflow amplitude `A0_fund` instead of trying to reach the target in one go. Call it directly (it does its own `init`/`inflow`/`setup_boundary`/`build_ctx`) rather than through `main`:
 
 ```matlab
-Opt.newton_takeover = 'on';   % default — auto-switch when Picard stalls
-Opt.newton_takeover = 'off';  % stay in Picard regardless
-Opt.newton_tol      = 1e-10;  % Newton convergence tolerance on ‖F‖
-Opt.newton_precond  = 'block'; % 'block' | 'full'
+[StabRes, info] = solve_newton(Stab, StabGrid, Opt);
 ```
 
-The stall heuristic triggers when `dal` stops decreasing for ≥ 5 iters, or when `picard_af_count ≥ 15` at one AF, or on amplitude blow-up. Newton then converges the current AF using the existing LU cache as preconditioner and ramps further.
+Keller predictor (tangent + secant curvature) with a modified-Newton corrector on the full coupled real-form Jacobian, factorised with MUMPS. The factor is **held across steps** (corrector = back-solves only) and refactored on age/stall, since a factorisation costs ~230× a back-solve and the state moves little between steps.
+
+```matlab
+Opt.newton_target    = 2.828e-3;  % target A0_fund (required) — here u_rms = 0.004
+Opt.newton_start      = 1.20e-3;   % continuation start (default Stab.A0_fund)
+Opt.newton_seed2      = 1.25e-3;   % second seed point (default 1.04*lam0)
+Opt.newton_reuse      = 8;         % reuse steps before a forced refactor; 1 = refactor every step
+Opt.newton_it_thresh = 8;         % refactor next step if the corrector exceeded this
+Opt.newton_maxit     = 25;        % max back-solves before the factor is declared stale
+Opt.newton_dsmax     = 3;         % max arclength step
+Opt.newton_tol       = 1e-6;      % corrector residual tolerance
+Opt.newton_seedfile  = '...';     % cache for the two seed points ([] = recompute)
+Opt.newton_ckfile    = '...';     % checkpoint written each step ([] = none)
+Opt.newton_resume    = 'on';      % resume from newton_ckfile
+Opt.newton_mumps_relax = [100 200 40];  % MUMPS ICNTL(14) retry ladder
+```
+
+`newton_reuse` is the reuse policy and the main performance knob: `newton_reuse=1` refactors every step (most robust), larger values trade factorisations for more corrector back-solves. Which wins is case-dependent — measure it, and only trust a timing from a log whose first step is `STEP 1` (a resumed run's reported total covers only its own segment).
+
+`lambda` enters the residual only through the inflow Dirichlet BC, hence affinely: `F(q,λ) = residual_hns(q,ctx0) + (λ−λ0)·F_λ`. `F_λ` is computed once by finite difference and its linearity is checked and reported at startup.
+
+**Memory.** The coupled Jacobian is factorised whole (2N ≈ 1.7M for M=4 on a 1050×40 grid). Peak RSS during factorisation reaches ~150 GB at M=4 and falls back to ~35 GB once the factor is formed — each refactor re-spikes. M=4 needs a workstation; a 16 GB laptop is limited to roughly M ≤ 3.
 
 ### LU mode
 
@@ -367,7 +521,7 @@ Opt.lu_mode = 'none';         % backslash each time, no caching (slowest, baseli
 with the repo — each user builds it once.
 
 ```matlab
->> run('src/hns/mexbuild_dgbsv.m')
+>> run('src/linsolve/lapack_band/mexbuild_dgbsv.m')
 ```
 
 Requirements:
@@ -382,18 +536,15 @@ If `lu_mode = 'lapack_band'` is selected but the MEX is missing, `solve_modes`
 errors with a message pointing to `mexbuild_dgbsv.m`. Fall back to
 `lu_mode = 'auto'` if you cannot build (e.g. no compiler available).
 
-### Parallel and GPU acceleration
+### Parallel acceleration
 
-Both require the MATLAB Parallel Computing Toolbox. If omitted, auto-detected at startup.
+Requires the MATLAB Parallel Computing Toolbox. If omitted, auto-detected at startup.
 
 ```matlab
 Opt.parfor = 'off';  % 'on'  parfor over LHS stations and modes (helps at large ny or many modes)
-Opt.gpu    = 'off';  % 'on'  GPU solve via gpuArray \ (beneficial for ny >> 80)
 ```
 
 **`parfor`:** parallelises the LHS station loop (Phase 1) and the mode solve loop (Phase 3). Memory overhead grows with the number of parallel workers — each worker holds a copy of the broadcast LU objects. Effective crossover is roughly ny ≥ 80 where per-station compute exceeds broadcast cost.
-
-**`gpu`:** transfers each assembled mode matrix `ML` to GPU memory and solves with `gpuArray \`. GPU does not support the `decomposition` cache; the matrix is refactorised on every iteration. Beneficial when ny is large (O(ny²) compute dominates memory bandwidth).
 
 ### Output control
 

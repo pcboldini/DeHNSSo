@@ -99,13 +99,15 @@ for i = 1:nx
 
     u(:,i)   = Ue_i * U_1d;
     w(:,i)   = BL.We * W_1d;
-    % V from Lees-Dorodnitsyn back-transformation (general Ma):
-    %   v = sqrt(nu*Ue/(2*x)) * (eta_LD*f' - f) / rho
-    % where eta_LD and f are both in the LD coordinate system.
-    v(:,i)   = sqrt(BL.nu * Ue_i / (2 * xi)) .* (etaLD_1d .* U_1d - f_1d) ./ rho_1d;
     rho(:,i) = rho_1d;
     T(:,i)   = T_1d;
 end
+
+% Wall-normal velocity from compressible continuity  d(rho u)/dx + d(rho v)/dy = 0.
+% (The old low-Ma Lees-Dorodnitsyn closed form
+%    v = sqrt(nu*Ue/(2x)) (eta_LD f' - f)/rho
+%  is ~6x too small at Ma=4.5 and violated discrete continuity; see continuity_V.m.)
+v = continuity_V(y_phys, x_phys, u, rho);
 
 %% Assemble BF struct (non-dim physical fields only — gridgen builds D1/D2 + derivatives)
 

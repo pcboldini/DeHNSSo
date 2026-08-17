@@ -1,13 +1,25 @@
 function print_config(StabGrid, Stab, Opt)
 %PRINT_CONFIG  Print run configuration and memory estimates.
+%
+%   print_config(StabGrid, Stab, Opt)
+%
+%   Reports the grid, spectral content, inflow, compressibility, and solver
+%   settings for the run, then estimates the memory required by the LHS
+%   operator and its LU factorisation and warns when that estimate is large.
+%
+%   Inputs:
+%     StabGrid  — stability grid (dimensions, coordinates, flow parameters)
+%     Stab      — disturbance spectrum settings (M, N, IC, A0, ...)
+%     Opt       — run options (buffer, lu_mode, parfor, ...)
 
+%% Configuration summary
 is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
 nvar     = 4 + double(is_compr);
 
 fprintf('  --------------------------------------------\n');
 fprintf('  Grid\n');
 fprintf('    nx = %d,  ny = %d,  DOF = %d\n', StabGrid.nx, StabGrid.ny, nvar*StabGrid.ny*StabGrid.nx);
-R_in  = sqrt(StabGrid.x(1)  * StabGrid.x(1));   % R = sqrt(x*R0); R0 = sqrt(x_inflow)
+R_in  = sqrt(StabGrid.x(1)  * StabGrid.x(1));   % R = sqrt(x)*R0, R0 = sqrt(x_inflow)
 R_out = sqrt(StabGrid.x(end) * StabGrid.x(1));
 fprintf('    x = [%.2f, %.2f],  dxi = %.4f\n', StabGrid.x(1), StabGrid.x(end), StabGrid.dxi);
 fprintf('    R = [%.2f, %.2f]   (sqrt(Re_x), local Blasius Reynolds)\n', R_in, R_out);
@@ -18,9 +30,10 @@ fprintf('    omega_0 = %.6f,  beta_0 = %.6f\n', Stab.omega_0, Stab.beta_0);
 fprintf('  Inflow\n');
 a0_tag = '';
 if isfield(Opt,'linear') && strcmpi(Opt.linear,'on')
-    a0_tag = ' [linear-mode auto-rescale; physical A0_fund irrelevant]';
+    a0_tag = ' [linear: shape scale-invariant; A0_fund sets the amplitude]';
 end
-fprintf('    IC: %s,  phase ref: %s,  A0 = %.4e%s\n', Stab.IC, Stab.phaseRef, max(Stab.A0), a0_tag);
+a0_val = 0; if ~isempty(Stab.A0); a0_val = max(Stab.A0); end
+fprintf('    IC: %s,  phase ref: %s,  A0 = %.4e%s\n', Stab.IC, Stab.phaseRef, a0_val, a0_tag);
 if isfield(Stab,'bcw') && any(Stab.bcw(:))
     fprintf('    Wall actuation: ON\n');
 end
@@ -50,20 +63,12 @@ fprintf('    LU mode: %s\n', Opt.lu_mode);
 if isfield(Opt,'parfor') && strcmpi(Opt.parfor,'on')
     fprintf('    Parfor: on\n');
 end
-if isfield(Opt,'gpu') && strcmpi(Opt.gpu,'on')
-    try
-        g = gpuDevice;
-        fprintf('    GPU: %s (%.1f GB VRAM)\n', g.Name, g.TotalMemory/1e9);
-    catch
-        fprintf('    GPU: on (device info unavailable)\n');
-    end
-end
 if isfield(Opt,'adjoint') && strcmpi(Opt.adjoint,'on')
     fprintf('  Adjoint\n');
     fprintf('    J = %s,  x_out = %.4g\n', Opt.adjoint_J, Opt.adjoint_xout);
 end
 
-% Memory estimates
+%% Memory estimates
 nx    = StabGrid.nx;  ny = StabGrid.ny;
 bsize = nvar * ny;
 N_dof = bsize * nx;
@@ -115,6 +120,9 @@ fprintf('  --------------------------------------------\n');
 
 end
 
+%% Local helpers
+
 function s = plural(n)
+%PLURAL  Return the plural suffix 's' unless n == 1.
 if n == 1; s = ''; else; s = 's'; end
 end

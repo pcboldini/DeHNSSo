@@ -12,7 +12,7 @@ assert(isfield(Stab,'M') && ~isempty(Stab.M),       'Stab.M (spectral truncation
 assert(isfield(Stab,'N') && ~isempty(Stab.N),       'Stab.N (spectral truncation beta) is required.');
 assert(isfield(Stab,'omega_0') && ~isempty(Stab.omega_0), 'Stab.omega_0 (fundamental frequency) is required.');
 assert(isfield(Stab,'beta_0') && ~isempty(Stab.beta_0),   'Stab.beta_0 (fundamental spanwise wavenumber) is required.');
-assert(isfield(Stab,'IC') && ~isempty(Stab.IC),     'Stab.IC (inflow method: ILST or LOAD) is required.');
+assert(isfield(Stab,'IC') && ~isempty(Stab.IC),     'Stab.IC (inflow method: ILST/CLST/PSE/LOAD/ZERO) is required.');
 assert(isfield(Grid,'nx') && ~isempty(Grid.nx),      'Grid.nx (streamwise points) is required.');
 assert(isfield(Grid,'ny') && ~isempty(Grid.ny),      'Grid.ny (wall-normal points) is required.');
 assert(isfield(Grid,'Re') && ~isempty(Grid.Re),      'Grid.Re (Reynolds number) is required.');
@@ -51,11 +51,9 @@ if isfield(Stab,'A0_fund') && ~isfield(Stab,'A0')
                'or beta_0~=0 (with N>=1), or set Stab.A0 explicitly.']);
     end
 
-    if isfield(Opt,'linear') && strcmpi(Opt.linear,'on')
-        A_val = 1e-10;   % small amplitude keeps NLT inactive (1 iteration)
-    else
-        A_val = Stab.A0_fund;
-    end
+    % A0_fund sets the physical amplitude for both linear and nonlinear runs
+    % (linear is scale-invariant, so no rescaling needed).
+    A_val = Stab.A0_fund;
     Stab.A0(ModeToModeNumber( m_fund,  n_fund, Stab.M, Stab.N)) = A_val;
     Stab.A0(ModeToModeNumber(-m_fund, -n_fund, Stab.M, Stab.N)) = A_val;
 end
@@ -82,11 +80,13 @@ if ~isfield(Opt,'AMAX');        Opt.AMAX = 0.1; end
 if ~isfield(Opt,'ConvF');       Opt.ConvF = 100; end
 if ~isfield(Opt,'plot');        Opt.plot = 'on'; end
 if ~isfield(Opt,'buffer');     Opt.buffer = 'on'; end     % 'on', 'para', or 'off'
+if ~isfield(Opt,'allmodes');   Opt.allmodes = 'off'; end  % 'on' activates the full (m,n) mode set (2D oblique cascade); 'off' = 1D incremental introduction
 % Freestream BC: per-component type — 3 entries (u,v,w) incompressible,
 % 4 entries (u,v,w,T) compressible.
 %   'H_DR'  = homogeneous Dirichlet  (q̂ = 0)
 %   'IH_DR' = inhomogeneous Dirichlet (q̂ = bct value)
 %   'H_NM'  = homogeneous Neumann    (∂q̂/∂y = 0)
+%   'free'  = unconstrained: keep the governing equation (no imposed BC), as the MFD does for v
 % Backward compatibility: scalar 'dirichlet'/'neumann' expands to all channels.
 if ~isfield(Opt,'bc_top')
     Opt.bc_top = repmat({'H_DR'}, 1, n_bc_top);
@@ -97,15 +97,14 @@ elseif ischar(Opt.bc_top) || isstring(Opt.bc_top)
         otherwise;         error('Unknown bc_top: %s', Opt.bc_top);
     end
 end
+valid_bc = {'H_DR','IH_DR','H_NM','free'};
+assert(all(ismember(lower(Opt.bc_top), lower(valid_bc))), ...
+    'init:badBCtop', 'bc_top entries must be one of: %s.', strjoin(valid_bc, ', '));
 if ~isfield(Opt,'lu_mode');    Opt.lu_mode = 'full'; end  % 'full', 'auto', or 'none'
 if ~isfield(Opt,'lu_max_cache'); Opt.lu_max_cache = 3; end  % max cached LU for 'auto' mode
 if ~isfield(Opt,'parfor')
     has_pct = license('test','Distrib_Computing_Toolbox') && ~isempty(ver('parallel'));
     if has_pct; Opt.parfor = 'on'; else; Opt.parfor = 'off'; end
-end
-if ~isfield(Opt,'gpu')
-    try; has_gpu = canUseGPU(); catch; has_gpu = false; end
-    if has_gpu; Opt.gpu = 'on'; else; Opt.gpu = 'off'; end
 end
 
 % Define imaginary unit
@@ -151,6 +150,10 @@ Stab.f    = zeros(Mode.nf, nvar*Grid.ny*Grid.nx);
 % 4th-order FD matrix valid on non-uniform ξ grids.
 Stab.dxi   = Grid.x(1,2) - Grid.x(1,1);
 Grid.D_xi  = fd1_matrix_nonuniform(Grid.x(:));
+% Streamwise 2nd-derivative operator (analog of the wall-normal D2): matrix form
+% of gridgen's deriv2_uneven (4th-order at every node, full 5-point boundary stencils),
+% the same stencil the base flow is differentiated with in compute_bf_derivatives.
+Grid.D_xi2 = sparse(deriv2_uneven(Grid.x(:), eye(numel(Grid.x)), 4));
 
 %% Initialization of nonlinear convergence loop
 

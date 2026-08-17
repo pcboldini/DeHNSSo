@@ -181,38 +181,44 @@ bufsp_i = Bound.bufsp(:,i);
 bufc_i  = Bound.bufc(i);
 bufp_i  = Bound.bufp(i);
 
-% Common terms
+% Reusable: Act = eta advection+viscous, Ect = xi advection+cross-metric
 Act = U.*etax*D1f + V.*etay*D1f ...
     - 1/Re*(etax.^2+etay.^2).*D2f - 1/Re*(etaxx+etayy).*D1f;
 Ect = U.*xix + V.*xiy - 1/Re*(xixx+xiyy).*If ...
     - 1/Re*(2*etax.*xix+2*etay.*xiy).*D1f;
 
-% Coefficient matrices
+% Coefficient blocks: ML = MLA1 + omega*MLA2 + beta*MLA3 + beta^2*MLA4 (cols u,v,w,p)
+% Ai: MLA1 diagonal (advection + eta-viscous, pressure grad)
 Ai = [(Act+dxU).*bufs_i    dyU.*bufs_i       Zf    etax.*D1f.*bufs_i
        dxV.*bufs_i         (Act+dyV).*bufs_i  Zf    etay.*D1f.*bufs_i
        dxW.*bufs_i          dyW.*bufs_i        Act.*bufs_i  Zf
       (etax.*D1f).*bufsp_i (etay.*D1f).*bufsp_i  Zf   Zf];
 
+% Bi: MLA2 (x omega): d/dt -> -i*omega
 Bi = [-iu*If.*bufs_i  Zf             Zf             Zf
        Zf            -iu*If.*bufs_i  Zf             Zf
        Zf             Zf            -iu*If.*bufs_i  Zf
        Zf             Zf             Zf             Zf];
 
+% Ci: MLA3 (x beta): i*beta convection + spanwise pressure grad
 Ci = [iu*W.*bufs_i  Zf           Zf           Zf
        Zf           iu*W.*bufs_i  Zf           Zf
        Zf           Zf           iu*W.*bufs_i  iu*If.*bufs_i
        Zf           Zf           iu*If.*bufsp_i  Zf];
 
+% Di: MLA4 (x beta^2): +1/Re*beta^2
 Di = [If/Re.*bufs_i  Zf           Zf           Zf
        Zf           If/Re.*bufs_i  Zf           Zf
        Zf           Zf           If/Re.*bufs_i  Zf
        Zf           Zf           Zf            Zf];
 
+% Ei: MLA1 d/dxi: advection + pressure grad
 Ei = [Ect.*bufs_i   Zf          Zf          If.*xix.*bufs_i
        Zf           Ect.*bufs_i  Zf          If.*xiy.*bufs_i
        Zf           Zf          Ect.*bufs_i  Zf
       If.*xix.*bufsp_i  If.*xiy.*bufsp_i  Zf  Zf];
 
+% Fi: MLA1 d2/dxi2: streamwise viscous
 Fi = [-If/Re.*(xix.^2+xiy.^2).*bufs_i.*bufp_i  Zf  Zf  Zf
        Zf  -If/Re.*(xix.^2+xiy.^2).*bufs_i.*bufp_i  Zf  Zf
        Zf  Zf  -If/Re.*(xix.^2+xiy.^2).*bufs_i.*bufp_i  Zf
@@ -288,22 +294,18 @@ blk3(:, cur_off+1:cur_off+bsize) = Ci*bufc_i;
 blk4(:, cur_off+1:cur_off+bsize) = Di*bufc_i;
 
 % Apply freestream BCs per component (u, v, w)
-%   'H_DR' / 'IH_DR' → identity row (Dirichlet)
-%   'H_NM'            → D1 row (Neumann: ∂/∂y = 0)
-blk1MFD(bc_top_mfd,:) = 0;
-blk1(bc_top,:)   = 0;
-blk2(bc_top,:)   = 0;
-blk3(bc_top,:)   = 0;
-blk4(bc_top,:)   = 0;
-
+%   'H_DR'/'IH_DR' → identity row (Dirichlet);  'H_NM' → D1 row (Neumann: ∂/∂y=0)
+%   'free'         → keep the assembled equation (no imposed BC, as the MFD does for v)
 for k = 1:3
-    r  = (k-1)*ny + 1;
+    if strcmpi(bc_top_type{k}, 'free'); continue; end
+    r      = (k-1)*ny + 1;
     is_mfd = ismember(r, bc_top_mfd);
+    blk1(r,:) = 0;  blk2(r,:) = 0;  blk3(r,:) = 0;  blk4(r,:) = 0;
+    if is_mfd; blk1MFD(r,:) = 0; end
     if strcmpi(bc_top_type{k}, 'H_NM')
-        cs = cur_off + (k-1)*ny + 1;
-        ce = cur_off + k*ny;
-        blk1(r, cs:ce) = D1f(1,:);
-        if is_mfd; blk1MFD(r, cs:ce) = D1f(1,:); end
+        cols = cur_off + (k-1)*ny + (1:ny);
+        blk1(r, cols) = D1f(1,:);
+        if is_mfd; blk1MFD(r, cols) = D1f(1,:); end
     else  % H_DR or IH_DR → identity row
         blk1(r, cur_off+r) = 1;
         if is_mfd; blk1MFD(r, cur_off+r) = 1; end

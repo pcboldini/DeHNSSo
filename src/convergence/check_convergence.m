@@ -1,5 +1,20 @@
 function [Opt, Stab, StabRes] = check_convergence(StabGrid, Bound, Mode, Opt, Stab, StabRes)
 %CHECK_CONVERGENCE  Evaluate convergence, ramp amplitude, extrapolate forcing.
+%
+%   [Opt, Stab, StabRes] = check_convergence(StabGrid, Bound, Mode, Opt, Stab, StabRes)
+%
+%   Measures the relative change in amplitude between successive iterations
+%   (paper Eq. 21), and once it drops below threshold ramps the amplitude
+%   factor Opt.AF towards one. The nonlinear forcing is extrapolated in A^2
+%   from the last three amplitude levels to accelerate convergence.
+%
+%   Inputs:
+%     StabGrid  — grid structure (nx, D_xi, ...)
+%     Bound     — boundary/buffer structure (ibuf sets convergence window)
+%     Mode      — mode structure (RunJ: active modes)
+%     Opt       — options and iteration state (AF, dal, k1, ...)
+%     Stab      — stability data (forcing field f, extrapolation window flist)
+%     StabRes   — stability results (amplitudes A, Aold)
 
 %% Convergence measure
 ib = min(Bound.ibuf, StabGrid.nx);  % 'off' buffer sets ibuf = nx+1 as sentinel

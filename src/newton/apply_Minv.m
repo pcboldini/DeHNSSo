@@ -1,35 +1,88 @@
 function dq_real = apply_Minv(r_real, ctx)
 %APPLY_MINV  Preconditioner apply in real arithmetic.
 %
+%   dq_real = apply_Minv(r_real, ctx)
+%
 %   Interprets r_real as [real(r_phys); imag(r_phys)], applies a complex
 %   preconditioner, and returns [real(dq_phys); imag(dq_phys)].
 %
-%   Two preconditioner modes are supported:
-%     ctx.use_full_precond = true  -> ctx.LU_full (single global N x N solve,
-%       captures cross-mode coupling via Jh_NLT, see factor_precond_full.m)
-%     otherwise -> per-mode block-diagonal solve via ctx.LU{k} (faster but
-%       drops all NLT coupling, fine when nonlinearity is mild)
+%   Three preconditioner modes are dispatched:
+%     ctx.use_full_precond = true  -> ctx.LU_full (single coupled-Jacobian
+%       sparse LU/ILU, see factor_precond_full.m). Heaviest memory but
+%       strongest convergence.
+%     ctx.use_poly_precond = true  -> polynomial / Neumann-series with
+%       per-mode block LU as D^{-1} and ctx.Jh_poly as N. No coupled
+%       factorisation; memory scales linearly with mesh refinement.
+%       K iterations controlled by ctx.poly_K.
+%     otherwise                     -> per-mode block-diagonal solve via
+%       ctx.LU{k}. Drops all cross-mode coupling; cheapest per apply but
+%       stalls at high A0.
 
 nphys = ctx.nphys;
 bsize = ctx.bsize;
 N     = nphys * bsize;
 
-r_complex  = r_real(1:N) + 1i * r_real(N+1:2*N);
-dq_complex = zeros(N, 1);
+% Real-form coupled ILU acts directly on r_real (no complex decomposition).
+% Captures both holomorphic and antiholomorphic Jacobian parts (diagnostic
+% for the use_full_precond Armijo stall).
+if isfield(ctx, 'use_full_real_precond') && ctx.use_full_real_precond
+    s = ctx.LU_full_real;
+    dq_real = s.U \ (s.L \ r_real);
+    return;
+end
+
+r_complex = r_real(1:N) + 1i * r_real(N+1:2*N);
 
 if isfield(ctx, 'use_full_precond') && ctx.use_full_precond
+    % Coupled-Jacobian (I)LU factor of A only (ignores Ja).
     s = ctx.LU_full;
+    dq_complex = zeros(N, 1);
     dq_complex(s.q) = s.U \ (s.L \ r_complex(s.p));
+
+elseif isfield(ctx, 'use_poly_precond') && ctx.use_poly_precond
+    % Polynomial / Neumann series:
+    %   J = D - Jh, with D = blkdiag(ML), Jh = NLT-Jacobian cross-mode
+    %   J^{-1} v ≈ sum_{k=0}^{K-1} (D^{-1} Jh)^k D^{-1} v
+    K  = ctx.poly_K;
+    Jh = ctx.Jh_poly;
+    % Term k=0
+    x = apply_blockLU(r_complex, ctx);
+    dq_complex = x;
+    % Terms k=1..K-1
+    for kk = 2:K
+        Jh_x = Jh * x;
+        x    = apply_blockLU(Jh_x, ctx);
+        dq_complex = dq_complex + x;
+    end
+
 else
-    for k = 1:nphys
-        off  = (k-1)*bsize;
-        r_k  = r_complex(off+1:off+bsize);
-        lu_s = ctx.LU{k};
+    % Block-Jacobi (per-mode, no cross-mode coupling).
+    dq_complex = apply_blockLU(r_complex, ctx);
+end
+
+dq_real = [real(dq_complex); imag(dq_complex)];
+end
+
+
+function dq_complex = apply_blockLU(r_complex, ctx)
+%APPLY_BLOCKLU  Per-mode block-diagonal solve via cached factors.
+%   Cached factor types (per mode):
+%     L/U/p/q populated   -> sparse LU / ILU (MATLAB lu/ilu)
+%     decomp non-empty    -> LAPACK banded LU (decomposition(A,'banded'))
+nphys = ctx.nphys;
+bsize = ctx.bsize;
+N     = nphys * bsize;
+dq_complex = zeros(N, 1);
+for k = 1:nphys
+    off  = (k-1)*bsize;
+    r_k  = r_complex(off+1:off+bsize);
+    lu_s = ctx.LU{k};
+    if isfield(lu_s, 'decomp') && ~isempty(lu_s.decomp)
+        dq_complex(off+1:off+bsize) = lu_s.decomp \ r_k;
+    else
         x_k  = zeros(size(r_k));
         x_k(lu_s.q) = lu_s.U \ (lu_s.L \ r_k(lu_s.p));
         dq_complex(off+1:off+bsize) = x_k;
     end
 end
-
-dq_real = [real(dq_complex); imag(dq_complex)];
 end

@@ -25,18 +25,36 @@ DeHNSSo/
 │   ├── main.m                      — Main entry point (convergence loop)
 │   ├── init/                       — Initialisation
 │   │   ├── init.m                  — Defaults, mode numbering, grid setup
-│   │   ├── inflow.m                — Inflow BC dispatch (ILST or LOAD)
-│   │   ├── ILST.m                  — Calls ILST_solver, selects/normalises eigenfunction
-│   │   ├── ILST_solver.m           — Orr-Sommerfeld/Squire generalised eigenvalue problem
-│   │   └── boundary.m              — Interpolates Stab.bcw/bct onto numerical grid
-│   ├── hns/                        — Core HNS equations
-│   │   ├── LHS.m                   — Assemble global LHS sparse matrix (per mode)
+│   │   ├── inflow.m                — Inflow dispatch + per-mode seeding (local fns ilst_inflow/clst_inflow)
+│   │   ├── EVfilter.m              — Physical-mode selection (shared by LST and PSE)
+│   │   ├── lst/                    — Local stability theory eigen-solvers
+│   │   │   ├── solver_ILST.m       — Incompressible Orr-Sommerfeld/Squire eigenproblem (shared with PSE)
+│   │   │   └── solver_CLST.m       — Compressible LST eigenproblem (assembly + polyeig; CLST_Matrix local)
+│   │   └── pse/                    — Parabolised stability equations inflow
+│   │       ├── solver_IPSE.m       — Incompressible linear PSE (folds in the PSE marcher; seeded by solver_ILST)
+│   │       └── solver_CPSE.m       — Compressible linear PSE (Chang & Malik)
+│   ├── boundary/                   — Boundary conditions
+│   │   ├── setup_boundary.m        — Interpolate Stab.bcw/bct onto the grid; outflow buffer
+│   │   ├── add_wall_forcing.m      — Apply the gridgen-defined wall forcing (sets Stab.bcw)
+│   │   └── apply_resonator_wall.m  — Helmholtz-resonator impedance wall BC + optional mouth u'-slip (Opt.hr)
+│   ├── hns/                        — Core HNS equations + solve
+│   │   ├── LHS.m                   — Assemble incompressible LHS (per mode)
+│   │   ├── LHS_compressible.m      — Assemble compressible (u,v,w,rho,T) LHS
 │   │   ├── RHS.m                   — Assemble RHS vector (inflow IC + actuation BCs)
-│   │   ├── solve_modes.m           — Mode-by-mode solve, dispatch on Opt.lu_mode
-│   │   ├── dgbsv_solve.c           — MEX wrapper for LAPACK banded LU (lu_mode='lapack_band')
-│   │   ├── mexbuild_dgbsv.m        — One-line build for the MEX (run once per machine)
-│   │   ├── NLT.m                   — Nonlinear forcing (mode-to-mode interaction)
-│   │   └── AVAL.m                  — Inflow amplitude damping
+│   │   ├── NLT_HNS.m               — Nonlinear forcing (mode-to-mode interaction)
+│   │   └── solve_modes.m           — Mode-by-mode solve, dispatch on Opt.lu_mode
+│   ├── linsolve/                   — Direct linear-solver backends (Opt.lu_mode)
+│   │   ├── lapack_band/            — LAPACK banded LU MEX (mexbuild_dgbsv.m, dgbsv_*.c)
+│   │   └── block_thomas/           — dual-Schur block-Thomas, single-file dispatch (in-core + out-of-core)
+│   ├── newton/                     — Newton solver (Opt.solver='newton')
+│   │   ├── solve_newton.m          — Pseudo-arclength continuation in A0_fund.
+│   │   │                             The only Newton solver: a fixed-amplitude
+│   │   │                             solve does not converge at high amplitude.
+│   │   ├── build_ctx.m             — Shared context: LHS, per-mode LU, BC vectors
+│   │   ├── build_JNL.m             — Analytical Jacobian of the NLT forcing (Jh, Ja)
+│   │   ├── residual_hns.m          — F(q) in real form [real(q_phys); imag(q_phys)]
+│   │   ├── jac_matvec.m            — Matrix-free Jacobian-vector product
+│   │   └── factor_precond_full.m   — Full ILU preconditioner (newton_precond='full')
 │   ├── convergence/
 │   │   ├── check_convergence.m     — Convergence criterion, amplitude ramping
 │   │   └── update_modes.m          — Update u/v/w/p, amplitudes, active mode set
@@ -49,20 +67,21 @@ DeHNSSo/
 │   │   ├── plot_intermediate.m     — Amplitude during iteration (Figure 2)
 │   │   └── plot_convergence.m      — Convergence history (Figure 3, log scale)
 │   └── math/
-│       ├── chebDiff.m              — Chebyshev differentiation matrix
-│       └── FD*.m                   — Finite-difference operators (2nd/4th order)
+│       ├── chebdif.m              — Chebyshev differentiation matrices (Weideman-Reddy)
+│       ├── MappingMalik.m         — Malik wall-normal grid mapping (used by the inflow solvers)
+│       └── FD*.m / fornberg_weights.m — Finite-difference operators (uniform + arbitrary spacing)
 ├── gridgen/                        — Grid generation and base-flow preprocessing
 │   ├── main_gridgen.m              — Pipeline entry point (function called by per-case scripts)
 │   ├── benchmark/                  — Per-case grid-gen scripts
-│   │   ├── blasius.m, blasius_csv.m, sweptwing_flat.m, sweptwing_hump.m, m3j.m
-│   └── src/
-│       ├── classify_input.m        — Auto-detect cartesian / curvilinear_structured / unstructured
-│       ├── resample_cartesian.m    — Malik-Cheb resample for structured + flat-lattice CSV input
-│       ├── resample_curvilinear.m  — Body-fitted structured input (e.g. SweptWing)
-│       ├── resample_unstructured.m — Boundary-detected wall + body-fitted columns (CFD scatter)
-│       ├── build_stab_grid.m       — Final StabGrid assembly with metrics and FD/Cheb operators
-│       ├── plot_raw_bf.m, plot_resampled_bf.m — Diagnostic figures
-│       └── get_opt.m, resolve_trim.m — Shared helpers
+│   │   ├── blasius.m, blasius_csv.m, sweptwing_flat.m, sweptwing_hump.m, m3j.m, synthetic_jet.m
+│   └── src/                        — grouped by pipeline role (see gridgen/src/README.md)
+│       ├── io/                     — load_bf, classify_input, ensure_metadata
+│       ├── resample/              — resample_{cartesian,curvilinear,unstructured}, solve_elliptic_mesh, cluster_xi, report_clustering
+│       ├── grid/                   — build_stab_grid, compute_{cheb,fd}_operators, compute_bf_derivatives, bf_deriv_fields
+│       ├── forcing/                — prepare_forcing, flatten_forcing (wall forcing)
+│       ├── math/                   — deriv1_uneven, deriv2_uneven, chebDiff
+│       ├── util/                   — get_opt, resolve_trim
+│       └── plot/                   — plot_raw_bf, plot_resampled_bf
 └── baseflow/                       — Boundary-layer solvers
     ├── IBL/                        — Incompressible BL (Blasius, Falkner-Skan-Cooke)
     └── output/benchmark/           — Committed reference base flows (bf_*.mat, bf_m3j.csv)
@@ -92,9 +111,9 @@ The stability grid, assembled by the gridgen pipeline and stored in the input `.
 | `nx, ny` | scalar | Grid dimensions |
 | `H` | scalar | Domain height |
 
-**Grid convention:** index 1 is the freestream (`y = H`), index `ny` is the wall (`y = 0`). ILST_solver internally flips the arrays (it expects index 1 = wall).
+**Grid convention:** index 1 is the freestream (`y = H`), index `ny` is the wall (`y = 0`). `solver_ILST` rebuilds the same Malik grid from `StabGrid.H`/`StabGrid.y_i` and returns the eigenfunction on `StabGrid.y`.
 
-**Base-flow differentiation lives entirely in gridgen.** Every base-flow derivative the LHS assembly and the inflow solvers (`ILST`, `CLST`) need is precomputed by `gridgen/src/compute_bf_derivatives.m` and stored on `StabGrid` — the solver never applies `D1`/`D2` to the base flow. The canonical field list is `gridgen/src/bf_deriv_fields.m`; any of these fields present on the raw base flow are taken as analytic input and skip finite differencing (see User Guide §3, Step 1d). `main.m` copies the required fields into the `BF` struct and errors clearly if a compressible grid predates this (re-run gridgen).
+**Base-flow differentiation lives entirely in gridgen.** Every base-flow derivative the LHS assembly and the inflow solvers (`ILST`, `CLST`) need is precomputed by `gridgen/src/grid/compute_bf_derivatives.m` and stored on `StabGrid` — the solver never applies `D1`/`D2` to the base flow. The canonical field list is `gridgen/src/grid/bf_deriv_fields.m`; any of these fields present on the raw base flow are taken as analytic input and skip finite differencing (see User Guide §3, Step 1d). `main.m` copies the required fields into the `BF` struct and errors clearly if a compressible grid predates this (re-run gridgen).
 
 ### Stab
 
@@ -118,7 +137,8 @@ Solver control options.
 
 | Field | Default | Description |
 |---|---|---|
-| `bc_top` | `{'H_DR','H_DR','H_DR'}` | Freestream BC per component {u,v,w}: `'H_DR'`, `'IH_DR'`, `'H_NM'` |
+| `bc_top` | `{'H_DR','H_DR','H_DR'}` | Freestream BC per component {u,v,w}: `'H_DR'`, `'IH_DR'`, `'H_NM'`, `'free'` |
+| `hr` | `[]` | Helmholtz-resonator impedance wall BC over a mouth (struct: `Y`, `mask`, optional `x`/`taper`/`uslip`); `[]` = rigid wall |
 | `buffer` | `'on'` | Buffer zone type |
 | `xb` | 85 | Buffer start (% of domain) |
 | `Conv` | 1e-4 | Convergence criterion |
@@ -132,7 +152,6 @@ Solver control options.
 | `save_output` | `[]` | Path to save final `StabRes, StabGrid, Stab` after post-process |
 | `save_checkpoint` | `[]` | Path to save pre-postprocess state (`.q` intact) for `IC='LOAD'` |
 | `parfor` | auto | Parallel LHS/solve: `'on'` or `'off'` (auto-detected) |
-| `gpu` | auto | GPU solve via gpuArray: `'on'` or `'off'` (auto-detected) |
 | `linear` | `'off'` | Linear mode: `'on'` (no NLT, 1 iter) or `'off'` |
 | `plot` | `'on'` | Intermediate plots: `'on'` or `'off'` |
 | `mmry` | 0 | Internal: 1 = skip LHS assembly (set by rerun) |
@@ -165,7 +184,7 @@ Solution arrays.
 
 ### Bound
 
-Interpolated BC arrays (set by `boundary.m`).
+Interpolated BC arrays (set by `setup_boundary.m`).
 
 | Field | Size | Description |
 |---|---|---|
@@ -182,9 +201,9 @@ callers/benchmark/<case>.m   (blasius / sweptwing_flat / sweptwing_hump / m3j)
 └── main(Stab, StabGrid, Opt [, LHS])
     ├── init(StabGrid, Opt, Stab)          % defaults, mode numbering
     ├── inflow(Mode, Stab, StabGrid, StabRes, Opt)
-    │   └── ILST(j, 1, StabGrid, StabRes, bc_top)
-    │       └── ILST_solver(Re, U, W, ...)  % eigenvalue problem
-    ├── boundary(StabGrid, Opt, Stab)       % interpolate bcw/bct
+    │   └── ilst_inflow / clst_inflow  (local seeding fns in inflow.m; or solver_IPSE/solver_CPSE)
+    │       └── solver_ILST(Re, U, W, ...)  % Orr-Sommerfeld/Squire eigenproblem
+    ├── setup_boundary(StabGrid, Opt, Stab)       % interpolate bcw/bct
     ├── print_config(...)
     └── [convergence loop]
         ├── solve_modes(BF, Bound, ...)
@@ -219,8 +238,9 @@ bc_wall    = [ny, 2*ny, 3*ny];    % wall rows (u,v,w at y=0) — per station
 **Freestream BC** (per component via `Opt.bc_top{k}`):
 - `'H_DR'` / `'IH_DR'`: identity rows at `bc_top`. RHS injects `bct` value for `IH_DR`.
 - `'H_NM'`: rows from `D1f(1,:)` (Chebyshev derivative row at freestream, evaluating `d/dy = 0`).
+- `'free'`: no row replacement — the governing equation is kept at `y = H` (as the MFD does for v), used with the parabolisation buffer.
 
-**Wall BC:** always Dirichlet (no-slip).
+**Wall BC:** always Dirichlet (no-slip), except over a resonator mouth when `Opt.hr` is set: `apply_resonator_wall` replaces the wall `v'`-row with the reactive relation `v' − Y·p' = 0` (compressible: on the `rho'`/`T'` columns via the EOS), applied to `MLA1` only so the `(0,0)` MFD keeps no-slip. Set `hr.uslip` for an optional free-slip `u'` (`du'/dy = 0`) over the mouth.
 
 **`MFD_diff` compression:** the `(0,0)` mean-flow distortion mode (index `jmfd`) does not depend on `omega`/`beta`. Its LHS is stored as `MFD_diff = MLAMFD - MLA1` so that only the difference needs to be recomputed when the base-flow LHS `MLA1` changes.
 
@@ -251,9 +271,7 @@ Freestream values are only injected for components where `Opt.bc_top{k} = 'IH_DR
 
 **Per-call solvers** (`'lapack_band'`): no caching, one factor per mode-group.
 
-- `'lapack_band'`: LAPACK `zgbsv`/`dgbsv` via MEX (`src/hns/dgbsv_solve.c`). Exploits the block-pentadiagonal structure with Apple Accelerate / OpenBLAS dense-banded BLAS3. ~3× faster than the cache-based path on a single solve; needs ~6-12 GB peak. See section 6a.
-
-**GPU mode (`Opt.gpu = 'on'`):** the assembled `ML` matrix is stored as `gpuArray(ML)` in the cache instead of a `decomposition` object. MATLAB does not support sparse complex LU decomposition caching on GPU; the matrix is refactorised on every iteration. Only beneficial when ny is large enough that O(ny²) GPU compute exceeds host-GPU transfer cost (roughly ny ≥ 80 for NVIDIA A100).
+- `'lapack_band'`: LAPACK `zgbsv`/`dgbsv` via MEX (`src/linsolve/lapack_band/dgbsv_solve.c`). Exploits the block-pentadiagonal structure with Apple Accelerate / OpenBLAS dense-banded BLAS3. ~3× faster than the cache-based path on a single solve; needs ~6-12 GB peak. See section 6a.
 
 **Rerun:** when `Opt.rerun = 'on'`, the LU cache from the previous run is passed back in via `LHS.LU_cache` (cache-based modes only). If `(omega_j, beta_j)` is unchanged (e.g., amplitude sweep), the factorisation is reused with no cost. If `omega_j` changes (frequency sweep), a new factorisation is computed for that mode. `'lapack_band'` always refactors since it doesn't cache.
 
@@ -285,8 +303,8 @@ matrices `block_penta_solve` failed on.
 
 **Files:**
 
-- `src/hns/dgbsv_solve.c` — MEX source (~150 lines).
-- `src/hns/mexbuild_dgbsv.m` — one-line build wrapper invoking `mex -R2018a … -lmwlapack`.
+- `src/linsolve/lapack_band/dgbsv_solve.c` — MEX source (~150 lines).
+- `src/linsolve/lapack_band/mexbuild_dgbsv.m` — one-line build wrapper invoking `mex -R2018a … -lmwlapack`.
 - The compiled `.mex*` binary is platform-specific and not version-controlled.
 
 **Build requirements:** MATLAB R2018a+ (for `-R2018a` interleaved-complex API),
@@ -295,19 +313,29 @@ MSVC/MinGW on Windows). MATLAB's LAPACK (`lapack.h` + `libmwlapack`) is used
 for portability — on macOS this resolves through Apple Accelerate, on Linux
 through OpenBLAS/MKL.
 
-**Limitations:** no LU-factor caching (each call refactors). For nonlinear
-runs with many Picard iterations and few unique mode keys, `auto`'s caching
-may beat `lapack_band`. Adding factor caching to the MEX (saving `AB` and
-`IPIV` between calls) is straightforward but not yet implemented.
+**Factor caching:** each operator is factored once (`dgbsv_factor` -> `*gbtrf`)
+and the banded factor is cached in `Opt.LU_cache`, then reused across Picard
+iterations (`dgbsv_solve_cached` -> `*gbtrs`), so a nonlinear run pays the
+`O(N*KL*KU)` factorisation only once per mode. The bands are large, so the cache
+is capped by `Opt.lu_max_cache` with LRU eviction (keys still needed by the
+current iteration are never evicted). Set `Opt.lu_cache = 'off'` (or
+`Opt.lu_max_cache <= 0`) for a one-shot factor+solve that keeps only one band
+resident, at the cost of re-factoring on every solve.
 
 ---
 
 ## 7. ILST inflow computation
 
-`ILST.m` calls `ILST_solver.m` at the inflow station to find the local stability eigenvalue and eigenfunction.
+`inflow.m` seeds each mode via its local function `ilst_inflow`, which calls
+`solver_ILST.m` at the inflow station to find the local stability eigenvalue and
+eigenfunction. `solver_ILST` is shared with the incompressible PSE inflow
+(`solver_IPSE`, which folds in the PSE marcher); the compressible path is
+`clst_inflow` → `solver_CLST.m`. The
+eigen-solvers live in `init/lst/`; mode selection, normalisation, and storage
+into `StabRes` stay in `inflow.m`.
 
 **Key details:**
-- Arrays are flipped before passing to `ILST_solver` (internal convention: index 1 = wall).
+- `solver_ILST` solves the quadratic (streamwise-viscous `alpha^2` retained) Orr-Sommerfeld/Squire problem; it rebuilds the Malik grid from `StabGrid.H`/`y_i` and returns the eigenfunction on `StabGrid.y`.
 - The eigenvalue is filtered by `EVfilter.m` based on the physical growth rate and spatial shape.
 - The eigenfunction is normalised so that `max(|u|) = 1` (using spline interpolation for accuracy).
 - The phase is then set using `Stab.phaseRef`:
@@ -315,18 +343,19 @@ may beat `lapack_band`. Adding factor caching to the MEX (saving `AB` and
   - `'umax'`: phase at the `u`-maximum is zeroed.
 - Conjugate modes are set by complex conjugate symmetry.
 
-**Neumann freestream BC in ILST_solver:**
-When any component uses `'H_NM'`, the ILST solver receives `bc_top = 'H_NM'` and the farfield rows `n4-2:n4` use rows from the Chebyshev differentiation matrix `Total_Dn` rather than identity rows, imposing `d/dy = 0` at `y = H`.
+The seed mode decays to zero at the freestream, so the freestream BC type is
+immaterial for the inflow eigenproblem (`solver_ILST` clamps it); `Opt.bc_top`
+still governs the freestream BC of the HNS march itself.
 
 ---
 
 ## 8. Adding a new inflow method
 
-To add a method beyond `'ILST'`:
+To add a method beyond the built-in `'ILST'`/`'CLST'`/`'PSE'`:
 
-1. Add a new `elseif` branch in `inflow.m` (around line 76).
-2. Populate `StabRes.phi(j,:,1)`, `StabRes.u/v/w/p(j,:,1)` at inflow.
-3. Append active mode indices to `nonzeromodesic`.
+1. Add the eigen-solver as a new file in `src/init/lst/` (or `src/init/pse/`) that returns the spectrum and eigenfunctions.
+2. Add an `elseif Stab.IC=="..."` branch in `inflow.m` (or a local seeding function like `ilst_inflow`) that calls it, selects the mode via `EVfilter`, and normalises by `max|u|`.
+3. Populate `StabRes.phi(j,:,1)`, `StabRes.u/v/w/p(j,:,1)` at inflow and append active mode indices to `nonzeromodesic`.
 
 ---
 
@@ -341,12 +370,11 @@ The heritage version is the published DeHNSSo monolithic function (Westerbeek et
 | LHS reuse | None | `Opt.rerun`: pass LHS across calls |
 | LU cache | Pre-factorised `dML` passed in | `Opt.LU_cache` keyed by `(omega,beta)` |
 | Inhomogeneous BCs | Not supported | `Stab.bcw`, `Stab.bct` interpolated and injected in RHS |
-| Freestream BC type | Dirichlet only | `Opt.bc_top`: per-component `{'H_DR','IH_DR','H_NM'}` |
+| Freestream BC type | Dirichlet only | `Opt.bc_top`: per-component `{'H_DR','IH_DR','H_NM','free'}` |
 | ILST phase reference | Fixed (wall pressure) | `Stab.phaseRef`: `'pwall'` or `'umax'` |
 | Convergence plot | Linear y-axis (bug) | Log y-axis fixed |
 | Caller | Flat script | Sectioned with inline documentation |
 | Parallel LHS | None | `Opt.parfor = 'on'`: parfor over stations (LHS) and modes (solve) |
-| GPU solve | None | `Opt.gpu = 'on'`: gpuArray `\` for large ny; auto-detected |
 | Intermediate plots | Always on | `Opt.plot = 'on'`/`'off'`; suppressed by default in benchmarks |
 | Linear mode | Not supported | `Opt.linear = 'on'`: single iteration, no NLT (linear PSE) |
 | Oblique mode | Not supported | `N = 0` with `beta_0 > 0` for single oblique wave |

@@ -1,12 +1,14 @@
 function [Mode,StabRes] = inflow(Mode,Stab,StabGrid,StabRes,Opt)
-%INFLOW  Set inflow boundary conditions for all active modes.
+%INFLOW  Seed the inflow disturbance for all active modes.
 %
-%   [Mode, StabRes] = inflow(Mode, Stab, StabGrid, StabRes)
+%   [Mode, StabRes] = inflow(Mode, Stab, StabGrid, StabRes, Opt)
 %
-%   For each mode with nonzero initial amplitude (Stab.A0), computes the
-%   inflow condition using ILST (local stability eigenvalue problem) or
-%   applies wall/loaded BCs. Sets phase reference (wall pressure or max u).
-%   Populates StabRes.u/v/w/p/phi at station 1 and updates Mode.RunJ.
+%   Dispatches on Stab.IC: 'ILST'/'CLST' (local eigenmode, via local functions
+%   ilst_inflow/clst_inflow), 'PSE' (non-parallel seed via solver_IPSE/solver_CPSE),
+%   'LOAD' (warm-start from file), or 'ZERO' (disturbance from wall/freestream
+%   forcing only). Scales each mode by Stab.A0, sets the phase reference (wall
+%   pressure or max|u|), populates StabRes.u/v/w/p(/rho/T)/phi at station 1, and
+%   updates Mode.RunJ (active modes = seeded + wall-forced).
 
 nonzeromodeswall = [];
 nonzeromodesic   = [];
@@ -22,6 +24,12 @@ end
 is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
 nvar     = 4 + double(is_compr);
 
+% Amplitude convention: Stab.A0 (and Stab.bcw, halved in RHS) is the PHYSICAL peak
+% amplitude 2|û| of the real disturbance q' = q̂ e^{-iωt} + c.c. The inflow seeds the
+% complex amplitude û = A0/2; post-process then reports StabRes.A = 2|û| = A0, so the
+% amplitude you set in equals the amplitude you get out (see docs/user_guide.md §5).
+A0s = 0.5 * Stab.A0;
+
 StabRes.phi    = zeros(Mode.nf,nvar*StabGrid.ny,StabGrid.nx);
 StabRes.alpha  = zeros(Mode.nf,StabGrid.nx);
 StabRes.A      = zeros(Mode.nf,StabGrid.nx);
@@ -34,17 +42,16 @@ if is_compr
     StabRes.T   = zeros(Mode.nf,StabGrid.ny,StabGrid.nx);
 end
 
-if is_compr && ~(strcmpi(Stab.IC,'CLST') || strcmpi(Stab.IC,'LOAD'))
+if is_compr && ~(strcmpi(Stab.IC,'CLST') || strcmpi(Stab.IC,'LOAD') || strcmpi(Stab.IC,'PSE') || strcmpi(Stab.IC,'ZERO'))
     error('inflow:badIC', ...
-        'Opt.compressible=''on'' requires Stab.IC=''CLST'' or ''LOAD''; got ''%s''.', Stab.IC);
+        'Opt.compressible=''on'' requires Stab.IC=''CLST'', ''PSE'', ''LOAD'' or ''ZERO''; got ''%s''.', Stab.IC);
 end
 if ~is_compr && strcmpi(Stab.IC,'CLST')
     error('inflow:badIC', 'Stab.IC=''CLST'' requires Opt.compressible=''on''.');
 end
 
-% Determine ILST freestream BC from per-component Opt.bc_top.
-% ILST uses a single flag: 'H_DR' or 'H_NM'.
-% If any component is Neumann, use Neumann for ILST.
+% Freestream BC flag for the LST inflow solvers: single 'H_DR'/'H_NM', Neumann
+% if any component is. clst_inflow uses it; the ILST seed decays so it ignores it.
 if ~exist('Opt','var') || ~isfield(Opt,'bc_top')
     bc_top = 'H_DR';
 elseif iscell(Opt.bc_top)
@@ -86,8 +93,19 @@ if Stab.IC=="LOAD"
 
     elseif isfield(loaded,'StabRes')
         SR = loaded.StabRes;
+        % ICfile must be a CHECKPOINT (Opt.save_checkpoint): .q intact, full mode
+        % set, shapes unnormalised. A results file (Opt.save_output) has been
+        % through postprocess (strips q/phi/R), so it cannot restore solver state.
+        if ~isfield(SR,'q')
+            error('inflow:ICfileNotCheckpoint', ...
+                ['ICfile "%s" has no StabRes.q — it looks like an Opt.save_output ' ...
+                 'results file (postprocess strips q/phi/R). Stab.IC=''LOAD'' needs a ' ...
+                 'checkpoint: set Opt.save_checkpoint in the producing run and load that.'], ...
+                 Stab.ICfile);
+        end
         assert(size(SR.u,1) == Mode.nf && size(SR.u,2) == StabGrid.ny, ...
-            'Loaded StabRes.u size [%d x %d x ...] does not match expected [%d x %d x ...].', ...
+            ['Loaded StabRes.u size [%d x %d x ...] does not match expected [%d x %d x ...]. ' ...
+             'The checkpoint must come from a run with the same M/N and grid.'], ...
             size(SR.u,1), size(SR.u,2), Mode.nf, StabGrid.ny);
         if is_compr
             assert(isfield(SR,'rho') && isfield(SR,'T'), ...
@@ -99,33 +117,22 @@ if Stab.IC=="LOAD"
                 && isfield(Stab,'A0_fund') && loaded.Stab.A0_fund > 0
             scale = Stab.A0_fund / loaded.Stab.A0_fund;
         end
+        if is_compr; flds = {'u','v','w','rho','T'}; else; flds = {'u','v','w','p'}; end
         if size(SR.u,3) == StabGrid.nx
             for j = 1:Mode.nf
-                StabRes.u(j,:,:) = scale * SR.u(j,:,:);
-                StabRes.v(j,:,:) = scale * SR.v(j,:,:);
-                StabRes.w(j,:,:) = scale * SR.w(j,:,:);
-                if is_compr
-                    StabRes.rho(j,:,:) = scale * SR.rho(j,:,:);
-                    StabRes.T(j,:,:)   = scale * SR.T(j,:,:);
-                else
-                    StabRes.p(j,:,:) = scale * SR.p(j,:,:);
+                for f = 1:numel(flds)
+                    StabRes.(flds{f})(j,:,:) = scale * SR.(flds{f})(j,:,:);
                 end
             end
-            if isfield(SR,'q') && isequal(size(SR.q), [Mode.nf, nvar*StabGrid.ny*StabGrid.nx])
+            if isfield(SR,'q') && size(SR.q,2) == nvar*StabGrid.ny*StabGrid.nx
                 StabRes.q = scale * SR.q;
             end
-            fprintf('  LOAD: full-domain warm-start (%d x %d x %d), A0 scale = %.3f\n', ...
-                    size(SR.u,1), size(SR.u,2), size(SR.u,3), scale);
+            fprintf('  LOAD: full-domain warm-start (%d modes -> %d incl. conjugates, %d x %d), A0 scale = %.3f\n', ...
+                    size(SR.u,1), Mode.nf, size(SR.u,2), size(SR.u,3), scale);
         else
             for j = 1:Mode.nf
-                StabRes.u(j,:,1) = SR.u(j,:,1);
-                StabRes.v(j,:,1) = SR.v(j,:,1);
-                StabRes.w(j,:,1) = SR.w(j,:,1);
-                if is_compr
-                    StabRes.rho(j,:,1) = SR.rho(j,:,1);
-                    StabRes.T(j,:,1)   = SR.T(j,:,1);
-                else
-                    StabRes.p(j,:,1) = SR.p(j,:,1);
+                for f = 1:numel(flds)
+                    StabRes.(flds{f})(j,:,1) = SR.(flds{f})(j,:,1);
                 end
             end
             fprintf('  LOAD: inflow-only (station 1) — no downstream warm-start\n');
@@ -162,15 +169,15 @@ if Stab.IC=="LOAD"
                     StabRes.p(j,:,1) = StabRes.p(j,:,1) / ampltd;
                 end
             end
-            StabRes.u(j,:,1) = Stab.A0(j) .* StabRes.u(j,:,1);
-            StabRes.v(j,:,1) = Stab.A0(j) .* StabRes.v(j,:,1);
-            StabRes.w(j,:,1) = Stab.A0(j) .* StabRes.w(j,:,1);
+            StabRes.u(j,:,1) = A0s(j) .* StabRes.u(j,:,1);
+            StabRes.v(j,:,1) = A0s(j) .* StabRes.v(j,:,1);
+            StabRes.w(j,:,1) = A0s(j) .* StabRes.w(j,:,1);
             if is_compr
-                StabRes.rho(j,:,1) = Stab.A0(j) .* StabRes.rho(j,:,1);
-                StabRes.T(j,:,1)   = Stab.A0(j) .* StabRes.T(j,:,1);
+                StabRes.rho(j,:,1) = A0s(j) .* StabRes.rho(j,:,1);
+                StabRes.T(j,:,1)   = A0s(j) .* StabRes.T(j,:,1);
                 StabRes.phi(j,:,1) = [StabRes.u(j,:,1) StabRes.v(j,:,1) StabRes.w(j,:,1) StabRes.rho(j,:,1) StabRes.T(j,:,1)];
             else
-                StabRes.p(j,:,1) = Stab.A0(j) .* StabRes.p(j,:,1);
+                StabRes.p(j,:,1) = A0s(j) .* StabRes.p(j,:,1);
                 StabRes.phi(j,:,1) = [StabRes.u(j,:,1) StabRes.v(j,:,1) StabRes.w(j,:,1) StabRes.p(j,:,1)];
             end
             switch lower(Stab.phaseRef)
@@ -206,13 +213,13 @@ elseif Stab.IC=="ILST"
 
     for j = flip(nonzeromodesic) %Run initial condition for all nonzero modes
     if j >= round(Mode.nf/2)% Mode is physical
-        [StabRes]=ILST(j,1,StabGrid,StabRes,bc_top,Opt);
+        [StabRes]=ilst_inflow(j,1,StabGrid,StabRes,bc_top,Opt);
     
-        % Output from IC_HNS is normalized by max(u'), superimpose amplitude
-        StabRes.u(j,:,1) = Stab.A0(j).*StabRes.u(j,:,1);
-        StabRes.v(j,:,1) = Stab.A0(j).*StabRes.v(j,:,1);
-        StabRes.w(j,:,1) = Stab.A0(j).*StabRes.w(j,:,1);
-        StabRes.p(j,:,1) = Stab.A0(j).*StabRes.p(j,:,1);
+        % ilst_inflow returns unit-max|u'|; superimpose the physical amplitude
+        StabRes.u(j,:,1) = A0s(j).*StabRes.u(j,:,1);
+        StabRes.v(j,:,1) = A0s(j).*StabRes.v(j,:,1);
+        StabRes.w(j,:,1) = A0s(j).*StabRes.w(j,:,1);
+        StabRes.p(j,:,1) = A0s(j).*StabRes.p(j,:,1);
         StabRes.phi(j,:,1) = [StabRes.u(j,:,1) StabRes.v(j,:,1) StabRes.w(j,:,1) StabRes.p(j,:,1)];
         switch lower(Stab.phaseRef)  % e.g. 'pwall' or 'umax'
         case 'pwall'
@@ -244,24 +251,66 @@ elseif Stab.IC=="ILST"
         fprintf('Initialising with ILST solution at inflow and non-homogeneous b.c. at wall. \n')
     end
 
-elseif Stab.IC=="CLST"
+elseif Stab.IC=="CLST" || Stab.IC=="PSE"
     [~,nonzeromodesic] = find(Stab.A0>0);
+    sym_inflow = isfield(Opt,'sym_inflow') && strcmpi(Opt.sym_inflow,'on');
+    is_pse = strcmpi(char(Stab.IC),'PSE');   % linear-PSE (non-parallel) seed vs local CLST
+    ov_ = real(StabRes.omegavec(:)); bv_ = real(StabRes.betavec(:)); tol_ = 1e-9;
 
-    for j = flip(nonzeromodesic)
-        if j >= round(Mode.nf/2)   % Physical mode
-            StabRes = CLST(j, 1, StabGrid, StabRes, bc_top, Opt);
+    if sym_inflow
+        % Symmetry-correct oblique seeding: CLST-solve only the true fundamental
+        % (omega>0 & beta>0); derive the other seeded modes as its images on the
+        % 2D base flow (Wbar=0): spanwise mirror flips w', reality conjugation
+        % conjugates with alpha->-conj(alpha). Lands the (-1,1) partner that the
+        % 1D index-mirror left at zero.
+        is_canon = (ov_ >= -tol_) & (bv_ >= -tol_) & (abs(ov_) > tol_ | abs(bv_) > tol_);
+        canonj   = nonzeromodesic( is_canon(nonzeromodesic));
+        derivj   = nonzeromodesic(~is_canon(nonzeromodesic));
+        runorder = [canonj, derivj];   % canonical first, so images can read them back
+    else
+        runorder = flip(nonzeromodesic);
+    end
 
-            % CLST normalizes by max|u'|; scale by A0 and rebuild phi at the new amplitude.
-            StabRes.u(j,:,1)   = Stab.A0(j).*StabRes.u(j,:,1);
-            StabRes.v(j,:,1)   = Stab.A0(j).*StabRes.v(j,:,1);
-            StabRes.w(j,:,1)   = Stab.A0(j).*StabRes.w(j,:,1);
-            StabRes.p(j,:,1)   = Stab.A0(j).*StabRes.p(j,:,1);
-            StabRes.rho(j,:,1) = Stab.A0(j).*StabRes.rho(j,:,1);
-            StabRes.T(j,:,1)   = Stab.A0(j).*StabRes.T(j,:,1);
+    for j = runorder
+        if sym_inflow
+            do_clst = is_canon(j);
+        else
+            do_clst = j >= round(Mode.nf/2);
+            j2      = round(Mode.nf/2)-(j-round(Mode.nf/2));
+        end
 
-            StabRes.phi(j,:,1) = [StabRes.u(j,:,1),    StabRes.v(j,:,1), ...
-                                  StabRes.w(j,:,1),    StabRes.rho(j,:,1), ...
-                                  StabRes.T(j,:,1)];
+        if do_clst   % Physical / canonical mode -> CLST or linear-PSE profile
+            if is_pse
+                % Linear-PSE (non-parallel) seed: march DeHNSSo's own linear PSE from
+                % upstream to R0 and take the developed shape (unit-max|u|) at R0,
+                % carrying the mode's streamwise history instead of a local eigenfunction.
+                % Compressible density-form (pse) or incompressible u,v,w,p form (pse_inc).
+                if is_compr
+                    [prof, al_pse] = solver_CPSE(ov_(j), bv_(j), StabGrid, Opt);
+                    StabRes.rho(j,:,1)=prof.rho; StabRes.T(j,:,1)=prof.T;
+                else
+                    [prof, al_pse] = solver_IPSE(ov_(j), bv_(j), StabGrid, Opt);
+                end
+                StabRes.u(j,:,1)=prof.u; StabRes.v(j,:,1)=prof.v; StabRes.w(j,:,1)=prof.w; StabRes.p(j,:,1)=prof.p;
+                StabRes.alpha(j,1)=al_pse;
+            else
+                StabRes = clst_inflow(j, 1, StabGrid, StabRes, bc_top, Opt);
+            end
+
+            % CLST/pse both return unit-max|u'|; scale by A0 and rebuild phi.
+            StabRes.u(j,:,1)   = A0s(j).*StabRes.u(j,:,1);
+            StabRes.v(j,:,1)   = A0s(j).*StabRes.v(j,:,1);
+            StabRes.w(j,:,1)   = A0s(j).*StabRes.w(j,:,1);
+            StabRes.p(j,:,1)   = A0s(j).*StabRes.p(j,:,1);
+            if is_compr
+                StabRes.rho(j,:,1) = A0s(j).*StabRes.rho(j,:,1);
+                StabRes.T(j,:,1)   = A0s(j).*StabRes.T(j,:,1);
+                StabRes.phi(j,:,1) = [StabRes.u(j,:,1), StabRes.v(j,:,1), ...
+                                      StabRes.w(j,:,1), StabRes.rho(j,:,1), StabRes.T(j,:,1)];
+            else
+                StabRes.phi(j,:,1) = [StabRes.u(j,:,1), StabRes.v(j,:,1), ...
+                                      StabRes.w(j,:,1), StabRes.p(j,:,1)];
+            end
 
             switch lower(Stab.phaseRef)
                 case 'pwall'
@@ -273,22 +322,97 @@ elseif Stab.IC=="CLST"
                     error('Unknown phaseRef option');
             end
             StabRes.phi(j,:,1) = StabRes.phi(j,:,1) * exp(-1i*theta0);
-        else   % Conjugate mode
-            j2 = round(Mode.nf/2)-(j-round(Mode.nf/2));
+
+        elseif sym_inflow   % Symmetry image of a canonical mode (2D, Wbar=0)
+            jc = find(abs(abs(ov_)-abs(ov_(j))) < tol_ & abs(abs(bv_)-abs(bv_(j))) < tol_ ...
+                      & (ov_ >= -tol_) & (bv_ >= -tol_) & (abs(ov_) > tol_ | abs(bv_) > tol_), 1);
+            sc      = Stab.A0(j)/Stab.A0(jc);   % rescale to this mode's amplitude
+            do_conj = ov_(j) < -tol_;           % reality conjugation (omega sign flip)
+            % Spanwise mirror flips w'; reality conjugation already flips beta's sign,
+            % so mirror only when the target beta sign disagrees with it (XOR do_conj).
+            % Otherwise the (-1,1) partner gets +conj(w) and the pair is non-physical.
+            flip_w  = (bv_(j) < -tol_) ~= do_conj;
+            if do_conj
+                u=conj(StabRes.u(jc,:,1));   v=conj(StabRes.v(jc,:,1));   w=conj(StabRes.w(jc,:,1));
+                p=conj(StabRes.p(jc,:,1));
+                if is_compr; r=conj(StabRes.rho(jc,:,1)); T=conj(StabRes.T(jc,:,1)); end
+                StabRes.alpha(j,1) = -conj(StabRes.alpha(jc,1));
+            else
+                u=StabRes.u(jc,:,1);   v=StabRes.v(jc,:,1);   w=StabRes.w(jc,:,1);
+                p=StabRes.p(jc,:,1);
+                if is_compr; r=StabRes.rho(jc,:,1); T=StabRes.T(jc,:,1); end
+                StabRes.alpha(j,1) =  StabRes.alpha(jc,1);
+            end
+            if flip_w, w = -w; end
+            StabRes.u(j,:,1)=sc*u; StabRes.v(j,:,1)=sc*v; StabRes.w(j,:,1)=sc*w; StabRes.p(j,:,1)=sc*p;
+            if is_compr
+                StabRes.rho(j,:,1)=sc*r; StabRes.T(j,:,1)=sc*T;
+                StabRes.phi(j,:,1) = [StabRes.u(j,:,1), StabRes.v(j,:,1), ...
+                                      StabRes.w(j,:,1), StabRes.rho(j,:,1), StabRes.T(j,:,1)];
+            else
+                StabRes.phi(j,:,1) = [StabRes.u(j,:,1), StabRes.v(j,:,1), ...
+                                      StabRes.w(j,:,1), StabRes.p(j,:,1)];
+            end
+
+        else   % Conjugate mode (1D index-mirror path)
             StabRes.u(j,:,1)   = conj(StabRes.u(j2,:,1));
             StabRes.v(j,:,1)   = conj(StabRes.v(j2,:,1));
             StabRes.w(j,:,1)   = conj(StabRes.w(j2,:,1));
             StabRes.p(j,:,1)   = conj(StabRes.p(j2,:,1));
-            StabRes.rho(j,:,1) = conj(StabRes.rho(j2,:,1));
-            StabRes.T(j,:,1)   = conj(StabRes.T(j2,:,1));
+            if is_compr
+                StabRes.rho(j,:,1) = conj(StabRes.rho(j2,:,1));
+                StabRes.T(j,:,1)   = conj(StabRes.T(j2,:,1));
+            end
             StabRes.alpha(j,1) = -conj(StabRes.alpha(j2,1));
             StabRes.phi(j,:,1) = conj(StabRes.phi(j2,:,1));
         end
     end
-    fprintf('Initialising with CLST solution at inflow.\n')
+    if is_pse
+        fprintf('Initialising with linear-PSE (non-parallel) solution at inflow.\n')
+    else
+        fprintf('Initialising with CLST solution at inflow.\n')
+    end
+
+elseif Stab.IC=="ZERO"
+    % No inflow disturbance: the field is generated entirely by wall/freestream
+    % forcing (Stab.bcw / Stab.bct). StabRes.u/v/w/p (+ rho/T) keep their zero
+    % initialisation at the inlet, and nonzeromodesic stays empty, so the active
+    % modes come from nonzeromodeswall only (e.g. a wall actuator, roughness, or
+    % the resonator impedance BC with no incoming instability wave).
+    if isempty(nonzeromodeswall)
+        warning('inflow:zeroNoForcing', ...
+            ['Stab.IC=''ZERO'' with no wall/freestream forcing (Stab.bcw/bct all ' ...
+             'zero): the disturbance field will be identically zero.']);
+    end
+    fprintf('Initialising with ZERO inflow (disturbance from wall/freestream forcing only).\n')
 
 else
-    error('Unknown inflow condition Stab.IC = ''%s''. Valid options: ''ILST'', ''CLST'', ''LOAD''.', Stab.IC);
+    error('Unknown inflow condition Stab.IC = ''%s''. Valid options: ''ILST'', ''CLST'', ''PSE'', ''LOAD'', ''ZERO''.', Stab.IC);
+end
+
+% PSE inflow override (Opt.pse_inflow): impose a developed multi-mode NPSE state
+% at the inlet (ALL modes, not just the linear pair) so generated modes don't
+% re-establish inside the domain. File fields: m,n, eta, u,v,w,rho,T,p (physical u_hat).
+if isfield(Opt,'pse_inflow') && ~isempty(Opt.pse_inflow)
+    P = load(Opt.pse_inflow);
+    ovv = real(StabRes.omegavec(:)); bvv = real(StabRes.betavec(:)); tolp = 1e-9;
+    o0 = min(abs(ovv(abs(ovv)>tolp))); b0 = min(abs(bvv(abs(bvv)>tolp)));
+    if isempty(o0)||o0==0; o0=1; end; if isempty(b0)||b0==0; b0=1; end
+    yq = StabGrid.etaun(:).'; loaded = [];
+    for j = 1:Mode.nf
+        mj = round(ovv(j)/o0); nj = round(bvv(j)/b0);
+        k = find(P.m==mj & P.n==nj, 1); cc = false;
+        if isempty(k); k = find(P.m==-mj & P.n==-nj, 1); cc = true; end   % reality conjugate
+        if isempty(k); continue; end
+        gv = @(F) interp1(P.eta(:).', F(k,:), yq, 'pchip', 0);
+        u=gv(P.u); v=gv(P.v); w=gv(P.w); r=gv(P.rho); T=gv(P.T); p=gv(P.p);
+        if cc; u=conj(u); v=conj(v); w=conj(w); r=conj(r); T=conj(T); p=conj(p); end
+        StabRes.u(j,:,1)=u; StabRes.v(j,:,1)=v; StabRes.w(j,:,1)=w;
+        StabRes.rho(j,:,1)=r; StabRes.T(j,:,1)=T; StabRes.p(j,:,1)=p;
+        StabRes.phi(j,:,1)=[u,v,w,r,T]; loaded=[loaded j]; %#ok<AGROW>
+    end
+    nonzeromodesic = unique([nonzeromodesic, loaded]);
+    fprintf('PSE inflow: loaded %d modes from %s\n', numel(loaded), Opt.pse_inflow);
 end
 
 % nonzero modes are those initiated at inflow + those forced at wall
@@ -298,6 +422,251 @@ Mode.Aactive(Mode.RunJ) = 1;      % Set active modes to introduced modes
 
 % Define phiIC
 StabRes.phiIC = squeeze(StabRes.phi(:,:,1));
+
+end
+
+%% ========================================================================
+%  Per-mode inflow seeding: solve the local eigenvalue problem (solver_ILST /
+%  solver_CLST), select the physical mode (EVfilter), normalise by max|u|, and
+%  store the shape in StabRes. The eigen-solvers themselves live in init/lst/.
+%% ========================================================================
+
+function [StabRes] = ilst_inflow(j,i,StabGrid,StabRes,bc_top,Opt)
+%ILST_INFLOW  Incompressible LST seed for mode j (Orr-Sommerfeld/Squire).
+
+Re = StabGrid.Re;
+U = StabGrid.U(:,i);
+W = StabGrid.W(:,i);
+dyU = StabGrid.dyU(:,i);
+dyW = StabGrid.dyW(:,i);
+
+omega = StabRes.omegavec(j);
+beta = StabRes.betavec(j);
+ny = StabGrid.ny;
+
+if ~exist('bc_top','var'); bc_top = 'H_DR'; end  %#ok<NASGU> % seed mode decays: freestream BC immaterial
+if ~exist('Opt','var');   Opt.plot = 'on'; end
+if ~isfield(Opt,'verbose'); Opt.verbose = 'on'; end
+
+assert(isfield(StabGrid,'H') && isfield(StabGrid,'y_i'), 'ILST:gridMeta', ...
+    'StabGrid needs H and y_i (regenerate the grid via gridgen).');
+
+if strcmpi(Opt.verbose,'on')
+    fprintf(' Calculating IC for nonzero modes with ILST: ')
+end
+% solver_ILST rebuilds the StabGrid.y grid (same H, y_i, ny) and returns the
+% eigenfunctions on it, so no re-interpolation is needed on Malik grids.
+[EV,u,v,w,p,yOS] = solver_ILST(Re,U,W,dyU,dyW,StabGrid.y,omega,beta,ny,StabGrid.H,StabGrid.y_i);
+
+k = find(U<=0.99*max(U),1,'first');
+d99 = StabGrid.y(k);
+[alpha, index] = EVfilter(EV, v, yOS, omega, beta, d99);
+
+if strcmpi(Opt.verbose,'on')
+    fprintf('alpha = %.6f %+.6fi\n', real(alpha), imag(alpha));
+end
+
+StabRes.alpha(j,i) = alpha;
+
+% Select the physical mode and put it on StabGrid.y (identity for Malik grids
+% where yOS == StabGrid.y; a genuine interpolation for FD grids).
+u = interp1(yOS, u(:,index), StabGrid.y, 'spline');
+v = interp1(yOS, v(:,index), StabGrid.y, 'spline');
+w = interp1(yOS, w(:,index), StabGrid.y, 'spline');
+p = interp1(yOS, p(:,index), StabGrid.y, 'spline');
+
+% Amplitude = max|u| after fine spline interpolation
+y_mdInt     = linspace(StabGrid.y(1),StabGrid.y(end),4000);
+u1int       = interp1(StabGrid.y,abs(u),y_mdInt,'spline');
+[ampltd, ~] = max(abs(u1int));
+
+StabRes.u(j,:,i)  = u/ampltd;
+StabRes.v(j,:,i)  = v/ampltd;
+StabRes.w(j,:,i)  = w/ampltd;
+StabRes.p(j,:,i)  = p/ampltd;
+StabRes.phi(j,:,i) = [ StabRes.u(j,:,i).'; StabRes.v(j,:,i).'; ...
+                       StabRes.w(j,:,i).'; StabRes.p(j,:,i).'];
+
+%% Visual check for mode selection
+if ~strcmpi(Opt.plot, 'on'); return; end
+
+figure(1); clf; set(gcf, 'Position', [200 200 1200 350]);
+tiledlayout(1, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+nexttile
+plot(U, StabGrid.y, 'b-', 'LineWidth', 1.5); hold on;
+plot(W, StabGrid.y, 'r-', 'LineWidth', 1.5);
+plot(dyU, StabGrid.y, 'b--', 'LineWidth', 1.0);
+plot(dyW, StabGrid.y, 'r--', 'LineWidth', 1.0);
+xlabel('Velocity / derivative', 'Interpreter', 'latex', 'FontSize', 12)
+ylabel('$\eta$', 'Interpreter', 'latex', 'FontSize', 12)
+legend('U', 'W', 'dU/d\eta', 'dW/d\eta', 'Location', 'best', 'FontSize', 9)
+title('Inflow base flow', 'Interpreter', 'latex', 'FontSize', 13)
+grid on; box on;
+
+nexttile
+plot(real(EV), imag(EV), 'k.', 'MarkerSize', 12); hold on;
+plot(real(alpha), imag(alpha), 'ro', 'MarkerSize', 8, 'LineWidth', 1.5);
+alpha_r_center = omega;  % entropy branch at c=1, so alpha_r = omega
+xlim([alpha_r_center - 0.1, alpha_r_center + 0.1])
+ylim([-0.1, 0.02])
+xlabel('$\alpha_r$', 'Interpreter', 'latex', 'FontSize', 12)
+ylabel('$\alpha_i$', 'Interpreter', 'latex', 'FontSize', 12)
+legend({'Eigenvalues', 'Selected'}, 'Location', 'best', 'FontSize', 9)
+title('Eigenvalue spectrum', 'Interpreter', 'latex', 'FontSize', 13)
+grid on; box on;
+
+nexttile
+plot(abs(squeeze(StabRes.u(j,:,1))), StabGrid.y, 'k-', 'LineWidth', 1.5);
+xlabel('$|\hat{u}|$', 'Interpreter', 'latex', 'FontSize', 12)
+ylabel('$\eta$', 'Interpreter', 'latex', 'FontSize', 12)
+title('Eigenfunction', 'Interpreter', 'latex', 'FontSize', 13)
+grid on; box on;
+
+sgtitle(sprintf('Inflow ILST: $\\alpha = %.4f %+.4fi$', real(alpha), imag(alpha)), ...
+    'Interpreter', 'latex', 'FontSize', 14);
+drawnow;
+
+end
+
+function [StabRes] = clst_inflow(j, i, StabGrid, StabRes, bc_top, Opt)
+%CLST_INFLOW  Compressible LST seed for mode j, variables (rho,u,v,w,T).
+
+ny    = StabGrid.ny;
+Ma    = StabGrid.Ma;
+ga    = StabGrid.gamma;
+gM2   = ga * Ma^2;
+N5    = 5 * ny;
+
+omega = StabRes.omegavec(j);
+beta  = StabRes.betavec(j);
+
+if ~exist('bc_top','var'); bc_top = 'H_DR'; end
+if ~exist('Opt','var');    Opt = struct('plot','on'); end
+if ~isfield(Opt,'verbose'); Opt.verbose = 'on'; end
+
+if strcmpi(Opt.verbose,'on')
+    fprintf(' Calculating IC for nonzero modes with CLST: ')
+end
+
+U  = StabGrid.U(:,i);          % for d99 / plotting
+Rb = StabGrid.rho(:,i);        % for p reconstruction (EOS)
+Tb = StabGrid.T(:,i);
+
+% Assemble and solve the compressible LST eigenvalue problem
+drop_a2 = isfield(Opt,'drop_alpha2') && Opt.drop_alpha2;
+[Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_a2);
+
+% Select the physical mode
+if isfield(Opt, 'alpha_shift') && ~isempty(Opt.alpha_shift)
+    % Continuation: nearest eigenvalue to the previous-station alpha, within a
+    % physical band (avoids spurious / continuous-spectrum modes -> de-spikes sweep).
+    band = real(Eval) > 0.05 & real(Eval) < 0.5 & abs(imag(Eval)) < 0.05;
+    d = abs(Eval - Opt.alpha_shift);  d(~band) = inf;
+    [~, index] = min(d);
+    alpha = Eval(index);
+else
+    % Full spectrum + EVfilter (station 1: mode identification)
+    v_evec = Evec(3:5:N5, :);
+    kd99 = find(U <= 0.99*max(U), 1, 'first');
+    d99_val = StabGrid.y(kd99);
+    % Optional Mack-mode selector (Ma>1): Opt.mode_select = 'auto'|'slow'|'fast'
+    mode_select = 'auto';
+    if isfield(Opt,'mode_select') && ~isempty(Opt.mode_select)
+        mode_select = Opt.mode_select;
+    end
+    [alpha, index] = EVfilter(Eval, v_evec, StabGrid.y, omega, beta, d99_val, Ma, mode_select);
+end
+
+StabRes.alpha(j,i) = alpha;
+if strcmpi(Opt.verbose,'on')
+    fprintf('alpha = %.6f %+.6fi\n', real(alpha), imag(alpha));
+end
+
+% Extract and normalise eigenfunction. CLST solves in (rho,u,v,w,T); convert to
+% (u,v,w,p,T) via EOS: p' = (rho'*T_bar + rho_bar*T') / (gamma*Ma^2).
+q       = Evec(1:N5, index);
+rho_hat = q(1:5:N5);
+u_hat   = q(2:5:N5);
+v_hat   = q(3:5:N5);
+w_hat   = q(4:5:N5);
+T_hat   = q(5:5:N5);
+p_hat   = (rho_hat .* Tb + Rb .* T_hat) / gM2;
+
+y_int  = linspace(StabGrid.y(1), StabGrid.y(end), 4000);
+u_int  = interp1(StabGrid.y, abs(u_hat), y_int, 'spline');
+ampltd = max(abs(u_int));
+
+StabRes.u(j,:,i)   = u_hat.'   / ampltd;
+StabRes.v(j,:,i)   = v_hat.'   / ampltd;
+StabRes.w(j,:,i)   = w_hat.'   / ampltd;
+StabRes.p(j,:,i)   = p_hat.'   / ampltd;
+StabRes.rho(j,:,i) = rho_hat.' / ampltd;
+
+% Compressible LHS is density form: slot 4 of phi is rho'.
+if isfield(StabRes,'T')
+    StabRes.T(j,:,i) = T_hat.' / ampltd;
+    StabRes.phi(j,:,i) = [StabRes.u(j,:,i),    StabRes.v(j,:,i), ...
+                           StabRes.w(j,:,i),    StabRes.rho(j,:,i), ...
+                           StabRes.T(j,:,i)];
+else
+    StabRes.phi(j,:,i) = [StabRes.u(j,:,i),  StabRes.v(j,:,i), ...
+                           StabRes.w(j,:,i),  StabRes.rho(j,:,i)];
+end
+
+%% Plotting
+if ~strcmpi(Opt.plot, 'on'); return; end
+
+figure(1); clf; set(gcf, 'Position', [200 200 1400 350]);
+tiledlayout(1, 4, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+nexttile
+% delta99: y where U first drops below 0.99*U_max (works ascending OR descending y)
+kd99_plot    = find(U >= 0.99*max(U), 1, 'last');
+if isempty(kd99_plot); kd99_plot = numel(U); end
+delta99_plot = StabGrid.y(kd99_plot);
+eta_max_plot = min(2 * delta99_plot, max(StabGrid.y));
+plot(U, StabGrid.y, 'b-', 'LineWidth', 1.5); hold on;
+plot(Tb, StabGrid.y, 'r-', 'LineWidth', 1.5);
+plot(Rb, StabGrid.y, 'g-', 'LineWidth', 1.5);
+ylim([0, eta_max_plot]);
+xlabel('Base flow', 'Interpreter', 'latex', 'FontSize', 12)
+ylabel('$\eta$', 'Interpreter', 'latex', 'FontSize', 12)
+legend('$U$', '$T$', '$\rho$', 'Location', 'best', 'Interpreter', 'latex')
+title('Inflow base flow', 'Interpreter', 'latex', 'FontSize', 13)
+grid on; box on;
+
+nexttile
+phys = ~isinf(Eval) & ~isnan(Eval) & abs(Eval) < 10;
+plot(real(Eval(phys)), imag(Eval(phys)), 'k.', 'MarkerSize', 12); hold on;
+plot(real(alpha), imag(alpha), 'ro', 'MarkerSize', 8, 'LineWidth', 1.5);
+xlim([real(alpha)-0.2, real(alpha)+0.2]);
+ylim([-0.1, 0.05]);
+xlabel('$\alpha_r$', 'Interpreter', 'latex', 'FontSize', 12)
+ylabel('$\alpha_i$', 'Interpreter', 'latex', 'FontSize', 12)
+legend({'Eigenvalues', 'Selected'}, 'Location', 'best', 'FontSize', 9)
+title('Eigenvalue spectrum', 'Interpreter', 'latex', 'FontSize', 13)
+grid on; box on;
+
+nexttile
+plot(abs(squeeze(StabRes.u(j,:,i))), StabGrid.y, 'k-', 'LineWidth', 1.5); hold on;
+plot(abs(squeeze(StabRes.v(j,:,i))), StabGrid.y, 'b--', 'LineWidth', 1.2);
+xlabel('$|\hat{q}|$', 'Interpreter', 'latex', 'FontSize', 12)
+ylabel('$\eta$', 'Interpreter', 'latex', 'FontSize', 12)
+legend('$|\hat{u}|$', '$|\hat{v}|$', 'Interpreter', 'latex', 'Location', 'best')
+title('Velocity eigenfunctions', 'Interpreter', 'latex', 'FontSize', 13)
+grid on; box on;
+
+nexttile
+plot(abs(squeeze(StabRes.p(j,:,i))), StabGrid.y, 'g-', 'LineWidth', 1.5); hold on;
+plot(abs(T_hat)/ampltd,               StabGrid.y, 'r-', 'LineWidth', 1.5);
+plot(abs(rho_hat)/ampltd,             StabGrid.y, 'm-', 'LineWidth', 1.5);
+legend({'$|\hat{p}|$', '$|\hat{T}|$', '$|\hat{\rho}|$'}, ...
+       'Interpreter', 'latex', 'Location', 'best')
+xlabel('$|\hat{q}|$', 'Interpreter', 'latex', 'FontSize', 12)
+ylabel('$\eta$', 'Interpreter', 'latex', 'FontSize', 12)
+title('Thermodynamic eigenfunctions', 'Interpreter', 'latex', 'FontSize', 13)
+grid on; box on;
 
 end
 

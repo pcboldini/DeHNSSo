@@ -42,6 +42,17 @@ fprintf('  =========================================\n');
 %% 1. Load raw BF
 BF = load_bf(input);
 
+%% 1b. Wall forcing: size the clustering to params.forcing (see prepare_forcing)
+% params.forcing is one spec, a cell of specs, or an actuator with vector xc.
+forcing = {};
+if isfield(params, 'forcing') && ~isempty(params.forcing)
+    specs        = flatten_forcing(params.forcing);
+    forcing      = cellfun(@prepare_forcing, specs, 'UniformOutput', false);
+    params.mug   = cellfun(@(f) f.xc, forcing);
+    params.w_act = cellfun(@(f) f.w,  forcing);
+    fprintf('Wall forcing: %d source(s) -> refining mesh\n', numel(forcing));
+end
+
 %% 2. Classify and dispatch to the appropriate resampler
 class = classify_input(BF, input);
 
@@ -80,6 +91,26 @@ end
 fprintf('Generating StabGrid ...\n');
 StabGrid = build_stab_grid(BF_rs, params_to_grid(params));
 fprintf('StabGrid ready.\n');
+
+%% 5b. Store the forcing profile on the grid, aligned to xun for the caller
+% Sample at the PHYSICAL wall-x per station (xun itself on a flat plate, the wall
+% row of the 2-D X on a curved wall), so the profile is correct on any mesh.
+if ~isempty(forcing)
+    xun = StabGrid.xun(1,:);
+    if isfield(StabGrid, 'X') && ~isvector(StabGrid.X)
+        [~, wr] = min(abs(StabGrid.y(:)));      % wall row (y ~ 0)
+        x_phys  = StabGrid.X(wr, :);
+    else
+        x_phys  = xun;                          % cartesian: xun is physical x
+    end
+    F = struct('xc', {}, 'w', {}, 'x', {}, 'v', {}, 'kind', {});
+    for k = 1:numel(forcing)
+        f    = forcing{k};
+        F(k) = struct('xc', f.xc, 'w', f.w, 'x', xun, 'v', f.eval(x_phys), 'kind', f.kind);
+    end
+    StabGrid.forcing = F;
+    fprintf('Stored %d forcing profile(s) on %d grid stations\n', numel(F), numel(xun));
+end
 
 %% 6. Write to disk
 if ~exist(output.folder, 'dir');  mkdir(output.folder);  end

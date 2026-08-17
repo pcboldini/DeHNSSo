@@ -1,5 +1,18 @@
 function plot_convergence(StabGrid, Mode, Stab, Opt)
-%PLOT_CONVERGENCE  Convergence history with optional Newton subplot.
+%PLOT_CONVERGENCE  Plot the iteration convergence history.
+%
+%   plot_convergence(StabGrid, Mode, Stab, Opt)
+%
+%   Draws the Picard fixed-point residual per physical mode against iteration
+%   number (figure 3), overlaying the convergence and intermediate thresholds
+%   and markers where the amplitude factor AF changed. When Newton history is
+%   present a second subplot shows the Newton residual per mode.
+%
+%   Inputs:
+%     StabGrid  — grid structure (unused for plotting, kept for interface)
+%     Mode      — mode structure (nf, RunJ)
+%     Stab      — stability data (Mvec, Nvec for legend labels)
+%     Opt       — options and logged history (dalsave, Conv, AF_history, ...)
 
 has_newton = isfield(Opt, 'newton_F_history') && ~isempty(Opt.newton_F_history);
 

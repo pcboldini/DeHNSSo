@@ -1,17 +1,19 @@
 function [sol] = FalknerSkanCooke(eta_inf,n,beta,halfsine,tol)
-% Solve the Falkner-Skan-Cooke equations. 
-% - eta_inf is where the boundary condition f'=g=1 is imposed. 
-% - n is the number of points
-% - beta is the Hartree parameter
-% - halfsine toggles a half-sine distribution of points along eta
+%FALKNERSKANCOOKE  Solve the Falkner-Skan-Cooke similarity equations (bvp5c).
 %
-% Definitions: 
-%   Falkner-Skan: f''' + f*f'' + beta(1-f'^2) = 0
-%   Cooke: g'' + f'g = 0
-% Transformations: 
-%   eta = y*sqrt((m+1)/2 * Ue/(nu*x))
-%   f' = u/Ue
-%   g = w/We
+%   sol = FalknerSkanCooke(eta_inf, n, beta, halfsine, tol)
+%
+%   Falkner-Skan: f''' + f f'' + beta(1 - f'^2) = 0;  Cooke: g'' + f' g = 0,
+%   with eta = y sqrt((m+1)/2 Ue/(nu x)), f' = u/Ue, g = w/We.
+%
+%   Inputs:
+%     eta_inf   — freestream location where f' = g = 1 is imposed
+%     n         — number of points
+%     beta      — Hartree parameter
+%     halfsine  — (optional) half-sine node distribution, clustered at the wall
+%     tol       — (optional) absolute tolerance (default 1e-8)
+%   Output:
+%     sol       — bvp5c solution struct
 
 % Half-sine distribution (bias at the wall, at low eta)
 if nargin==4 && halfsine
@@ -39,9 +41,6 @@ solinit = bvpinit(etas,@FSCinit,[]);
 warning('off','MATLAB:bvp5c:RelTolNotMet')
 sol = bvp5c(@FSCfunction,@FSCbc,solinit,options);
 warning('on','MATLAB:bvp5c:RelTolNotMet')
-% 
-% The FSC equation is nested so that it shares the workspace of the main
-% function, which includes the variable beta.
 
     function dydt = FSCfunction(~,y)
     % Falkner-Skan-Cooke equation in matrix form. 

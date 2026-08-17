@@ -1,0 +1,101 @@
+function [Stab, info] = add_wall_forcing(Stab, StabGrid, Opt, spec)
+%ADD_WALL_FORCING  Apply a wall forcing defined in gridgen (or overridden here).
+%
+%   [Stab, info] = add_wall_forcing(Stab, StabGrid, Opt, spec)
+%
+%   Grid-first wall forcing. gridgen defines WHAT is at the wall (an actuator or
+%   a v-distribution) via params.forcing, refines the mesh for it, and stores the
+%   unit-peak profile as StabGrid.forcing. This applies that profile scaled by an
+%   amplitude, doing all the Stab.bcw bookkeeping: component, mode index, sizing,
+%   Stab.bcx, the conjugate mode for nonlinear runs, and additive superposition.
+%
+%   spec fields:
+%     A      peak amplitude, physical 2|u| convention like Stab.A0 (required)
+%     phi    phase [rad] (default 0)
+%     comp   velocity component 1 u / 2 v / 3 w (default 2)
+%     mode   [m n] mode the forcing drives (default [1 0], fundamental)
+%   Profile source (priority):
+%     1. spec.x + spec.v      — a distribution given here (override)
+%     2. spec.xc + spec.w     — a raised-cosine actuator built here (override)
+%     3. StabGrid.forcing     — the profile gridgen stored (default, recommended)
+%   spec.which selects one when gridgen stored several (params.forcing a cell array).
+%
+%   The conjugate mode is added automatically for nonlinear runs (Opt.linear
+%   'off'); for linear runs only the fundamental is set (reconstruction supplies
+%   the conjugate). Call once per forcing to stack several.
+%
+%   Example (profile from gridgen):
+%     Stab = add_wall_forcing(Stab, StabGrid, Opt, struct('A', 2e-4));
+
+x  = StabGrid.xun(1, :);
+nx = numel(x);
+
+if ~isfield(spec, 'A') || isempty(spec.A)
+    error('add_wall_forcing: spec.A (amplitude) is required.');
+end
+phi  = 0;     if isfield(spec,'phi')  && ~isempty(spec.phi);  phi  = spec.phi;  end
+comp = 2;     if isfield(spec,'comp') && ~isempty(spec.comp); comp = spec.comp; end
+mode = [1 0]; if isfield(spec,'mode') && ~isempty(spec.mode); mode = spec.mode; end
+
+% ---- resolve the unit-peak profile on the grid ------------------------------
+if (isfield(spec,'x') && isfield(spec,'v')) || (isfield(spec,'xc') && isfield(spec,'w'))
+    f     = prepare_forcing(spec);           % caller override (distribution or actuator)
+    vprof = f.eval(x);
+    xc = f.xc;  w = f.w;  kind = f.kind;
+elseif isfield(StabGrid, 'forcing') && ~isempty(StabGrid.forcing)
+    F = StabGrid.forcing;
+    if numel(F) > 1                              % grid stores several forcings
+        assert(isfield(spec,'which') && ~isempty(spec.which), ...
+            'add_wall_forcing: grid has %d forcings — pass spec.which to pick one.', numel(F));
+        F = F(spec.which);
+    end
+    vprof = interp1(F.x, F.v, x, 'pchip', 0);   % F.x is the grid; interp is a safe no-op
+    xc = F.xc;  w = F.w;  kind = F.kind;
+else
+    error(['add_wall_forcing: no StabGrid.forcing and no override. Define ' ...
+           'params.forcing in gridgen, or pass spec.x/spec.v (distribution) ' ...
+           'or spec.xc/spec.w (actuator).']);
+end
+
+% ---- resolution guard: is the grid fine enough where the profile lives? -----
+active = abs(vprof) > 1e-6 * max(abs(vprof));
+if nnz(active) < 4
+    warning('add_wall_forcing:underResolved', ...
+        ['Wall forcing spans only %d grid stations. Refine the mesh in gridgen: ' ...
+         'params.forcing = struct(...) sizes params.mug=%.4g, w_act=%.4g.'], ...
+        nnz(active), xc, w);
+end
+
+% ---- scale and write additively into Stab.bcw -------------------------------
+v = spec.A * vprof * exp(1i*phi);
+
+n_modes = (2*Stab.N + 1) * (2*Stab.M + 1);
+if ~isfield(Stab, 'bcw') || isempty(Stab.bcw) || size(Stab.bcw, 2) ~= nx
+    Stab.bcw = zeros(3, nx, n_modes);
+end
+Stab.bcx = x;
+
+j = ModeToModeNumber(mode(1), mode(2), Stab.M, Stab.N);
+Stab.bcw(comp, :, j) = Stab.bcw(comp, :, j) + reshape(v, 1, nx);
+
+is_nonlinear = isfield(Opt,'linear') && strcmpi(Opt.linear,'off');
+jc = [];
+if is_nonlinear
+    jc = ModeToModeNumber(-mode(1), -mode(2), Stab.M, Stab.N);
+    Stab.bcw(comp, :, jc) = Stab.bcw(comp, :, jc) + reshape(conj(v), 1, nx);
+end
+
+if nargout > 1
+    info = struct('xc', xc, 'w', w, 'kind', kind, 'active', active, ...
+                  'idx', find(active), 'x', x, 'comp', comp, 'mode', mode, ...
+                  'j', j, 'jc', jc);
+end
+
+fprintf(['Wall forcing (%s): comp %d, mode [%d %d], xc=%.4g, w=%.4g, A=%.3e, ' ...
+         '%d stations%s\n'], kind, comp, mode(1), mode(2), xc, w, spec.A, ...
+        nnz(active), ternary(is_nonlinear, ' (+conjugate)', ''));
+end
+
+function s = ternary(c, a, b)
+if c; s = a; else; s = b; end
+end

@@ -44,7 +44,7 @@ end
 
 figure(4); clf; set(gcf, 'Position', [100 100 900 500]); hold on;
 
-% R = sqrt(Re_x) = sqrt(x_norm * R0), with R0 = sqrt(x_norm(1))
+% R = sqrt(Re_x) = sqrt(x_norm) * R0, with R0 = sqrt(x_norm(1))
 R0    = sqrt(StabGrid.xun(1));
 R_vec = sqrt(StabGrid.xun) * R0;
 
@@ -61,7 +61,7 @@ beta_f  = min(beta_vec(beta_vec > 0));    % fundamental wavenumber
 
 A_all = [];  % collect all plotted amplitudes for auto ylim
 
-% HNS modes (black) — selected metric via A_get
+% HNS modes (black), selected metric via A_get
 mk_count = 0;
 for j = 1:size(StabRes.A, 1)
     if ~any(StabRes.A(j,:)); continue; end
@@ -96,12 +96,12 @@ if nargin >= 3 && ~isempty(ref_data) && isfile(ref_data.file)
     if ~isempty(ref_res) && ~isempty(ref_grid)
         % Reference (m,n) labels from its own omegavec/betavec if available
         if isfield(ref_res,'omegavec') && isfield(ref_res,'betavec')
-            ref_ov = ref_res.omegavec;
-            ref_bv = ref_res.betavec;
-            ref_of = min(ref_ov(ref_ov > 0));
-            ref_bf = min(ref_bv(ref_bv > 0));
+            ref_omega_vec = ref_res.omegavec;
+            ref_beta_vec = ref_res.betavec;
+            ref_omega_f = min(ref_omega_vec(ref_omega_vec > 0));
+            ref_beta_f = min(ref_beta_vec(ref_beta_vec > 0));
         else
-            ref_ov = []; ref_bv = []; ref_of = []; ref_bf = [];
+            ref_omega_vec = []; ref_beta_vec = []; ref_omega_f = []; ref_beta_f = [];
         end
 
         mk_count_r = 0;
@@ -118,13 +118,13 @@ if nargin >= 3 && ~isempty(ref_data) && isfile(ref_data.file)
             end
             A_all = [A_all, Aj(Aj > 0)]; %#ok<AGROW>
 
-            if ~isempty(ref_of) && numel(ref_ov) >= j
-                m = round(ref_ov(j)/ref_of);
+            if ~isempty(ref_omega_f) && numel(ref_omega_vec) >= j
+                m = round(ref_omega_vec(j)/ref_omega_f);
             else
                 m = j - 1;
             end
-            if ~isempty(ref_bf) && numel(ref_bv) >= j
-                n = round(ref_bv(j)/ref_bf);
+            if ~isempty(ref_beta_f) && numel(ref_beta_vec) >= j
+                n = round(ref_beta_vec(j)/ref_beta_f);
             else
                 n = 0;
             end
@@ -171,11 +171,7 @@ if nargin >= 4 && ~isempty(scholten_csv)
             T = readmatrix(scholten_path);   % cols: R_00 urms_00 R_10 urms_10 ...
             n_pairs = floor(size(T,2) / 2);
             tags = {'00','10','20','30','40','50'};
-            % Scholten data is u_rms. Convert per metric:
-            %   'umax':   non-MFD multiplied by sqrt(2) -> peak; MFD as-is
-            %   'urms':   keep as u_rms
-            %   'energy': u_rms is not directly comparable to sqrt(E_kin); leave
-            %             as-is (interpret with caution)
+            % Scholten data is u_rms; for 'umax' scale non-MFD by sqrt(2) (MFD/urms/energy as-is)
             if strcmpi(plot_metric, 'umax')
                 for kk = 1:n_pairs
                     if strcmp(tags{kk}, '00'); continue; end   % MFD: leave as-is

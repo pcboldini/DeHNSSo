@@ -1,24 +1,36 @@
 function StabRes = postprocess(StabGrid, Init, Mode, Opt, StabRes)
-%POSTPROCESS  Normalize shape functions, compute alpha, delete conjugates.
+%POSTPROCESS  Normalise shape functions, recover alpha, drop conjugate modes.
+%
+%   StabRes = postprocess(StabGrid, Init, Mode, Opt, StabRes)
+%
+%   Recovers the physical streamwise derivative of each mode by the chain
+%   rule, normalises the shape functions by max(|u|), extracts the streamwise
+%   wavenumber alpha a posteriori, evaluates the disturbance energy per mode,
+%   and removes the stored complex conjugates.
+%
+%   Inputs:
+%     StabGrid  — stability grid (metrics, base flow, D1, coordinates)
+%     Init      — initialisation data (Init.iu is the imaginary unit)
+%     Mode      — mode bookkeeping (RunJ, nf)
+%     Opt       — run options (Opt.Sweep)
+%     StabRes   — stability results (updated in place)
+%   Outputs:
+%     StabRes   — normalised shape functions, alpha, energy, conjugates removed
 
 iu = Init.iu;
 
-%% Physical ∂u/∂x via chain rule on the (possibly curvilinear, non-uniform ξ) grid
-%   ∂u/∂x = ξx · ∂u/∂ξ + ηx · ∂u/∂η
-%   ∂u/∂ξ : sparse 4th-order FD matrix built with Fornberg weights (handles
-%           non-uniform ξ correctly; reduces to classical coefficients when ξ is uniform)
-%   ∂u/∂η : StabGrid.D1 (Chebyshev or FD, consistent with the stability operator)
+%% Physical du/dx = xix*du_dxi + etax*du_deta  (D_xi: 4th-order Fornberg FD; D1: spectral eta)
 D_xi = fd1_matrix_nonuniform(StabGrid.x(:));
 for j = Mode.RunJ
-    u_j     = squeeze(StabRes.u(j,:,:));          % [ny × nx]
-    du_dxi  = u_j * D_xi.';                       % derivative along rows (ξ)
-    du_deta = StabGrid.D1 * u_j;                  % spectral η-derivative
+    u_j     = squeeze(StabRes.u(j,:,:));          % [ny x nx]
+    du_dxi  = u_j * D_xi.';                       % derivative along rows (xi)
+    du_deta = StabGrid.D1 * u_j;                  % spectral eta-derivative
     dux(j,:,:) = StabGrid.xix .* du_dxi + StabGrid.etax .* du_deta;
 end
 
-%% Normalize shape functions and compute amplitudes
-% Interpolate all stations at once using matrix interp1 — one spline per mode
-% instead of 2*nx scalar spline calls per mode.
+%% Normalise shape functions and compute amplitudes
+% Interpolate all stations at once with matrix interp1 (one spline per mode,
+% instead of 2*nx scalar spline calls per mode).
 yinteg = linspace(0, max(StabGrid.eta1D), 4000);
 
 for j = Mode.RunJ
@@ -28,14 +40,11 @@ for j = Mode.RunJ
 
     % Find wall-normal location of max |u| per station (integer index)
     absU_fine   = abs(U_fine);
-    [~, k_all]  = max(absU_fine, [], 1);              % 1 × nx
+    [~, k_all]  = max(absU_fine, [], 1);              % 1 x nx
     n_fine      = size(U_fine, 1);
     k_all       = max(2, min(n_fine-1, k_all));       % keep k±1 in range
 
-    % Quadratic sub-index refinement of the peak location.
-    %   Fit |u| ≈ a·δ² + b·δ + c on (k-1, k, k+1);  δ_peak = -b/(2a)
-    % This converts the discrete row-index jumps into a smooth continuous
-    % η-location, eliminating the stair-step wiggle in α_i.
+    % Quadratic sub-index peak refinement (parabola over k-1,k,k+1) -> smooth alpha_i
     jj   = 1:StabGrid.nx;
     idxm = sub2ind(size(absU_fine), k_all-1, jj);
     idx0 = sub2ind(size(absU_fine), k_all,   jj);
@@ -54,18 +63,20 @@ for j = Mode.RunJ
     umax_vec  = (1-frac) .* U_fine(idxf)  + frac .* U_fine(idxc);
     dumax_vec = (1-frac) .* DUX_fine(idxf) + frac .* DUX_fine(idxc);
 
-    % Alpha a posteriori (vectorised)
-    StabRes.alpha(j,:) = (dumax_vec ./ umax_vec) / iu;
+    % Alpha a posteriori (vectorised); guard zero-disturbance stations (umax=0) against 0/0 NaN
+    umax_safe = umax_vec;  umax_safe(~(abs(umax_vec) > 0)) = 1;   % 0 or NaN -> 1
+    StabRes.alpha(j,:) = (dumax_vec ./ umax_safe) / iu;
 
     % Normalise shape functions and compute amplitudes (vectorised over stations)
-    absU = abs(umax_vec);                           % 1 x nx
-    StabRes.u(j,:,:) = squeeze(StabRes.u(j,:,:)) ./ absU;
-    StabRes.v(j,:,:) = squeeze(StabRes.v(j,:,:)) ./ absU;
-    StabRes.w(j,:,:) = squeeze(StabRes.w(j,:,:)) ./ absU;
-    StabRes.p(j,:,:) = squeeze(StabRes.p(j,:,:)) ./ absU;
+    absU      = abs(umax_vec);                       % 1 x nx (amplitude; 0 where no disturbance)
+    absU_safe = absU;  absU_safe(~(absU > 0)) = 1;   % avoid 0/0 in the shape normalisation
+    StabRes.u(j,:,:) = squeeze(StabRes.u(j,:,:)) ./ absU_safe;
+    StabRes.v(j,:,:) = squeeze(StabRes.v(j,:,:)) ./ absU_safe;
+    StabRes.w(j,:,:) = squeeze(StabRes.w(j,:,:)) ./ absU_safe;
+    StabRes.p(j,:,:) = squeeze(StabRes.p(j,:,:)) ./ absU_safe;
     if isfield(StabRes,'rho')
-        StabRes.rho(j,:,:) = squeeze(StabRes.rho(j,:,:)) ./ absU;
-        StabRes.T(j,:,:)   = squeeze(StabRes.T(j,:,:))   ./ absU;
+        StabRes.rho(j,:,:) = squeeze(StabRes.rho(j,:,:)) ./ absU_safe;
+        StabRes.T(j,:,:)   = squeeze(StabRes.T(j,:,:))   ./ absU_safe;
     end
 
     if j == round(Mode.nf/2)

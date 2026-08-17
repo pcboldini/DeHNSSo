@@ -26,11 +26,14 @@ function [R] = RHS(Bound,Grid,Mode,Opt,StabRes,j)
     if j <= size(Bound.bcw,3) && (any(Bound.bcw(:,:,j),'all') || any(Bound.bct(:,:,j),'all'))
         i_vec = 2:Grid.nx;
         base  = nvar*ny*(i_vec - 1);
+        % Bound.bcw/bct are the PHYSICAL peak amplitude 2|û|; seed the complex
+        % amplitude û = value/2 so the reconstructed field (post-process 2|û|) equals
+        % the value the user set (same convention as the inflow A0; user_guide §5).
         for k = 1:n_bc
             if strcmpi(Opt.bc_top{k}, 'IH_DR')
-                R(base + (k-1)*ny + 1) = Bound.bct(k, i_vec, j);  % freestream
+                R(base + (k-1)*ny + 1) = 0.5 * Bound.bct(k, i_vec, j);  % freestream
             end
-            R(base + k*ny) = Bound.bcw(k, i_vec, j);              % wall
+            R(base + k*ny) = 0.5 * Bound.bcw(k, i_vec, j);             % wall
         end
     end
 end

@@ -1,13 +1,27 @@
 function plot_intermediate(StabGrid, StabRes, Mode, Stab, Opt)
-%PLOT_INTERMEDIATE  Plot amplitude evolution during convergence loop.
+%PLOT_INTERMEDIATE  Plot amplitude evolution during the convergence loop.
+%
+%   plot_intermediate(StabGrid, StabRes, Mode, Stab, Opt)
+%
+%   Live monitor (figure 2) showing the amplitude of every mode with nonzero
+%   amplitude against R = sqrt(Re_x), together with the buffer location, so the
+%   convergence of the current iteration can be followed at a glance.
+%
+%   Inputs:
+%     StabGrid  — grid structure (xi1D, nx)
+%     StabRes   — stability results (u, A)
+%     Mode      — mode structure (nf)
+%     Stab      — stability data (Mvec, Nvec for legend labels)
+%     Opt       — options (k1, AF, xb)
 
+%% Target figure 2 (reuse if it already exists)
 if isempty(findobj('Type','figure','Number',2))
     figure(2); set(gcf, 'Visible', 'on');
 else
     set(0, 'CurrentFigure', 2); clf;
 end
 
-% R = sqrt(Re_x) = sqrt(x_norm * R0), with R0 = sqrt(x_norm(1))
+% R = sqrt(Re_x) = sqrt(x_norm) * R0, with R0 = sqrt(x_norm(1))
 R0    = sqrt(StabGrid.xi1D(1));
 R_vec = sqrt(StabGrid.xi1D) * R0;
 

@@ -1,40 +1,17 @@
 function [BL] = incompressibleBL_B1(BL)
-
-% This function calculates the non-similar boundary layer on the domain 
-% (x,y) in [0,L]x[0,H] using nx x ny uniformly-cosine spaced gridpoints, 
-% the point (x,y) = (0,0) being the leading edge, given the edge velocities
-% and the kinematic viscosity. The discretization used is the implicit 
-% scheme in x and Chebyshev in y, second and ny^th order accurate in x and 
-% y, the backslash solver is used to solve the problem. Inflow b.c. are
-% produced by a Falkner Skan Cooke solver at equivalent Hartree parameter
-% to the local external velocity. The nonlinear momentum equation is
-% linearised by simple iteration in the same iteration for the continuity
-% equation. A combine threshold of 1e-10 for normalised u and v is used.
-% First and second order streamwise derivatives are used to predict the next station,
-% greatly accelerating convergence. A check for laminar separation is
-% performed at each iteration. If separation is detected the code returns.
+%INCOMPRESSIBLEBL_B1  Non-similar incompressible boundary layer (implicit march).
 %
-% --- Input ---
-% S   : (streamwise) domain start
-% L   : (streamwise) domain end
-% y_i : (wall-normal) Chebyshev node coordinate median 
-% H   : (wall-normal) domain height
-% nu  : kinematic viscosity
-% nx  : number of gridpoints in the streamwise direction
-% ny  : number of gridpoints in the wall-normal direction
-% Ue  : streamwise freestream velocity distribution 
-% We  : spanwise freestream velocity 
+%   BL = incompressibleBL_B1(BL)
 %
-% --- Output ---
-% u   : streamwise velocity component (ny x nx matrix, increasing index -> 
-%       increasing coordinate)
-% v   : wall-normal velocity component
-% w   : spanwise velocity component
-% y   : y-coordinates of the Chebyshev nodes
-% D*  : Derivatives of the velocity components, only computed if queried
-
-% the nodes' x-coordinates are obtained by: 
-% x = S:(L-S)/(nx-1):L;
+%   Marches the boundary layer on [S,L] x [0,H] with an implicit second-order
+%   scheme in x and Chebyshev collocation in y. Inflow is a Falkner-Skan-Cooke
+%   profile at the local Hartree parameter; the nonlinear momentum/continuity
+%   system is solved by simple iteration to a 1e-10 threshold on u and v.
+%   First/second streamwise derivatives predict the next station to speed
+%   convergence, and laminar separation is checked at each station (returns if hit).
+%
+%   Input struct BL: S, L, H, y_i, nu, nx, ny, Ue (1 x nx), We (scalar).
+%   Output adds: u, v, w (ny x nx), y (Chebyshev nodes), derivatives if queried.
 
 fprintf('Starting IBL solver.\n');
 

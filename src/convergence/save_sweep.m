@@ -6,16 +6,18 @@ function [Opt, StabRes] = save_sweep(StabGrid, Mode, Opt, Stab, StabRes)
 %   When Opt.Sweep is enabled, saves the current amplitude and wavenumber
 %   data to disk at each convergence iteration for post-hoc analysis.
 
+%% Advance the sweep counter and store the current amplitude factor
 iu = sqrt(-1);
 Opt.k2 = Opt.k2 + 1;
 Opt.AF(Opt.k2) = Opt.AF;
 
-% Compute du/dxi on the (possibly non-uniform) ξ grid
+%% Streamwise derivative of u on the (possibly non-uniform) xi grid
 D_xi = StabGrid.D_xi;
 for j = Mode.RunJ
     dux(j,:,:) = squeeze(StabRes.u(j,:,:)) * D_xi.';
 end
 
+%% Store wavenumber, eigenfunctions and amplitude at each station
 yinteg = linspace(0, max(StabGrid.y), 4000);
 
 for j = Mode.RunJ

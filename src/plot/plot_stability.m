@@ -7,7 +7,7 @@ x  = StabGrid.xun;
 nx = StabGrid.nx;
 nf = size(StabRes.A, 1);
 
-% R = sqrt(Re_x) = sqrt(x_norm * R0), with R0 = sqrt(x_norm(1))
+% R = sqrt(Re_x) = sqrt(x_norm) * R0, with R0 = sqrt(x_norm(1))
 R0 = sqrt(x(1));
 R  = sqrt(x) * R0;
 

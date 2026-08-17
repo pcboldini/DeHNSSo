@@ -1,6 +1,11 @@
 function [BL] = post_BL(BL)
+%POST_BL  Boundary-layer integral quantities.
+%
+%   BL = post_BL(BL)
+%
+%   Adds displacement/momentum thickness, shape factor H12, the 99% thickness,
+%   and (compressible) the Stanton number to the BL struct.
 
-% Post-process the boundary layer results.
 fprintf('\nPost-processing BL solution\n')
 
 [ny,nx]  = size(BL.u); % Matrix dimensions
