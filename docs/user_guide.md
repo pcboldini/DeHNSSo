@@ -46,65 +46,95 @@
 
 ## Option index
 
-Every `Stab` and `Opt` field the guide documents, and where it is explained.
+Every `Stab` and `Opt` field the guide documents, grouped by what it controls. "Default" is the value used when the field is not set; **required** means the run will not start without it.
 
-| field | what it does | see |
-|---|---|---|
-| `Stab.M` | number of temporal modes (truncation in omega) | [4. Spectral content](#4-spectral-content) |
-| `Stab.N` | number of spanwise modes (truncation in beta); 0 is 2D | [4. Spectral content](#4-spectral-content) |
-| `Stab.omega_0` | fundamental angular frequency | [4. Spectral content](#4-spectral-content) |
-| `Stab.beta_0` | fundamental spanwise wavenumber | [4. Spectral content](#4-spectral-content) |
-| `Stab.IC` | inflow condition: `ILST`, `CLST`, `PSE`, `LOAD` or `ZERO` | [5. Inflow conditions](#5-inflow-conditions) |
-| `Stab.ICfile` | file read when Stab.IC = 'LOAD' (checkpoint, or a phiIC profile file) | [Restarting from a previous solution (`Stab.IC = 'LOAD'`)](#restarting-from-a-previous-solution-stabic--load) |
-| `Stab.phaseRef` | phase reference: `pwall` (wall pressure) or `umax` | [5. Inflow conditions](#5-inflow-conditions) |
-| `Stab.A0_fund` | fundamental inflow amplitude, the physical peak 2·abs(u_hat) | [Amplitude convention](#amplitude-convention) |
-| `Stab.A0` | per-mode inflow amplitude vector; set it instead of A0_fund to seed several modes | [Setting initial amplitudes](#setting-initial-amplitudes) |
-| `Stab.bcx` | streamwise coordinate the bcw/bct arrays are given on | [Wall actuation (blowing/suction)](#wall-actuation-blowingsuction) |
-| `Stab.bcw` | wall boundary-condition values, per channel and mode | [Wall actuation (blowing/suction)](#wall-actuation-blowingsuction) |
-| `Stab.bct` | freestream values, per channel and mode; used by the `IH_DR` type | [Freestream forcing](#freestream-forcing) |
-| `Opt.compressible` | `on` selects the five-variable (u,v,w,rho,T) operator | [4. Spectral content](#4-spectral-content) |
-| `Opt.linear` | `on` single linear solve, `off` nonlinear iteration | [7. Linear vs nonlinear mode](#7-linear-vs-nonlinear-mode) |
-| `Opt.bc_top` | freestream BC type per channel; channels differ incompressible vs compressible | [Freestream BC type](#freestream-bc-type) |
-| `Opt.hr` | Helmholtz-resonator wall settings (admittance, mouth mask, taper) | [Helmholtz-resonator wall (impedance BC)](#helmholtz-resonator-wall-impedance-bc) |
-| `Opt.buffer` | outflow treatment: `on` damping, `para` parabolisation, `off` | [Buffer zone](#buffer-zone) |
-| `Opt.xb` | buffer start, in % of the domain | [Buffer zone](#buffer-zone) |
-| `Opt.Conv` | nonlinear convergence criterion | [Convergence](#convergence) |
-| `Opt.ConvF` | convergence criterion on the forcing | [Convergence](#convergence) |
-| `Opt.TH` | nonlinear-term activation threshold | [Convergence](#convergence) |
-| `Opt.AFg` | amplitude-factor ramping increment | [Convergence](#convergence) |
-| `Opt.AMAX` | maximum amplitude factor | [Convergence](#convergence) |
-| `Opt.relax` | Picard under-relaxation factor | [Picard acceleration and under-relaxation](#picard-acceleration-and-under-relaxation) |
-| `Opt.anderson` | Anderson acceleration depth (0 = plain Picard) | [Picard acceleration and under-relaxation](#picard-acceleration-and-under-relaxation) |
-| `Opt.solver` | nonlinear solver: `picard` or `newton` | [Picard acceleration and under-relaxation](#picard-acceleration-and-under-relaxation) |
-| `Opt.newton_target` | target A0_fund for the continuation | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_start` | continuation start amplitude | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_seed2` | second seed point | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_reuse` | steps a factorisation is reused before a forced refactor | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_it_thresh` | refactor next step if the corrector exceeded this | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_maxit` | maximum corrector back-solves before the factor is called stale | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_dsmax` | maximum arclength step | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_tol` | corrector residual tolerance | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_corrector` | `modified` (default), or `full` to refactorise every corrector iteration | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_predictor` | `curvature` (default), or `tangent` for the first-order Keller step | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_arclength` | arclength metric | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_seedfile` | cache file for the two seed points | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_ckfile` | checkpoint written each continuation step | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_resume` | `on` resumes from newton_ckfile | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_mumps_relax` | MUMPS working-space relaxation schedule | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.lu_mode` | back-end: `auto`, `full`, `seq`, `lapack_band`, `block_thomas`, `none` | [LU mode](#lu-mode) |
-| `Opt.lu_max_cache` | maximum cached factorisations for the bounded cache | [LU mode](#lu-mode) |
-| `Opt.lu_cache` | `off` forces one-shot factor+solve | [LU mode](#lu-mode) |
-| `Opt.lu_ordering` | fill-reducing ordering: `auto`, `symrcm` or `colamd` | [Fill-reducing ordering](#fill-reducing-ordering) |
-| `Opt.bt_np` | block-Thomas partition count | [Fill-reducing ordering](#fill-reducing-ordering) |
-| `Opt.bt_ooc` | `on` streams the block-Thomas factor to disk | [Fill-reducing ordering](#fill-reducing-ordering) |
-| `Opt.bt_apply` | block-Thomas apply mode | [Fill-reducing ordering](#fill-reducing-ordering) |
-| `Opt.parfor` | `on` distributes the per-mode back-solve | [Parallel acceleration](#parallel-acceleration) |
-| `Opt.plot` | `on` / `off` run-time figures | [Output control](#output-control) |
-| `Opt.save_output` | results file written after post-processing ([] to skip) | [Saving results to disk](#saving-results-to-disk) |
-| `Opt.save_checkpoint` | pre-post-process state, the file Stab.IC='LOAD' consumes | [Restarting from a previous solution (`Stab.IC = 'LOAD'`)](#restarting-from-a-previous-solution-stabic--load) |
-| `Opt.rerun` | `on` reuses the assembled operator from a previous run | [9. Running and reruns](#9-running-and-reruns) |
+**Case definition**
 
+| field | what it does | default | see |
+|---|---|---|---|
+| `Stab.M` | number of temporal modes (truncation in omega) | required | [Spectral content](#4-spectral-content) |
+| `Stab.N` | number of spanwise modes; 0 is 2D | required | [Spectral content](#4-spectral-content) |
+| `Stab.omega_0` | fundamental angular frequency | required | [Spectral content](#4-spectral-content) |
+| `Stab.beta_0` | fundamental spanwise wavenumber | required | [Spectral content](#4-spectral-content) |
+| `Opt.compressible` | `on` selects the five-variable (u,v,w,rho,T) operator | `'off'` | [Spectral content](#4-spectral-content) |
+| `Opt.linear` | `on` single linear solve, `off` nonlinear iteration | `'off'` | [Linear vs nonlinear](#7-linear-vs-nonlinear-mode) |
 
+**Inflow**
+
+| field | what it does | default | see |
+|---|---|---|---|
+| `Stab.IC` | inflow condition: `ILST`, `CLST`, `PSE`, `LOAD` or `ZERO` | required | [Inflow conditions](#5-inflow-conditions) |
+| `Stab.phaseRef` | phase reference: `pwall` (wall pressure) or `umax` | required | [Inflow conditions](#5-inflow-conditions) |
+| `Stab.A0_fund` | fundamental amplitude, the physical peak 2·abs(u_hat) | required | [Amplitude convention](#amplitude-convention) |
+| `Stab.A0` | per-mode amplitude vector; use instead of `A0_fund` to seed several modes | from `A0_fund` | [Setting initial amplitudes](#setting-initial-amplitudes) |
+| `Stab.ICfile` | file read when `Stab.IC='LOAD'`: a checkpoint, or a `phiIC` profile file | — | [Restarting](#restarting-from-a-previous-solution-stabic--load) |
+
+**Boundary conditions**
+
+| field | what it does | default | see |
+|---|---|---|---|
+| `Opt.bc_top` | freestream BC type per channel; the channels differ incompressible vs compressible | all `H_DR` | [Freestream BC type](#freestream-bc-type) |
+| `Stab.bcx` | streamwise coordinate the `bcw`/`bct` arrays are given on | — | [Wall actuation](#wall-actuation-blowingsuction) |
+| `Stab.bcw` | wall BC values, per channel and mode | zeros (no-slip) | [Wall actuation](#wall-actuation-blowingsuction) |
+| `Stab.bct` | freestream values, per channel and mode; used by the `IH_DR` type | zeros | [Freestream forcing](#freestream-forcing) |
+| `Opt.hr` | Helmholtz-resonator wall: admittance, mouth mask, taper | — | [Resonator wall](#helmholtz-resonator-wall-impedance-bc) |
+
+**Nonlinear iteration**
+
+| field | what it does | default | see |
+|---|---|---|---|
+| `Opt.solver` | nonlinear solver: `picard` or `newton` | `'picard'` | [Picard acceleration](#picard-acceleration-and-under-relaxation) |
+| `Opt.anderson` | Anderson acceleration depth (0 is plain Picard) | `0` | [Picard acceleration](#picard-acceleration-and-under-relaxation) |
+| `Opt.relax` | Picard under-relaxation factor; use with `anderson = 0` | off | [Picard acceleration](#picard-acceleration-and-under-relaxation) |
+| `Opt.Conv` | nonlinear convergence criterion | `1e-4` | [Convergence](#convergence) |
+| `Opt.ConvF` | convergence criterion on the forcing | `100` | [Convergence](#convergence) |
+| `Opt.TH` | nonlinear-term activation threshold | `1e-11` | [Convergence](#convergence) |
+| `Opt.AFg` | amplitude-factor ramping increment | — | [Convergence](#convergence) |
+| `Opt.AMAX` | maximum amplitude factor | `0.1` | [Convergence](#convergence) |
+| `Opt.buffer` | outflow treatment: `on` damping, `para` parabolisation, `off` | `'on'` | [Buffer zone](#buffer-zone) |
+| `Opt.xb` | buffer start, in % of the domain | `85` | [Buffer zone](#buffer-zone) |
+
+**Newton pseudo-arclength continuation**
+
+| field | what it does | default | see |
+|---|---|---|---|
+| `Opt.newton_target` | target `A0_fund` for the continuation | required | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_start` | continuation start amplitude | `Stab.A0_fund` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_seed2` | second seed point | `1.04*start` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_reuse` | steps a factorisation is reused before a forced refactor | `8` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_it_thresh` | refactor next step if the corrector exceeded this | `8` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_maxit` | corrector back-solves before the factor is called stale | `25` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_dsmax` | maximum arclength step | `3` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_tol` | corrector residual tolerance | `1e-6` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_corrector` | `modified`, or `full` to refactorise every corrector iteration | `'modified'` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_predictor` | `curvature`, or `tangent` for the first-order Keller step | `'curvature'` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_arclength` | arclength metric | `'absolute'` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_seedfile` | cache file for the two seed points | `[]` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_ckfile` | checkpoint written each continuation step | `[]` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_resume` | `on` resumes from `newton_ckfile` | `'off'` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_mumps_relax` | MUMPS working-space relaxation schedule | — | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+
+**Linear algebra**
+
+| field | what it does | default | see |
+|---|---|---|---|
+| `Opt.lu_mode` | back-end: `auto`, `full`, `seq`, `lapack_band`, `block_thomas`, `none` | `'auto'` | [LU mode](#lu-mode) |
+| `Opt.lu_max_cache` | maximum cached factorisations for the bounded cache | `max(8, nphys)` | [LU mode](#lu-mode) |
+| `Opt.lu_cache` | `off` forces one-shot factor+solve | on | [LU mode](#lu-mode) |
+| `Opt.lu_ordering` | fill-reducing ordering: `auto`, `symrcm` or `colamd` | `'auto'` | [Fill-reducing ordering](#fill-reducing-ordering) |
+| `Opt.bt_np` | block-Thomas partition count | `2` | [Fill-reducing ordering](#fill-reducing-ordering) |
+| `Opt.bt_ooc` | `on` streams the block-Thomas factor to disk | `'off'` | [Fill-reducing ordering](#fill-reducing-ordering) |
+| `Opt.bt_apply` | block-Thomas apply mode | `'lu'` | [Fill-reducing ordering](#fill-reducing-ordering) |
+| `Opt.parfor` | `on` distributes the per-mode back-solve | `'off'` | [Parallel acceleration](#parallel-acceleration) |
+
+**Run and output**
+
+| field | what it does | default | see |
+|---|---|---|---|
+| `Opt.rerun` | `on` reuses the assembled operator from a previous run | `'off'` | [Running and reruns](#9-running-and-reruns) |
+| `Opt.plot` | `on` / `off` run-time figures | `'on'` | [Output control](#output-control) |
+| `Opt.save_output` | results file written after post-processing | `[]` | [Saving results to disk](#saving-results-to-disk) |
+| `Opt.save_checkpoint` | pre-post-process state, the file `Stab.IC='LOAD'` consumes | `[]` | [Restarting](#restarting-from-a-previous-solution-stabic--load) |
 ---
 
 ## 1. What DeHNSSo does
