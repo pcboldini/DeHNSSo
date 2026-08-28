@@ -3,41 +3,29 @@ function MLA1 = apply_resonator_wall(MLA1, hr, BF, StabGrid, is_compr)
 %
 %   MLA1 = apply_resonator_wall(MLA1, hr, BF, StabGrid, is_compr)
 %
-%   Over the resonator mouth, replaces the wall row of the assembled
-%   left-hand-side (LHS) operator MLA1 that normally enforces v' = 0 with the
-%   reactive wall relation
+%   Over the mouth, replaces the wall row enforcing v' = 0 with
 %
 %       v'|wall  -  Y * p'|wall  =  0,
 %
-%   which couples the mouth wall-normal velocity to the wall pressure through
-%   the resonator admittance Y (the closed-loop resonator response). In the
-%   compressible case p' is not a state variable; it is rebuilt from the
-%   equation of state, so the relation is imposed on the rho' and T' columns
-%   instead. An optional edge taper (hr.taper) smooths v'(x) near the mouth
-%   rims without changing the total admittance int Y dx, so it does not add or
-%   remove net flux. If hr.uslip is set, the wall u'-row is also replaced by a
-%   free-slip condition du'/dy = 0 over the mouth, modeling the fact that the
-%   wall is open there.
-%
-%   Inputs:
-%     MLA1      — assembled base LHS operator (modified over the mouth)
-%     hr        — resonator settings: Y (admittance), mask (mouth nodes),
-%                 optional taper (edge fraction), x (streamwise coordinate),
-%                 uslip (free-slip u' over the mouth)
-%     BF        — base flow (U, plus rho/T/Ma/gamma for the compressible case)
-%     StabGrid  — stability grid (D1 eta-derivative operator, used for u'-slip)
-%     is_compr  — true for the (u,v,w,rho,T) path, false for (u,v,w,p)
-%   Outputs:
-%     MLA1      — operator with the reactive wall (+ optional u'-slip) over the mouth
+%   where hr.Y is a scalar (uniform admittance) or one value per mouth node
+%   (a profile Y(x)), and hr.mask marks the mouth; setup_boundary resolves both.
+%   In the compressible case p' is not a state variable, so
+%   the relation is imposed on the rho' and T' columns. hr.taper smooths v'(x)
+%   at the rims at fixed int Y dx; hr.uslip frees u' over the mouth.
 
 ny    = size(BF.U, 1);
 bsize = (4 + double(is_compr)) * ny;
 Y     = hr.Y;
 mouth = find(logical(hr.mask(:).'));
 tf    = 0;   if isfield(hr,'taper'); tf = hr.taper; end   % edge-taper fraction (0 = sharp mouth edges)
-xm    = mouth;                                            % fallback: node index, assumes uniform spacing
+xm    = StabGrid.xun(1, mouth);
 if isfield(hr,'x') && ~isempty(hr.x); xm = hr.x(mouth); end
 tap   = edge_taper(xm, tf);                               % raised-cosine edge weight, 1 in the interior
+if isscalar(Y); Yv = Y * ones(1, numel(mouth)); else; Yv = Y(:).'; end
+if numel(Yv) ~= numel(mouth)
+    error('apply_resonator_wall:SizeMismatch', ...
+          'hr.Y must be a scalar or have %d entries, one per mouth node.', numel(mouth));
+end
 
 % Reactive wall: v'|wall - Y*p'|wall = 0 over the mouth
 if is_compr
@@ -48,15 +36,15 @@ if is_compr
         vrow = off + 2*ny;                  % wall v'-row
         crho = off + 4*ny;                  % wall rho'-column
         cT   = off + 5*ny;                  % wall T'-column
-        MLA1(vrow, crho) = -tap(k)*Y * BF.T(ny,i)   / gM2;   % -Y * (dp'/drho') at the wall
-        MLA1(vrow, cT)   = -tap(k)*Y * BF.rho(ny,i) / gM2;   % -Y * (dp'/dT')   at the wall
+        MLA1(vrow, crho) = -tap(k)*Yv(k) * BF.T(ny,i)   / gM2;   % -Y * (dp'/drho') at the wall
+        MLA1(vrow, cT)   = -tap(k)*Yv(k) * BF.rho(ny,i) / gM2;   % -Y * (dp'/dT')   at the wall
     end
 else
     for k = 1:numel(mouth)
         i    = mouth(k);   off = bsize*(i-1);
         vrow = off + 2*ny;                  % wall v'-row
         cp   = off + 4*ny;                  % wall p'-column (p is a state variable)
-        MLA1(vrow, cp) = -tap(k)*Y;         % v' - Y*p' = 0
+        MLA1(vrow, cp) = -tap(k)*Yv(k);         % v' - Y*p' = 0
     end
 end
 

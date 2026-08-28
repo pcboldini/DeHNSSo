@@ -49,8 +49,16 @@ if isfield(params, 'forcing') && ~isempty(params.forcing)
     specs        = flatten_forcing(params.forcing);
     forcing      = cellfun(@prepare_forcing, specs, 'UniformOutput', false);
     params.mug   = cellfun(@(f) f.xc, forcing);
-    params.w_act = cellfun(@(f) f.w,  forcing);
+    if ~isfield(params, 'spread') || isempty(params.spread)   % default: refine to the forcing width
+        params.spread = cellfun(@(f) f.w, forcing);
+    end
     fprintf('Wall forcing: %d source(s) -> refining mesh\n', numel(forcing));
+end
+
+% refine says how many times finer dxi is at the centre than on an equidistant
+% mesh, which is the way one usually thinks about it; ag is its reciprocal.
+if isfield(params, 'refine') && ~isempty(params.refine)
+    params.ag = 1 ./ params.refine;
 end
 
 %% 2. Classify and dispatch to the appropriate resampler

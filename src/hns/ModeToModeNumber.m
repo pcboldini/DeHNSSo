@@ -1,21 +1,27 @@
-function [mode] = ModeToModeNumber(n,m,N,M)
-%MODETOMODENUMBER  Mode counter for a given (n,m) under truncation (N,M).
+function [mode] = ModeToModeNumber(m,n,M,N)
+%MODETOMODENUMBER  Mode counter for a given (m,n) under truncation (M,N).
 %
-%   mode = ModeToModeNumber(n, m, N, M)
+%   mode = ModeToModeNumber(m, n, M, N)
 %
 %   Returns the linear mode counter l for the harmonic with spectral indices
-%   (m in t, n in z), using the same mode ordering as Mint.
+%   (m in t, n in z), using the same mode ordering as Mint. The temporal index
+%   varies fastest, so l runs over m = -M:M within each spanwise block n.
 %
 %   Inputs:
-%     n     — mode number in z
-%     m     — mode number in t
-%     N     — modal truncation in z
+%     m     — mode number in t (temporal)
+%     n     — mode number in z (spanwise)
 %     M     — modal truncation in t
+%     N     — modal truncation in z
 %   Outputs:
 %     mode  — linear mode counter l for (m,n)
+%
+%   The argument order is (m,n,M,N), matching every call site and the (m,n)
+%   labelling used throughout the solver. It previously read (n,m,N,M), which
+%   agrees only when M or N is zero and silently returned the wrong counter for
+%   runs with both a temporal and a spanwise harmonic.
 
 %% Error check
-if n>N || m>M
+if abs(m)>M || abs(n)>N
     error('Input exceeds truncation (m,n) > (M,N)')
 end
 
@@ -39,6 +45,5 @@ end
 [~,mindex] = find(Mvec==m);
 [~,nindex] = find(Nvec==n);
 mode = intersect(mindex,nindex);
-
 
 end

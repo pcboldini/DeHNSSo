@@ -1,6 +1,109 @@
 # DeHNSSo — User Guide
 
-**Version 1.2** | Delft Harmonic Navier-Stokes Solver
+**DeHNSSo-v2** | Delft Harmonic Navier-Stokes Solver
+
+## Contents
+
+- [1. What DeHNSSo does](#1-what-dehnsso-does)
+- [2. Prerequisites](#2-prerequisites)
+- [3. Quick start](#3-quick-start)
+    - [Step 1 — Generate base flow and stability grid](#step-1--generate-base-flow-and-stability-grid)
+    - [Step 1b — Optional streamwise clustering (all cases)](#step-1b--optional-streamwise-clustering-all-cases)
+    - [Step 1c — Cartesian / OpenFOAM CSV input](#step-1c--cartesian--openfoam-csv-input)
+    - [Step 1d — Base-flow derivatives (computed or supplied)](#step-1d--base-flow-derivatives-computed-or-supplied)
+    - [Step 2 — Configure and run](#step-2--configure-and-run)
+- [4. Spectral content](#4-spectral-content)
+    - [Single oblique mode](#single-oblique-mode)
+- [5. Inflow conditions](#5-inflow-conditions)
+    - [Setting initial amplitudes](#setting-initial-amplitudes)
+    - [Amplitude convention](#amplitude-convention)
+    - [Restarting from a previous solution (`Stab.IC = 'LOAD'`)](#restarting-from-a-previous-solution-stabic--load)
+    - [User-defined inflow profiles (`Stab.IC = 'LOAD'` with `phiIC`)](#user-defined-inflow-profiles-stabic--load-with-phiic)
+    - [No inflow disturbance (`Stab.IC = 'ZERO'`)](#no-inflow-disturbance-stabic--zero)
+- [6. Boundary conditions](#6-boundary-conditions)
+    - [Arrays](#arrays)
+    - [Wall actuation (blowing/suction)](#wall-actuation-blowingsuction)
+    - [Helmholtz-resonator wall (impedance BC)](#helmholtz-resonator-wall-impedance-bc)
+    - [Freestream forcing](#freestream-forcing)
+    - [Freestream BC type](#freestream-bc-type)
+- [7. Linear vs nonlinear mode](#7-linear-vs-nonlinear-mode)
+- [8. Solver options](#8-solver-options)
+    - [Buffer zone](#buffer-zone)
+    - [Convergence](#convergence)
+    - [Picard acceleration and under-relaxation](#picard-acceleration-and-under-relaxation)
+    - [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton)
+    - [LU mode](#lu-mode)
+    - [Fill-reducing ordering](#fill-reducing-ordering)
+    - [Building the `lapack_band` MEX (one-time setup per machine)](#building-the-lapackband-mex-one-time-setup-per-machine)
+    - [Parallel acceleration](#parallel-acceleration)
+    - [Output control](#output-control)
+- [9. Running and reruns](#9-running-and-reruns)
+- [10. Output](#10-output)
+    - [Saving results to disk](#saving-results-to-disk)
+    - [Figures produced during a run](#figures-produced-during-a-run)
+    - [Post-processing](#post-processing)
+- [11. Common issues](#11-common-issues)
+
+## Option index
+
+Every `Stab` and `Opt` field the guide documents, and where it is explained.
+
+| field | what it does | see |
+|---|---|---|
+| `Stab.M` | number of temporal modes (truncation in omega) | [4. Spectral content](#4-spectral-content) |
+| `Stab.N` | number of spanwise modes (truncation in beta); 0 is 2D | [4. Spectral content](#4-spectral-content) |
+| `Stab.omega_0` | fundamental angular frequency | [4. Spectral content](#4-spectral-content) |
+| `Stab.beta_0` | fundamental spanwise wavenumber | [4. Spectral content](#4-spectral-content) |
+| `Stab.IC` | inflow condition: `ILST`, `CLST`, `PSE`, `LOAD` or `ZERO` | [5. Inflow conditions](#5-inflow-conditions) |
+| `Stab.ICfile` | file read when Stab.IC = 'LOAD' (checkpoint, or a phiIC profile file) | [Restarting from a previous solution (`Stab.IC = 'LOAD'`)](#restarting-from-a-previous-solution-stabic--load) |
+| `Stab.phaseRef` | phase reference: `pwall` (wall pressure) or `umax` | [5. Inflow conditions](#5-inflow-conditions) |
+| `Stab.A0_fund` | fundamental inflow amplitude, the physical peak 2·abs(u_hat) | [Amplitude convention](#amplitude-convention) |
+| `Stab.A0` | per-mode inflow amplitude vector; set it instead of A0_fund to seed several modes | [Setting initial amplitudes](#setting-initial-amplitudes) |
+| `Stab.bcx` | streamwise coordinate the bcw/bct arrays are given on | [Wall actuation (blowing/suction)](#wall-actuation-blowingsuction) |
+| `Stab.bcw` | wall boundary-condition values, per channel and mode | [Wall actuation (blowing/suction)](#wall-actuation-blowingsuction) |
+| `Stab.bct` | freestream values, per channel and mode; used by the `IH_DR` type | [Freestream forcing](#freestream-forcing) |
+| `Opt.compressible` | `on` selects the five-variable (u,v,w,rho,T) operator | [4. Spectral content](#4-spectral-content) |
+| `Opt.linear` | `on` single linear solve, `off` nonlinear iteration | [7. Linear vs nonlinear mode](#7-linear-vs-nonlinear-mode) |
+| `Opt.bc_top` | freestream BC type per channel; channels differ incompressible vs compressible | [Freestream BC type](#freestream-bc-type) |
+| `Opt.hr` | Helmholtz-resonator wall settings (admittance, mouth mask, taper) | [Helmholtz-resonator wall (impedance BC)](#helmholtz-resonator-wall-impedance-bc) |
+| `Opt.buffer` | outflow treatment: `on` damping, `para` parabolisation, `off` | [Buffer zone](#buffer-zone) |
+| `Opt.xb` | buffer start, in % of the domain | [Buffer zone](#buffer-zone) |
+| `Opt.Conv` | nonlinear convergence criterion | [Convergence](#convergence) |
+| `Opt.ConvF` | convergence criterion on the forcing | [Convergence](#convergence) |
+| `Opt.TH` | nonlinear-term activation threshold | [Convergence](#convergence) |
+| `Opt.AFg` | amplitude-factor ramping increment | [Convergence](#convergence) |
+| `Opt.AMAX` | maximum amplitude factor | [Convergence](#convergence) |
+| `Opt.relax` | Picard under-relaxation factor | [Picard acceleration and under-relaxation](#picard-acceleration-and-under-relaxation) |
+| `Opt.anderson` | Anderson acceleration depth (0 = plain Picard) | [Picard acceleration and under-relaxation](#picard-acceleration-and-under-relaxation) |
+| `Opt.solver` | nonlinear solver: `picard` or `newton` | [Picard acceleration and under-relaxation](#picard-acceleration-and-under-relaxation) |
+| `Opt.newton_target` | target A0_fund for the continuation | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_start` | continuation start amplitude | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_seed2` | second seed point | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_reuse` | steps a factorisation is reused before a forced refactor | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_it_thresh` | refactor next step if the corrector exceeded this | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_maxit` | maximum corrector back-solves before the factor is called stale | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_dsmax` | maximum arclength step | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_tol` | corrector residual tolerance | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_corrector` | `modified` (default), or `full` to refactorise every corrector iteration | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_predictor` | `curvature` (default), or `tangent` for the first-order Keller step | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_arclength` | arclength metric | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_seedfile` | cache file for the two seed points | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_ckfile` | checkpoint written each continuation step | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_resume` | `on` resumes from newton_ckfile | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_mumps_relax` | MUMPS working-space relaxation schedule | [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.lu_mode` | back-end: `auto`, `full`, `seq`, `lapack_band`, `block_thomas`, `none` | [LU mode](#lu-mode) |
+| `Opt.lu_max_cache` | maximum cached factorisations for the bounded cache | [LU mode](#lu-mode) |
+| `Opt.lu_cache` | `off` forces one-shot factor+solve | [LU mode](#lu-mode) |
+| `Opt.lu_ordering` | fill-reducing ordering: `auto`, `symrcm` or `colamd` | [Fill-reducing ordering](#fill-reducing-ordering) |
+| `Opt.bt_np` | block-Thomas partition count | [Fill-reducing ordering](#fill-reducing-ordering) |
+| `Opt.bt_ooc` | `on` streams the block-Thomas factor to disk | [Fill-reducing ordering](#fill-reducing-ordering) |
+| `Opt.bt_apply` | block-Thomas apply mode | [Fill-reducing ordering](#fill-reducing-ordering) |
+| `Opt.parfor` | `on` distributes the per-mode back-solve | [Parallel acceleration](#parallel-acceleration) |
+| `Opt.plot` | `on` / `off` run-time figures | [Output control](#output-control) |
+| `Opt.save_output` | results file written after post-processing ([] to skip) | [Saving results to disk](#saving-results-to-disk) |
+| `Opt.save_checkpoint` | pre-post-process state, the file Stab.IC='LOAD' consumes | [Restarting from a previous solution (`Stab.IC = 'LOAD'`)](#restarting-from-a-previous-solution-stabic--load) |
+| `Opt.rerun` | `on` reuses the assembled operator from a previous run | [9. Running and reruns](#9-running-and-reruns) |
+
 
 ---
 
@@ -8,14 +111,14 @@
 
 DeHNSSo solves the nonlinear stability problem for laminar boundary layers. It computes the amplitude evolution of wave-like disturbances (Tollmien-Schlichting waves, cross-flow vortices) as they propagate downstream and interact nonlinearly.
 
-The equations are the incompressible Navier-Stokes equations, written for perturbations on top of a steady base flow. The perturbations are expanded in a Fourier series in time and spanwise direction (harmonic balancing), and the resulting coupled system is solved iteratively until convergence.
+The equations are the compressible Navier-Stokes equations, written for perturbations on top of a steady base flow. The perturbations are expanded in a Fourier series in time and spanwise direction (harmonic balancing), and the resulting coupled system is solved iteratively until convergence. The incompressible four-variable form `(u,v,w,p)` is solved by default; `Opt.compressible = 'on'` selects the five-variable form `(u,v,w,rho,T)`, which reduces to the incompressible one in the low-Mach limit and has been validated against published stability data up to Mach 4.5.
 
 ---
 
 ## 2. Prerequisites
 
 - MATLAB R2020b or later (no additional toolboxes required)
-- A base-flow input file `DeHNSSo_input.mat` containing the `StabGrid` struct
+- A base-flow input file `DeHNSSo_input_<case>.mat` containing the `StabGrid` struct
 
 ---
 
@@ -34,7 +137,7 @@ Then build the stability grid via the per-case script in `gridgen/benchmark/`:
 
 ```matlab
 cd gridgen/benchmark/
-blasius       % reads bf_blasius.mat from baseflow/output/benchmark/, writes DeHNSSo_input.mat
+blasius       % reads bf_blasius.mat from baseflow/output/benchmark/, writes DeHNSSo_input_blasius.mat
 ```
 
 For other supported cases (`blasius_csv`, `sweptwing_flat`, `sweptwing_hump`, `m3j` / OpenFOAM): see [README.md](../README.md).
@@ -48,8 +151,10 @@ By default the gridgen scripts distribute `nx` stations uniformly in ξ (wall ar
 | `params.mug` | Clustering center(s) in physical x (scalar or vector for multiple centers) |
 | `params.sig` | Gaussian width as a fraction of the half-domain (default 0.2). Scalar broadcasts to all centers; vector must match `mug` length |
 | `params.ag` | Step-size modulation at the peak: `<1` denser, `=1` no refinement, `>1` sparser (default 1). Scalar or vector |
+| `params.refine` | Friendlier form of `ag`: how many times finer Δξ is at the peak than on an equidistant mesh (`ag = 1/refine`) |
+| `params.spread` | How far the refinement reaches: half-width in physical x, setting `sig = 3·spread / half-domain`. Defaults to the `params.forcing` half-width. Larger means gentler stretching |
 
-The same three fields work for both the curvilinear (`resample_curvilinear.m`) and flat-plate (`resample_cartesian.m`) paths, which share one implementation in `gridgen/src/resample/cluster_xi.m`.
+These fields work for both the curvilinear (`resample_curvilinear.m`) and flat-plate (`resample_cartesian.m`) paths, which share one implementation in `gridgen/src/resample/cluster_xi.m`.
 
 Algorithm (`gridgen/src/resample/cluster_xi.m`):
 
@@ -74,6 +179,8 @@ params.mug = [x_m1, x_m2];        % two humps
 params.sig = [0.2, 0.15];         % per-hump widths
 params.ag  = [0.5, 0.7];          % per-hump strengths
 ```
+
+Gridgen reports what the mesh actually does, not just what was asked for: the finest Δξ as a multiple of the equidistant spacing, and the stretching, the worst ratio between neighbouring Δξ (1.00 means none). The measured refinement is always milder than the nominal `1/ag`, because compressing the mesh at the peak stretches it elsewhere. Aim for stretching near 1.0; widen `spread` or lower `refine` if it grows.
 
 Leave `params.mug = []` or `params.ag = 1` everywhere to fall back to uniform spacing (wall arc length for curvilinear, `x` for the flat plate).
 
@@ -128,7 +235,7 @@ Supplying analytic derivatives avoids the finite-difference noise that interpola
 
 ### Step 2 — Configure and run
 
-Per-case stability scripts live in `callers/benchmark/` (`blasius.m`, `sweptwing_flat.m`, `sweptwing_hump.m`, `m3j.m`). All four share an identical sectioned layout — only case-specific values differ:
+Per-case stability scripts live in `callers/benchmark/` (`blasius.m`, `blasius_compressible.m`, `sweptwing_flat.m`, `sweptwing_hump.m`, `m3j.m`, `resonator.m`, `synthetic_jet.m`, `blasius_newton.m`). They share an identical sectioned layout — only case-specific values differ:
 
 | Section | What to set |
 |---|---|
@@ -189,6 +296,16 @@ Stab.IC       = 'ILST';   % local stability eigenvalue problem at inflow
 Stab.phaseRef = 'pwall';  % 'pwall' = wall pressure reference | 'umax' = max u
 ```
 
+`Stab.IC` selects how the inlet disturbance is built:
+
+| value | inflow |
+|---|---|
+| `'ILST'` | local incompressible LST eigenmode |
+| `'CLST'` | local compressible LST eigenmode (requires `Opt.compressible='on'`) |
+| `'PSE'` | non-parallel linear-PSE seed instead of the local eigenmode |
+| `'LOAD'` | warm-start from a checkpoint, or impose user-defined profiles from a `phiIC` file |
+| `'ZERO'` | no inlet disturbance; the field is generated by wall/freestream forcing alone |
+
 ### Setting initial amplitudes
 
 The simplest way is to set the fundamental amplitude as a scalar:
@@ -218,7 +335,7 @@ So set `A0_fund`/`bcw` to the physical amplitude you want and compare directly.
 
 **Porting a case from DeHNSSo-v1 (Westerbeek et al. 2024).** The *stored* meaning of `Stab.A0` changed, so do not paste a v1 literal verbatim. In v1 the code seeded `û = A0` directly (no halving) and doubled only at output, so `Stab.A0` held the complex amplitude `|û|`; the user was expected to type **half** the physical amplitude in the caller, which is why every v1 caller reads e.g. `Stab.A0(...) = 0.00125*sqrt(2); % Half the desired inflow amplitude` or `= 3.5e-3/2`. v2 keeps the seeded `û` identical but moves that `/2` into the solver, so `Stab.A0` now holds the physical `2|û|`. Carry over the **desired physical** amplitude (the value *before* the v1 `/2`), not the raw v1 number:
 
-| case | v1 caller (`A0 = |û|`) | v2 caller (`A0 = 2|û|`) |
+| case | v1 caller (`A0 = \|û\|`) | v2 caller (`A0 = 2\|û\|`) |
 |------|------------------------|--------------------------|
 | Blasius TS | `0.00125*sqrt(2)` | `0.0025*sqrt(2)` |
 | swept-wing CFI | `3.5e-3/2` | `3.5e-3` |
@@ -259,9 +376,84 @@ If it instead prints `LOAD: inflow-only (station 1) — no downstream warm-start
 
 **Anderson is not optional here.** Near saturation plain Picard can diverge at the target amplitude even though the continuation gives it a good initial guess; set `Opt.anderson = 5` on both runs (§8).
 
-A complete working example is `tests/warmstart/test_load_warmstart.m` — `callers/benchmark/blasius.m` plus a `restart` flag. On the Blasius benchmark (800×40, M=5), continuing `A0 = 0.00125√2 → 0.002` reaches the same solution as a cold run at 0.002 (`max(A)` agreeing to 7e-05) in 43 iterations instead of 57.
+A complete working example is `callers/benchmark/blasius.m` with a `restart` flag. On the Blasius benchmark (800×40, M=5), continuing `A0 = 0.00125√2 → 0.002` reaches the same solution as a cold run at 0.002 (`max(A)` agreeing to 7e-05) in 43 iterations instead of 57.
 
 The same mechanism serves parameter sweeps: restart at a new `omega_0`, `beta_0` or grid-independent parameter from a nearby converged state. The checkpoint must come from a run with the same `M`/`N` and grid.
+
+### User-defined inflow profiles (`Stab.IC = 'LOAD'` with `phiIC`)
+
+The same `'LOAD'` switch also accepts a file holding **only** a variable named `phiIC`, in which case it does not warm-start the domain: it imposes your own profiles at the inflow station, exactly where `ILST`/`CLST` would put the computed eigenmode. Use it when the inflow shape comes from somewhere else, for example a DNS slice, an experimental profile, an external stability solver, or a hand-built superposition.
+
+Give `phiIC` one column per variable, with the wall-normal index down the column, following the grid convention index 1 = freestream, index `ny` = wall. For a single mode that is an `ny x nvar` array (`nvar = 4` incompressible, `5` compressible), and `phiIC_modes` names the mode it belongs to:
+
+```matlab
+phiIC       = [u, v, w, p];      % ny x 4   (compressible: [u, v, w, rho, T], ny x 5)
+phiIC_modes = [1 0];             % this profile is mode (m,n) = (1,0)
+save('my_inflow.mat','phiIC','phiIC_modes')
+
+Stab.IC     = 'LOAD';
+Stab.ICfile = 'my_inflow.mat';
+```
+
+**Several modes** stack along the third dimension, `ny x nvar x k`, one `(m,n)` row of `phiIC_modes` per slice. The layout of each slice never changes: it is always the same `nvar` columns. Only `phiIC_modes` says which mode a slice is, so any modes may be given, in any order:
+
+```matlab
+phiIC        = zeros(ny, 4, 2);   % ny x nvar x 2
+phiIC(:,:,1) = [u, v, w, p];      % this slice is (2,0)
+phiIC(:,:,2) = [u, v, w, p];      % this slice is (0,0)
+phiIC_modes  = [2 0;              % row 1 -> (m,n) = (2,0)
+                0 0];             % row 2 -> (m,n) = (0,0)
+save('my_inflow.mat','phiIC','phiIC_modes')
+```
+
+The solver echoes what it mapped, which is worth checking in the log:
+
+```
+  LOAD: 2 user profile(s) mapped to mode(s) (2,0) (0,0)
+```
+
+**Set `Stab.A0` for every mode you supply.** Only modes with `Stab.A0 > 0` are read, so a profile for a mode left at zero amplitude loads and is then silently ignored. `Stab.A0_fund` seeds the fundamental *alone*, so supplying more than one mode means setting the `Stab.A0` vector yourself instead (`init` builds `A0` from `A0_fund` only when you have not supplied `A0`). Use `ModeToModeNumber(m, n, Stab.M, Stab.N)` for the indices rather than counting by hand:
+
+```matlab
+nf  = (2*Stab.M+1)*(2*Stab.N+1);
+j20 = ModeToModeNumber( 2, 0, Stab.M, Stab.N);
+jm20= ModeToModeNumber(-2, 0, Stab.M, Stab.N);
+j00 = ModeToModeNumber( 0, 0, Stab.M, Stab.N);
+Stab.A0 = zeros(1, nf);
+Stab.A0([j20 jm20]) = 5e-5;   % (2,0) AND its conjugate
+Stab.A0(j00)        = 2e-5;   % (0,0) is its own conjugate: one entry, one slice
+```
+
+An oscillating mode needs its conjugate `(-m,-n)` given a nonzero `Stab.A0` as well; the profile itself is rebuilt by conjugation, so no extra slice is required. The mean-flow distortion `(0,0)` is its own conjugate, so it takes a single entry. Since the stored amplitude is discarded, `Stab.A0` is what sets the relative weighting between the modes you supply.
+
+**Only the shape is taken from the file.** Each mode is renormalized by `max|u|` and then rescaled by `Stab.A0`, so the amplitude you saved is discarded and the run's amplitude is still set by `Stab.A0_fund` as usual. The phase is likewise re-referenced according to `Stab.phaseRef`. This means a profile does not need to arrive normalized or phase-aligned.
+
+Two further conveniences: the conjugate half of the mode list is rebuilt automatically by conjugation, so those rows are overwritten whatever you put in them; and in the compressible case `p'` is derived from the equation of state, `p' = (rho'*Tbar + rhobar*T')/(gamma*Ma^2)`, so supply `rho` and `T` and not `p`.
+
+`phiIC_modes` is a `k x 2` list of `(m,n)` pairs, one per profile, so you supply **only the modes you have**. Modes not listed are left undisturbed, and the solver reports what it mapped:
+
+```
+  LOAD: 1 user profile(s) mapped to mode(s) (1,0)
+```
+
+Two older layouts are still accepted. A **flat row stacking**, `k x nvar*ny`, concatenates the variables along each row instead of using columns, `[u(:).', v(:).', w(:).', p(:).']`; it behaves identically. And **omitting `phiIC_modes` entirely** requires `phiIC` to span the whole mode list, exactly `Mode.nf = (2M+1)(2N+1)` rows with conjugates included, row `j` being mode `j`. For `M=1, N=0` those three rows are `(m,n) = (-1,0), (0,0), (1,0)`. That is the form a solver template comes in, but the template must come from a **checkpoint** (`Opt.save_checkpoint`), not a results file: `postprocess` deletes `phi` and drops the conjugate modes, so a `save_output` file has neither the field nor the right number of rows.
+
+```matlab
+% run once with Opt.save_checkpoint set, then:
+ref   = load('<...>/ckpt_seed.mat');
+phiIC = ref.StabRes.phi(:,:,1);        % nf x nvar*ny, correct layout by construction
+save('my_inflow.mat','phiIC')
+```
+
+Whichever layout, the wall-normal length must match the run's `ny`.
+
+Only the modes with `Stab.A0 > 0` are read. A **linear** run solves one mode: for `M=1, N=0` the log reads `M = 1, N = 0 (1 mode)` and a single `Solving 1 modes`, because `(0,0)` is never seeded (there is no nonlinear forcing to generate a mean-flow distortion) and the conjugate `(-1,0)` is filled by conjugation rather than solved. So one profile, for `(1,0)`, is all a linear run needs.
+
+**Every block of that row is required, including the pressure.** The inflow is imposed as a Dirichlet condition on the whole state vector at station 1, so a missing block is imposed as zero rather than ignored. Filling only `u, v, w` and leaving `p` zero shifts the downstream amplitude by 15%, and supplying `u` alone by 39%, whereas the complete row reproduces the reference run to 1e-12. If the external data has no pressure, reconstruct it rather than zero-fill; note also that `phaseRef='pwall'` references the wall pressure, which degenerates if `p` is zero.
+
+Building the array from scratch is otherwise forgiving, and three things help: the conjugate rows may be left as zeros, the overall amplitude is irrelevant, and so is an overall phase. Reloading a template with the conjugate row zeroed, scaled by 1000, or rotated by an arbitrary phase reproduces the original run to round-off in each case.
+
+A file containing a `StabRes` variable takes the warm-start path above instead; `phiIC` is checked first. If the file has neither, `inflow` raises `ICfile must contain a variable named 'StabRes' or 'phiIC'`.
 
 ### No inflow disturbance (`Stab.IC = 'ZERO'`)
 
@@ -274,7 +466,7 @@ Stab.bcw = zeros(3, numel(x), (2*Stab.N+1)*(2*Stab.M+1));
 Stab.bcw(2, :, j_fund) = vjet;   % e.g. a wall-normal velocity actuator on the fundamental
 ```
 
-The inflow plane is clamped to zero, so the active modes come from the wall forcing alone. `inflow` warns (`inflow:zeroNoForcing`) if there is no forcing at all, since the field would then be identically zero. A minimal example is `tests/test_zero_ic.m` — a wall synthetic jet driving a Blasius BL with no incoming TS wave.
+The inflow plane is clamped to zero, so the active modes come from the wall forcing alone. `inflow` warns (`inflow:zeroNoForcing`) if there is no forcing at all, since the field would then be identically zero. A minimal example is `callers/benchmark/synthetic_jet.m` — a wall synthetic jet driving a Blasius BL with no incoming TS wave.
 
 ---
 
@@ -305,8 +497,10 @@ params.forcing = struct('xc', xc, 'w', w, 'shape', 'cosine');
 % (b) an arbitrary v-distribution — any shape; xc/w inferred from its support
 params.forcing = struct('x', x_data, 'v', v_data);   % v_data may be complex (phase)
 
-params.ag = 0.3;   % ~3x denser over the forcing (density knob)
+params.refine = 10/3;   % dxi over the forcing ~3.3x finer than equidistant
 ```
+
+`refine` is the friendlier form of `ag` (see the clustering table above). `spread`, how far the refinement reaches, defaults to the forcing half-width, which is right for an actuator; set it explicitly only when the refinement must reach further than the feature itself, as the resonator neck does.
 
 For **several forcings**, give `xc` a vector (many same-type actuators) or pass a cell array (mixed actuators and distributions); gridgen refines for all of them and stores one profile each:
 
@@ -332,7 +526,7 @@ Stab = add_wall_forcing(Stab, StabGrid, Opt, struct('A', 5e-4, 'which', 2, 'phi'
 
 `which` is required once the grid holds more than one forcing (the call errors otherwise) and unnecessary for a single one. You can also override the profile here for a quick test — pass `x`/`v` (distribution) or `xc`/`w` (actuator) — but the mesh is only refined where gridgen put it, so an override off the refined patch is coarser (`add_wall_forcing` warns if it lands on too few stations).
 
-Because the mesh is static, the width is capped by what you refined for: a narrower forcing than `w_act` stays resolved; a **wider** one, or a moved center, needs a new grid. Size the gridgen `w`/support for the widest case you intend to run, then sweep amplitude/phase freely with no re-mesh.
+Because the mesh is static, the width is capped by what you refined for: a narrower forcing than `spread` stays resolved; a **wider** one, or a moved center, needs a new grid. Size the gridgen `w`/support for the widest case you intend to run, then sweep amplitude/phase freely with no re-mesh.
 
 **Low-level fallback.** `Stab.bcw`/`Stab.bcx` is ultimately just an array over the wall, cubic-interpolated onto `Grid.xun` (zero outside `bcx`). You can set it by hand if you need full control — but you are then responsible for the mode/conjugate/convention handling and for refining the grid where the profile varies:
 
@@ -357,16 +551,24 @@ v'(x) − Y·p'(x) = 0,
 
 coupling the mouth wall-normal velocity to the wall pressure through the resonator admittance `Y` (the closed-loop resonator response). It is applied to the base operator only, so the `(0,0)` mean-flow distortion keeps no-slip while the fluctuations see the resonator.
 
+Give the admittance either as a magnitude and phase, which keeps the phase visible, or directly as `Y`:
+
+```matlab
+Opt.hr = struct('mag', 12.7688, 'phi', pi);   % |Y| and arg Y [rad]
+```
+
+`setup_boundary` resolves this once per run: it forms `Y = mag·exp(i·phi)`, takes the mouth from `StabGrid.forcing` when no `mask` is given, and reports the result. The full set of fields:
+
 ```matlab
 Opt.hr = struct( ...
-    'Y',     Ynd, ...          % non-dim resonator admittance (a fixed value in the caller)
-    'mask',  in_neck, ...      % logical, nx: the mouth streamwise stations
+    'Y',     Ynd, ...          % admittance: a scalar, or one value per mouth node for a profile Y(x)
+    'mask',  in_neck, ...      % optional, logical nx: the mouth stations (else from StabGrid.forcing)
     'x',     StabGrid.xun, ... % optional: grid-exact flux-preserving edge taper
     'taper', 0.1, ...          % optional: raised-cosine mouth edge taper (0 = hard)
     'uslip', false);           % optional: free-slip u' over the mouth
 ```
 
-Cluster the streamwise mesh at the neck in gridgen exactly as for a wall actuator (`params.forcing = struct('xc', Xc, 'w', w)`), so the mouth carries enough stations for the impedance row. The reference pair is `gridgen/benchmark/resonator.m` + `callers/benchmark/resonator.m` (validated against Michelis 2023).
+Cluster the streamwise mesh at the neck in gridgen as for a wall actuator, but note that `params.forcing.w` is the **physical mouth half-width**, not a clustering knob: use `params.spread` to set how far the refinement reaches. Keeping the two apart means `StabGrid.forcing` carries the true mouth, so the same grid also serves the actuator path. The reference pair is `gridgen/benchmark/resonator.m` + `callers/benchmark/resonator.m` (validated against Michelis 2023).
 
 ### Freestream forcing
 
@@ -381,18 +583,28 @@ Stab.bct(1,:,j_conj) = conj(Stab.bct(1,:,j_fund));
 
 ### Freestream BC type
 
-`Opt.bc_top` is a cell array specifying the BC type per velocity component {u, v, w}:
+`Opt.bc_top` is a cell array with one entry per freestream channel:
 
 ```matlab
-Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};   % default: all zero at y=H
+Opt.bc_top = {'H_DR', 'H_DR', 'H_DR'};   % incompressible default: all zero at y=H
 
 % BC types:
 %   'H_DR'  = homogeneous Dirichlet  (q = 0)
 %   'IH_DR' = inhomogeneous Dirichlet (q = bct value, requires Stab.bct)
 %   'H_NM'  = homogeneous Neumann    (dq/dy = 0)
+%   'free'  = no imposed BC; the governing equation is kept on that row
 ```
 
-Pressure has no BC at the freestream (determined by the equations). The MFD `v` component is always free at the freestream (displacement velocity).
+**The channels are not the same variables in the two formulations**, because the two boundaries constrain different states. `Opt.bc_top` must have exactly this many entries or `init` raises `init:bcTopSize`:
+
+| | channel 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| incompressible freestream (`Opt.bc_top`) | `u` | `v` | `w` | — |
+| compressible freestream (`Opt.bc_top`) | `u` | `w` | `rho` | `T` |
+| incompressible wall (`Stab.bcw`) | `u` | `v` | `w` | — |
+| compressible wall (`Stab.bcw`) | `u` | `v` | `w` | `T` |
+
+`Stab.bct` (inhomogeneous freestream values) follows the freestream row, so compressibly `Stab.bct(2,...)` forces `w`, not `v`. Note the compressible freestream leaves `v` free: it carries the displacement, matching the heritage far-field treatment. Incompressibly the pressure has no freestream BC, and the MFD `v` is always free there (displacement velocity). The single source of truth for these maps is `src/boundary/bc_rows.m`, which `LHS`, `LHS_compressible` and `RHS` all read.
 
 **Receptivity example** — acoustic wave forcing v at freestream:
 ```matlab
@@ -439,7 +651,7 @@ Opt.AMAX  = 0.1;    % maximum amplitude factor
 Opt.TH    = 1e-11;  % nonlinear term activation threshold
 ```
 
-### Picard acceleration & Newton fallback
+### Picard acceleration and under-relaxation
 
 The nonlinear convergence loop is Picard iteration with AF (amplitude factor) continuation. Two optional knobs help it converge: Anderson acceleration (speed) and under-relaxation (stability). There is no Newton fallback: `Opt.solver` selects Picard or Newton up front and they never mix (see below).
 
@@ -470,7 +682,7 @@ Use it when plain Picard **oscillates** near saturation — the maximum amplitud
 
 **No Newton takeover.** `Opt.solver` is either `'picard'` or `'newton'`, never a mix — Picard no longer switches to Newton when it stalls. If Picard stalls at AF < 1 (typically near saturation) it reports once and keeps going; for high amplitudes use `Opt.solver='newton'` (pseudo-arclength continuation, below) instead. `Opt.newton_takeover` is gone.
 
-**There is no fixed-amplitude Newton.** The old backends (JFNK, `direct`, `matlab_direct`, `lu_krylov`) and `solve_newton.m` have been removed: a cold-start solve at a fixed high amplitude does not converge, which is precisely what the continuation exists to solve. Setting those `Opt.solver` values now raises an error. `Opt.solver='newton'` means `src/newton/solve_newton.m`.
+**There is no fixed-amplitude Newton.** The old backends (JFNK, `direct`, `matlab_direct`, `lu_krylov`) and the fixed-amplitude Newton driver have been removed: a cold-start solve at a fixed high amplitude does not converge, which is precisely what the continuation exists to solve. Setting those `Opt.solver` values now raises an error. `Opt.solver='newton'` means `src/newton/solve_newton.m`.
 
 ### Pseudo-arclength continuation (`solve_newton`)
 
@@ -480,7 +692,16 @@ For high-amplitude K-type cases (Scholten), a direct solve at the target amplitu
 [StabRes, info] = solve_newton(Stab, StabGrid, Opt);
 ```
 
-The predictor is a Keller step (tangent plus secant curvature); the corrector is a modified Newton on the full coupled real-form Jacobian, factorized with MUMPS. The factor is **held across steps** (the corrector then needs only back-solves) and refactored when it ages or the corrector stalls, since one factorization costs about 230× a back-solve and the state moves little between steps.
+The default scheme is a **modified pseudo-arclength continuation**. The predictor is a Keller step (tangent plus secant curvature); the corrector is a modified Newton on the full coupled real-form Jacobian, factorized with MUMPS. The factor is **held across steps** (the corrector then needs only back-solves) and refactored when it ages or the corrector stalls, since one factorization costs about 230× a back-solve and the state moves little between steps.
+
+Both departures from the textbook scheme of Dijkstra et al. (2014, Sec. 2.2) can be switched off independently:
+
+```matlab
+Opt.newton_corrector = 'modified';   % default; 'full' refactorizes every corrector iteration
+Opt.newton_predictor = 'curvature';  % default; 'tangent' is the first-order Keller step
+```
+
+Setting both alternatives together (`'full'` + `'tangent'`) reproduces classical Dijkstra continuation. It converges quadratically and needs only one or two corrector iterations per step, but pays a factorization for each: measured on a 1050×40 M=2 Blasius branch it took 9 factorizations and 52.9 min against 2 and 23.9 min for the default, for solutions agreeing to five significant figures. Use it to check the default, not for production. Under `'full'`, `newton_reuse` and `newton_it_thresh` are meaningless and warn once if set.
 
 ```matlab
 Opt.newton_target    = 2.828e-3;  % target A0_fund (required) — here u_rms = 0.004
@@ -495,7 +716,10 @@ Opt.newton_seedfile  = '...';     % cache for the two seed points ([] = recomput
 Opt.newton_ckfile    = '...';     % checkpoint written each step ([] = none)
 Opt.newton_resume    = 'on';      % resume from newton_ckfile
 Opt.newton_mumps_relax = [100 200 40];  % MUMPS ICNTL(14) retry ladder
+Opt.newton_arclength = 'absolute'; % arclength metric; see below
 ```
+
+**Arclength metric.** `'absolute'` (default) measures `ds^2 = |dq|^2 + dlam^2`, which is badly conditioned when the state norm dwarfs the parameter: on the M3J x505 branch `|q|~8.2` against `lam~6.5e-4`, so `ds` tracks the state and the amplitude crawls at `dA0/ds = 2.2e-5`, needing about 275 steps to traverse. `'relative'` measures `ds^2 = |dq|^2/|qc|^2 + (dlam/lc)^2`, so both contribute comparably. Same branch, different parameterisation — it changes the step count severalfold, not the answer.
 
 `newton_reuse` is the reuse policy and the main performance knob: `newton_reuse=1` refactors every step (most robust), larger values trade factorizations for more corrector back-solves. Which wins is case-dependent — measure it, and only trust a timing from a log whose first step is `STEP 1` (a resumed run's reported total covers only its own segment).
 
@@ -506,8 +730,8 @@ Opt.newton_mumps_relax = [100 200 40];  % MUMPS ICNTL(14) retry ladder
 ### LU mode
 
 ```matlab
-Opt.lu_mode = 'full';         % cache every LU factor — fastest reuse, unbounded memory (default)
-Opt.lu_mode = 'auto';         % LRU-cached LUs, bounded memory (Opt.lu_max_cache, default 3)
+Opt.lu_mode = 'full';         % cache every LU factor — fastest reuse, unbounded memory
+Opt.lu_mode = 'auto';         % LRU-cached LUs, bounded memory (Opt.lu_max_cache, default max(8, n_modes)) (default)
 Opt.lu_mode = 'seq';          % one LU at a time: factor, solve its modes, discard — minimal memory
 Opt.lu_mode = 'none';         % plain backslash each time, no caching (slowest, baseline)
 Opt.lu_mode = 'lapack_band';  % banded LU MEX (zgbtrf/zgbtrs) with per-mode factor caching —
@@ -516,15 +740,60 @@ Opt.lu_mode = 'block_thomas'; % dual-Schur block-Thomas (Paredes 2024) — COMPR
 % Opt.lu_max_cache = 3;       % cache size for 'auto' (and the banded / block-Thomas factor caches)
 ```
 
+### Fill-reducing ordering
+
+Applies to the sparse-LU back-ends (`full`, `auto`, `seq`); `lapack_band` and
+`block_thomas` have their own storage and ignore it.
+
+```matlab
+Opt.lu_ordering = 'auto';     % (default) symrcm for the compressible operator,
+                              %   COLAMD for the incompressible one
+Opt.lu_ordering = 'symrcm';   % force reverse Cuthill-McKee
+Opt.lu_ordering = 'colamd';   % force MATLAB's 4-output lu (COLAMD + column pivoting)
+```
+
+The operator is a chain of station blocks, so it is banded and bandwidth reduction is
+what limits the fill. Measured fill, `nnz(L+U)/nnz(M)`, at 40/60/80 stations:
+
+| operator | COLAMD | symrcm |
+|---|---|---|
+| incompressible | **6.7 / 6.8 / 6.8** | 7.1 / 7.3 / 7.3 |
+| compressible | 25 / 43 / 50 | **36.4 / 37.1 / 37.7** |
+
+`symrcm` stays flat in `Nx` while COLAMD grows, crossing near `Nx = 55`; at `Nx = 200`
+COLAMD gave nearly double the fill. Hence the default. Forcing `colamd` is worth it on
+small compressible cases, where it is both leaner and several times faster. AMD and
+nested dissection were measured at up to 79x and 174x on these operators and are not
+offered.
+
+
+
 `full`, `auto`, `seq`, and `none` all use MATLAB's sparse LU and differ only in how many factors they keep in memory: `full` keeps all of them, `auto` keeps the last `lu_max_cache`, `seq` keeps one at a time, `none` keeps none. `lapack_band` and `block_thomas` replace that sparse LU with a banded or block factorization of the same operator, then cache the factors the same way.
 
 **`block_thomas`** is for the **compressible** operator only. The incompressible continuity rows have a zero diagonal, which makes the unpivoted block factorization silently wrong (verified ~2× error), so the solver raises an error if you select it on an incompressible run. Sub-options:
 
 ```matlab
-Opt.bt_np    = 2;      % number of partitions (default 2)
-Opt.bt_ooc   = 'on';   % out-of-core: stream the factor to disk, minimal RAM (default off)
-Opt.lu_cache = 'off';  % one-shot factor+solve, no caching (default: cache like the other modes)
+Opt.bt_np    = 2;         % number of partitions (default 2)
+Opt.bt_ooc   = 'on';      % out-of-core: stream the factor to disk, minimal RAM (default off)
+Opt.bt_apply = 'inverse'; % how the diagonal station block is applied (default 'lu')
+Opt.lu_cache = 'off';     % one-shot factor+solve, no caching (default: cache like the other modes)
 ```
+
+`bt_apply` chooses what is stored for each diagonal station block `G` of the recursion:
+
+| Value       | Stored           | Applied by          |
+| ----------- | ---------------- | ------------------- |
+| `'lu'`      | pivoted LU of `G` (default) | triangular solves |
+| `'inverse'` | `G^-1`                      | matrix product    |
+
+`'lu'` is the default. It keeps the pivoting that forming the inverse discards, which matters
+because a few station blocks are close to singular (RCOND down to 5e-18 on the Sec. 5.2
+verification case). Measured there, over 80 iterations on 800x40 with M=5: the solution differs
+from the cached sparse-LU path by 8.1e-9 with `'lu'` and 4.8e-6 with `'inverse'`, and the residual
+of the per-mode solves falls from 8.9e-4 to 2.8e-6, for about 4% more run time. `'inverse'`
+follows Paredes et al. (2024). Memory is the same either way, since the LU factors pack into one
+block, and both forms stream out of core, the LU record carrying one extra vector of pivots
+per station.
 
 **Picking quickly:**
 

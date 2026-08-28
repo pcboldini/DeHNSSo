@@ -27,7 +27,7 @@ params.plot      = false;
 %   params.forcing = struct('xc', [1379.1, 2000, 3000], 'w', 18);
 %   params.forcing = {struct('xc',1379.1,'w',18), struct('x',x_data,'v',v_data)};
 params.forcing = struct('xc', 1379.1, 'w', 18, 'shape', 'cosine');
-params.ag      = 0.3;
+params.refine  = 10/3;           % ag = 0.3
 
 %% Grid operators
 params.FD_xi_order_1 = 4;

@@ -8,11 +8,12 @@ function f = prepare_forcing(spec)
 %   parameterized actuator (fields xc, w, optional shape = 'cosine') or a
 %   distribution (fields x, v), whose xc/w are taken from the support of v.
 %
-%   Outputs:
-%     f.xc, f.w   refinement extent (physical x)
-%     f.eval      unit-peak complex profile, 0 outside [xc-w, xc+w]
-%     f.kind      'cosine' or 'distribution'
+%   Returns f.xc and f.w, the centre and half-width in physical x; f.eval, a
+%   unit-peak complex profile that is zero outside [xc-w, xc+w]; and f.kind,
+%   'cosine' or 'distribution'.
 
+% Distribution: the support is where |v| rises above 1e-6 of its peak, and the
+% centre and half-width follow from its two ends.
 if isfield(spec, 'v') && isfield(spec, 'x')
     xd = spec.x(:).';
     vd = spec.v(:).';
@@ -35,6 +36,8 @@ shape = 'cosine';
 if isfield(spec,'shape') && ~isempty(spec.shape); shape = lower(spec.shape); end
 assert(strcmp(shape,'cosine'), 'prepare_forcing: unknown shape ''%s'' (only ''cosine'').', shape);
 
+% Actuator: raised cosine, unit peak at xc and zero at xc +- w, so w is the
+% HALF-width and the footprint spans 2w.
 xc = spec.xc;  w = spec.w;
 f.xc   = xc;
 f.w    = w;

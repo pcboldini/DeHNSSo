@@ -26,13 +26,11 @@ params.rescale   = false;
 params.plot      = false;
 
 %% Neck clustering — same path as the hump / wall-forcing cases.
-% params.forcing marks the neck centre; gridgen refines the streamwise mesh around
-% it so the 1 mm mouth carries enough nodes for the impedance BC. StabGrid.forcing
-% is produced but unused (the resonator drives the wall through Opt.hr, not
-% add_wall_forcing).
-lref = 2.6955e-4;   s_nd = 1e-3/lref;   Xc = 0.55/lref + s_nd/2;   % Michelis neck [non-dim]
-params.forcing = struct('xc', Xc, 'w', 30, 'shape', 'cosine');
-params.ag      = 0.2;       % peak/edge spacing ratio (smaller = tighter neck cluster)
+lref = load(fullfile(input.folder, input.filename)).BF.lref;
+s_nd = 1e-3/lref;   Xc = 0.55/lref + s_nd/2;                   % Michelis neck [non-dim]
+params.forcing = struct('xc', Xc, 'w', s_nd/2, 'shape', 'cosine');
+params.spread  = 30;        % refinement half-width
+params.refine  = 5;         % target dxi ratio at the neck
 
 %% Grid operators
 params.FD_xi_order_1 = 4;

@@ -1,5 +1,5 @@
 %% DeHNSSo — Stationary CFI in a swept-wing flat-plate BL
-%  Base flow: DeHNSSo_input.mat (run gridgen/benchmark/sweptwing_flat.m first).
+%  Base flow: DeHNSSo_input_sweptwing_flat.mat (run gridgen/benchmark/sweptwing_flat.m first).
 %  Nonlinear N=5 = Fig. 9 (needs Opt.anderson).
 
 clear all; close all; clc
@@ -7,7 +7,7 @@ restoredefaultpath
 rootdir = fullfile(fileparts(mfilename('fullpath')), '..', '..');
 addpath(genpath(fullfile(rootdir, 'src')))
 addpath(genpath(fullfile(rootdir, 'gridgen', 'src')))   % deriv2_uneven etc. used by init()
-load(fullfile(rootdir, 'input', 'DeHNSSo_input.mat'));   % StabGrid
+load(fullfile(rootdir, 'input', 'DeHNSSo_input_sweptwing_flat.mat'));   % StabGrid
 
 %% Spectral content — (2M+1)(2N+1) modes incl. conjugates
 Stab.M       = 0;                               % temporal modes

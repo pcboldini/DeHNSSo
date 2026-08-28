@@ -24,11 +24,11 @@ params.xi_trim_outflow = [];
 params.rescale   = false;
 params.plot      = false;
 
-%% Streamwise refinement — Gaussian cluster at the hump centre (heritage sig/ag)
+%% Streamwise refinement — Gaussian cluster at the hump centre
 x_m = 0.1837410879 / 2.1394e-4;  % hump centre ~859
-params.mug = [x_m];
-params.sig = [0.2];
-params.ag  = [0.5];
+params.mug    = x_m;
+params.spread = 55.137096;       % = heritage sig 0.2 on this domain
+params.refine = 2;
 
 %% Grid operators (fd eta: sparse pentadiagonal, avoids cheb OOM on laptop)
 params.FD_xi_order_1 = 4;
@@ -38,7 +38,7 @@ params.FD_eta_order  = 4;
 
 %% Output
 output.folder   = fullfile(rootdir, '..', 'input');
-output.filename = 'DeHNSSo_input.mat';
+output.filename = 'DeHNSSo_input_sweptwing_hump.mat';
 
 %% Run
 StabGrid = main_gridgen(input, params, output);

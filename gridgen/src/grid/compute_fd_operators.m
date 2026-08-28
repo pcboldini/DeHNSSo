@@ -1,18 +1,14 @@
 function Grid = compute_fd_operators(Grid)
 %COMPUTE_FD_OPERATORS  Sparse FD D1, D2 on a non-uniform wall-normal grid.
 %
-%   Builds sparse differentiation matrices using Fornberg weights on the
-%   non-uniform Malik-Chebyshev grid. Order is set by Grid.FD_eta_order:
-%     2 : tridiagonal  (bandwidth 3) — fast, lower accuracy
-%     4 : pentadiagonal (bandwidth 5) — good balance (recommended)
-%     6 : heptadiagonal (bandwidth 7) — higher accuracy, wider stencil
-%   Interior rows use local stencils of the specified order.
-%   Boundary rows (i=1 freestream, i=N wall) use all N grid points,
-%   giving spectral-quality (global polynomial) accuracy at the boundaries.
-%   This is required for the (0,0) MFD mode whose v-freestream BC row
-%   retains the differential operator in MLAMFD.
+%   Fornberg weights on the non-uniform Malik-Chebyshev grid, at the order set by
+%   Grid.FD_eta_order: 2 tridiagonal, 4 pentadiagonal (recommended), 6
+%   heptadiagonal. Interior rows use local stencils of that order.
 %
-%   Storage: O(N) sparse for interior rows; boundary rows are dense.
+%   The boundary rows (i=1 freestream, i=N wall) instead use all N points, for
+%   spectral-quality accuracy there. That is required by the (0,0) MFD mode,
+%   whose v-freestream BC row keeps the differential operator in MLAMFD, and it
+%   makes those two rows dense while the interior stays O(N) sparse.
 
 y   = Grid.y(:);
 N   = Grid.ny;
@@ -40,8 +36,8 @@ for i = 1:N
     w1 = fornberg_weights(y(i), nodes, 1);
     w2 = fornberg_weights(y(i), nodes, 2);
 
-    D1(i, idx) = w1;   %#ok<SPRIX>
-    D2(i, idx) = w2;   %#ok<SPRIX>
+    D1(i, idx) = w1;
+    D2(i, idx) = w2;
 end
 
 % Override boundary rows (i=1 freestream, i=N wall) with Chebyshev values.

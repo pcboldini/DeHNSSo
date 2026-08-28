@@ -3,27 +3,17 @@ function BF_new = resample_curvilinear(BF, params)
 %
 %   BF_new = resample_curvilinear(BF, params)
 %
-%   For BF data on a curvilinear *structured* mesh where X and Y are 2-D
-%   arrays of the same shape, but Y is not constant along a row (e.g. a
-%   hump-following grid such as BF_SweptWing_hump.mat). The wall is
-%   trivially the last row of the grid — no polygon detection is needed.
+%   For a curvilinear structured mesh: X and Y both 2-D, Y varying along a row
+%   (a hump-following grid). The wall is the last row, so no polygon detection.
 %
-%   Required inputs (params):
-%     n_eta_new  — target wall-normal Chebyshev points
+%   params: n_eta_new (required) wall-normal Chebyshev points; n_xi_new (default
+%   nx_raw); H domain height (default 0.99 x max column arc length); y_i Malik
+%   median height (default H/10); xi_range as a fraction of wall arc length;
+%   xi_trim_inflow / xi_trim_outflow, a count or fraction dropped from each end;
+%   rescale (default false, only for dimensional input, since heritage BFs are
+%   already non-dimensional); Re, lref, Uref, nu passed on via ensure_metadata.
 %
-%   Optional (params):
-%     n_xi_new   — target streamwise stations           (default: keep nx_raw)
-%     H          — wall-normal domain height            (default: 0.99·max column arc-length)
-%     y_i        — Malik median collocation height      (default: H/10)
-%     xi_range   — [lo, hi] as fraction of wall arc-length (default: full)
-%     xi_trim_inflow / xi_trim_outflow — stations to drop from each end
-%                 (integer count ≥1, or fraction 0<f<1)
-%     rescale    — if true, divide X,Y,U,V,W by lref/Uref (default false).
-%                  Only set true for dimensional input. Heritage BFs are
-%                  already non-dimensional — keep rescale=false for those.
-%     Re, lref, Uref, nu — propagated into BF_new via ensure_metadata.
-%
-%   Output: BF_new compatible with build_stab_grid (mesh_type='curvilinear').
+%   Output: BF_new for build_stab_grid (mesh_type='curvilinear').
 
 %% --- 1. Normalise orientation to [ny × nx], wall at row end --------------
 
@@ -94,7 +84,7 @@ n_eta_new = numel(eta_cheb);
 
 %% --- 6. xi stations along the wall --------------------------------------
 % Uniform wall arc-length, or Gaussian clustering around params.mug (see
-% cluster_xi). w_act (actuator half-width) sizes sig, as on the flat plate.
+% cluster_xi). spread (refinement half-width) sizes sig, as on the flat plate.
 ds_wall = sqrt(diff(X_wall).^2 + diff(Y_wall).^2);
 s_wall  = [0, cumsum(ds_wall)];                       % [1 × nx_raw]
 
@@ -113,18 +103,18 @@ end
 
 mug   = get_opt(params, 'mug', []);
 ag    = get_opt(params, 'ag',  1);
-w_act = get_opt(params, 'w_act', []);
+spread = get_opt(params, 'spread', []);
 
 % xi is arc-length; centres are physical x, so map the range ends to wall x.
 x_lo_p = interp1(s_wall, X_wall, s_lo, 'pchip');
 x_hi_p = interp1(s_wall, X_wall, s_hi, 'pchip');
-if ~isempty(w_act)
-    sig = 3 * w_act ./ (0.5 * (x_hi_p - x_lo_p));
+if ~isempty(spread)
+    sig = 3 * spread ./ (0.5 * (x_hi_p - x_lo_p));
 else
     sig = get_opt(params, 'sig', 0.2);
 end
 xi_new = cluster_xi(s_lo, s_hi, n_xi_new, mug, sig, ag, x_lo_p, x_hi_p);
-report_clustering(mug, sig, ag);
+report_clustering(mug, sig, ag, xi_new);
 
 %% --- 7. Resample η per raw column, then resample ξ ----------------------
 
@@ -138,17 +128,18 @@ dnf   = fieldnames(Draw)';
 D_mid = struct();
 for q = dnf; D_mid.(q{1}) = zeros(n_eta_new, nx_raw); end
 
+bim = get_opt(params, 'bf_interp', 'pchip');   % base-flow/geometry interp; 'spline' -> smooth C2 derivatives
 for j = 1:nx_raw
     eta_col       = d_raw(:, j);                      % 0 at wall → max at top
     [eta_asc, o]  = sort(eta_col);                    % ascending for interp1
     eta_q         = max(min(eta_cheb, eta_asc(end)), eta_asc(1));
 
-    U_mid(:, j) = interp1(eta_asc, U(o, j), eta_q, 'pchip');
-    V_mid(:, j) = interp1(eta_asc, V(o, j), eta_q, 'pchip');
-    W_mid(:, j) = interp1(eta_asc, W(o, j), eta_q, 'pchip');
-    X_mid(:, j) = interp1(eta_asc, X(o, j), eta_q, 'pchip');
-    Y_mid(:, j) = interp1(eta_asc, Y(o, j), eta_q, 'pchip');
-    for q = dnf; D_mid.(q{1})(:, j) = interp1(eta_asc, Draw.(q{1})(o, j), eta_q, 'pchip'); end
+    U_mid(:, j) = interp1(eta_asc, U(o, j), eta_q, bim);
+    V_mid(:, j) = interp1(eta_asc, V(o, j), eta_q, bim);
+    W_mid(:, j) = interp1(eta_asc, W(o, j), eta_q, bim);
+    X_mid(:, j) = interp1(eta_asc, X(o, j), eta_q, bim);
+    Y_mid(:, j) = interp1(eta_asc, Y(o, j), eta_q, bim);
+    for q = dnf; D_mid.(q{1})(:, j) = interp1(eta_asc, Draw.(q{1})(o, j), eta_q, bim); end
 end
 
 % Pass 2: ξ direction (per η level), raw → target wall arc-length.
@@ -161,12 +152,12 @@ D_new = struct();
 for q = dnf; D_new.(q{1}) = zeros(n_eta_new, n_xi_new); end
 
 for i = 1:n_eta_new
-    U_new(i, :) = interp1(s_wall, U_mid(i, :), xi_new, 'pchip');
-    V_new(i, :) = interp1(s_wall, V_mid(i, :), xi_new, 'pchip');
-    W_new(i, :) = interp1(s_wall, W_mid(i, :), xi_new, 'pchip');
-    X_new(i, :) = interp1(s_wall, X_mid(i, :), xi_new, 'pchip');
-    Y_new(i, :) = interp1(s_wall, Y_mid(i, :), xi_new, 'pchip');
-    for q = dnf; D_new.(q{1})(i, :) = interp1(s_wall, D_mid.(q{1})(i, :), xi_new, 'pchip'); end
+    U_new(i, :) = interp1(s_wall, U_mid(i, :), xi_new, bim);
+    V_new(i, :) = interp1(s_wall, V_mid(i, :), xi_new, bim);
+    W_new(i, :) = interp1(s_wall, W_mid(i, :), xi_new, bim);
+    X_new(i, :) = interp1(s_wall, X_mid(i, :), xi_new, bim);
+    Y_new(i, :) = interp1(s_wall, Y_mid(i, :), xi_new, bim);
+    for q = dnf; D_new.(q{1})(i, :) = interp1(s_wall, D_mid.(q{1})(i, :), xi_new, bim); end
 end
 
 %% --- 8. Optional inflow/outflow station trim ----------------------------
@@ -222,7 +213,7 @@ xc_xi = [];
 if ~isempty(mug)
     xc_xi = interp1(X_wall, s_wall, mug(:).', 'pchip');   % physical x -> arc-length
 end
-BF_new.cluster = struct('mug', mug, 'sig', sig, 'ag', ag, 'xc_xi', xc_xi, 'w', w_act);
+BF_new.cluster = struct('mug', mug, 'sig', sig, 'ag', ag, 'xc_xi', xc_xi, 'w', spread);
 
 fprintf('Curvilinear resample done: %d η × %d ξ  (H=%.4f, y_i=%.4f)\n', ...
         n_eta_new, n_xi_new, H, y_i);

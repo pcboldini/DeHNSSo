@@ -1,41 +1,25 @@
 function Grid = compute_bf_derivatives(Grid)
 %COMPUTE_BF_DERIVATIVES  First (and second) physical derivatives of base-flow fields.
 %
-%   Always differentiates the velocity components U, V, W and stores
-%   ∂U/∂x, ∂U/∂y, … as Grid.dxU, Grid.dyU, etc.
-%   If Grid.rho / Grid.T are present (compressible base flow), it also
-%   differentiates them and stores Grid.dxrho/dyrho, Grid.dxT/dyT.
-%   These are the physical-space derivatives the HNS LHS assembly expects,
-%   not the raw computational-space derivatives ∂·/∂ξ, ∂·/∂η.
+%   Differentiates U, V, W (and rho, T when present) into Grid.dxU, Grid.dyU,
+%   ..., the physical-space derivatives the HNS assembly expects rather than the
+%   raw ∂·/∂ξ, ∂·/∂η. Second derivatives of U,V,W,T follow for the viscous terms
+%   of LHS_compressible.
 %
-%   Second physical derivatives ∂²/∂x², ∂²/∂y², ∂²/∂x∂y of U,V,W,T (compressible)
-%   are also computed (Grid.dxxU, Grid.ddyU, Grid.dxyU/dxyV, …) — required by
-%   LHS_compressible for the viscous terms — via the FULL curvilinear chain rule
-%   using first AND second inverse metrics (xixx, etaxx, xixy, etaxy, …):
-%       ∂²·/∂x² = ξ_x²·∂_ξξ + 2ξ_xη_x·∂_ξη + η_x²·∂_ηη + ξ_xx·∂_ξ + η_xx·∂_η
-%   and analogously for ∂²/∂y² and ∂²/∂x∂y.  Reduces to ∂²/∂ξ², ∂²/∂η², ∂²/∂ξ∂η
-%   on Cartesian grids (off-diagonal and second metrics zero).
+%   Chain rule with the inverse metrics set in build_stab_grid:
+%       ∂·/∂x   = ξ_x ∂_ξ + η_x ∂_η
+%       ∂²·/∂x² = ξ_x² ∂_ξξ + 2ξ_xη_x ∂_ξη + η_x² ∂_ηη + ξ_xx ∂_ξ + η_xx ∂_η
+%   and analogously in y; both reduce to the identity on a Cartesian grid.
 %
-%   The first-derivative chain rule uses the inverse metric tensors set earlier
-%   in build_stab_grid:
-%       ∂·/∂x = ξ_x · ∂·/∂ξ + η_x · ∂·/∂η
-%       ∂·/∂y = ξ_y · ∂·/∂ξ + η_y · ∂·/∂η
-%   On Cartesian grids (ξ_x = η_y = 1, ξ_y = η_x = 0) this reduces to the
-%   identity: ∂·/∂x = ∂·/∂ξ, ∂·/∂y = ∂·/∂η.
-%
-%   Discretisation:
-%     ∂/∂η : D1_bf — Grid.D1 in the interior, local one-sided Fornberg
-%            stencils at the wall and freestream rows. The dense Chebyshev
-%            boundary rows in Grid.D1 are necessary for the stability
-%            operator (spectral accuracy at the (0,0) MFD mode), but they
-%            ring on tiny non-smoothness in interpolated CFD base flows
-%            (linear scattered interp has piecewise-constant slope) and
-%            blow up the wall shear by O(N²). A local FD stencil avoids
-%            this without affecting the stability operator.
-%     ∂/∂ξ : deriv1_uneven on the (possibly non-uniform) Grid.xi1D
-%     ∂²/∂ξ²: deriv2_uneven (order Grid.FD_xi_order_2, default 4)
+%   ∂/∂η uses D1_bf: Grid.D1 in the interior, local one-sided Fornberg stencils
+%   at the wall and freestream. The dense Chebyshev boundary rows are needed by
+%   the stability operator, but they ring on interpolated CFD base flows and
+%   inflate the wall shear by O(N²). ∂/∂ξ uses deriv1_uneven on Grid.xi1D.
 
 % ---- Boundary-safe D1 for base-flow differentiation -----------------------
+% Replace only the two boundary rows of Grid.D1 by one-sided Fornberg stencils.
+% The interior keeps the operator the solver uses, so this affects the base flow
+% alone and never the stability operator.
 N     = Grid.ny;
 y     = Grid.y(:);
 p_bd  = 4;                              % 5-point one-sided stencil at boundaries
@@ -56,6 +40,8 @@ fields = {'U','V','W'};
 if isfield(Grid, 'rho'); fields{end+1} = 'rho'; end
 if isfield(Grid, 'T');   fields{end+1} = 'T';   end
 
+% rho and T are differentiated only when present, so an incompressible Grid
+% carries no thermodynamic derivatives at all.
 xi             = Grid.xi1D(:);
 FD_xi_order_2  = getfielddef(Grid, 'FD_xi_order_2', 4);   % 4th-order matches heritage FD1d4o∘FD1d4o
 % Second base-flow derivatives are only needed by LHS_compressible;
@@ -89,15 +75,9 @@ for k = 1:numel(fields)
     end
 end
 
-% Second physical derivatives needed by the compressible viscous terms, via the
-% general curvilinear chain rule (reduces to the Cartesian identity when the
-% off-diagonal/second metrics vanish).  Precomputed here so the solver never
-% differentiates the base flow; read as Grid.dxxU/ddyU/dxyU/dxyV by
-% LHS_compressible(_curvi) and CLST.
-%   d_xx F = xix^2 F_xixi + 2 xix etax F_xieta + etax^2 F_etaeta + xixx F_xi + etaxx F_eta
-%   d_yy F = xiy^2 F_xixi + 2 xiy etay F_xieta + etay^2 F_etaeta + xiyy F_xi + etayy F_eta
-%   d_xy F = xix xiy F_xixi + (xix etay + xiy etax) F_xieta + etax etay F_etaeta
-%            + xixy F_xi + etaxy F_eta
+% Second physical derivatives for the compressible viscous terms, by the chain
+% rule in the header. Precomputed here so the solver never differentiates the
+% base flow; read as Grid.dxxU/ddyU/dxyU/dxyV by LHS_compressible and CLST.
 if is_compr
     for nm = {'U','V','W','T'}
         fn = nm{1};

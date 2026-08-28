@@ -61,7 +61,7 @@ Opt.save_output = [];
 % The shape, location and width are defined in gridgen/benchmark/synthetic_jet.m
 % (StabGrid.forcing). Here we only set the strength. The conjugate mode is added
 % automatically for nonlinear runs (here linear, so just the fundamental).
-A_jet   = 2e-4;          % jet velocity amplitude (physical 2|u|, as Stab.A0)
+A_jet   = 2e-3;          % jet velocity amplitude (physical 2|u|, as Stab.A0)
 phi_jet = 0;             % jet phase [rad] (control knob)
 
 [Stab, jet] = add_wall_forcing(Stab, StabGrid, Opt, struct('A', A_jet, 'phi', phi_jet));
@@ -72,16 +72,34 @@ phi_jet = 0;             % jet phase [rad] (control knob)
 Opt.rerun = 'on';
 [StabResA, StabGrid, LHS] = main(Stab, StabGrid, Opt, LHS);
 
-%% Jet response at the orifice (mouth-averaged v and p at the wall)
+%% Jet response at the orifice — the wall-normal velocity actually delivered
 vr = squeeze(StabResA.v(2,:,:)) .* StabResA.A(2,:);
-pr = squeeze(StabResA.p(2,:,:)) .* StabResA.A(2,:);
 
 % average over the orifice stations (jet.idx from add_wall_forcing)
-pav  = mean(pr(end,jet.idx));
 vav  = mean(vr(end,jet.idx));
 vmax = max(vr(end,jet.idx));
 
-ratav2 = abs(vav)/abs(pav)
-ratav  = abs(vav/pav)
-ratmax = abs(vmax)/abs(pav)
-rata   = (angle(vav/pav))/pi
+fprintf('\n orifice: mean |v''| = %.3e, peak |v''| = %.3e, arg = %+.1f deg  (set A = %.1e)\n', ...
+        abs(vav), abs(vmax), rad2deg(angle(vav)), A_jet);
+
+%% Effect of the jet — TS amplitude with and without forcing
+x     = StabGrid.xun(1, :);   nx = numel(x);
+Re0   = StabGrid.Re;          Rx = sqrt(Re0 * x);
+xc    = StabGrid.forcing(1).xc;
+jA    = find(abs(StabRes0.omegavec(:).' - Stab.omega_0) < 1e-9, 1);
+imeas = max(1, round(Opt.xb*nx/100) - 1);
+
+Au0 = StabRes0.A(jA, :);   AuA = StabResA.A(jA, :);
+dNu = log(AuA(imeas) / Au0(imeas));
+fprintf(' jet Rx = %.0f,  measure Rx = %.0f,  dN_u'' = %+.3f\n', ...
+        sqrt(Re0*xc), Rx(imeas), dNu);
+
+xr = 1:imeas;
+figure('Position', [100 100 760 460]);
+plot(Rx(xr), log(Au0(xr)./Au0(1)), 'k-',  'LineWidth', 1.5, 'DisplayName', 'baseline (no jet)'); hold on
+plot(Rx(xr), log(AuA(xr)./AuA(1)), 'r--', 'LineWidth', 1.5, 'DisplayName', 'jet on');
+xline(sqrt(Re0*xc), 'b:', 'jet', 'HandleVisibility', 'off');
+xlabel('$R_x = \sqrt{Re_0\,x}$', 'Interpreter', 'latex', 'FontSize', 12)
+ylabel('$N_{u''}$', 'Interpreter', 'latex', 'FontSize', 12)
+title(sprintf('TS N-factor, synthetic jet (dN_{u''} = %+.2f)', dNu))
+legend('Location', 'best'); grid on; box on

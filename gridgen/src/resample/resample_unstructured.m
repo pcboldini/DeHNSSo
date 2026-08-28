@@ -1,27 +1,18 @@
 function [BF_new] = resample_unstructured(BF, params)
 %RESAMPLE_UNSTRUCTURED  Build a HNS-ready body-fitted grid from unstructured scatter.
 %
-%   For BF data that comes in as a flat point cloud (e.g. OpenFOAM CSV
-%   exports, M3J midPlane.csv). No grid structure is assumed — the wall
-%   is detected from the boundary polygon using the velocity field, then
-%   smoothed, parameterised, and used to launch wall-normal columns.
+%   For BF data arriving as a flat point cloud (OpenFOAM CSV, M3J midPlane.csv).
+%   No grid structure is assumed: the wall is found from the boundary polygon
+%   using the velocity field, then smoothed, parameterised, and used to launch
+%   wall-normal columns.
 %
-% Pipeline:
-%   1. Optional rescaling (when params.rescale=true, with lref/Uref)
-%   2. Detect wall via boundary polygon + velocity criterion
-%   3. Smooth and parameterise wall curve
-%   4. Compute wall normals
-%   5. Estimate H and delta_99
-%   6. Build Malik-Chebyshev target grid
-%   7. Column-by-column 1D wall-normal interpolation
+%   Pipeline: optional rescaling; wall detection; wall smoothing and
+%   parameterisation; wall normals; H and delta_99; Malik-Chebyshev target grid;
+%   column-by-column wall-normal interpolation.
 %
-% Inputs
-%   BF      - struct with flat fields X, Y, U, V, W (column vectors)
-%   params  - struct (see caller examples in gridgen/benchmark/)
-%
-% Output
-%   BF_new  - struct with [n_eta x n_xi] arrays on Malik-Chebyshev grid,
-%             plus xi1D, eta1D, H, y_i, mesh_type='curvilinear'.
+%   BF holds flat column vectors X, Y, U, V, W; params as in gridgen/benchmark/.
+%   Output: BF_new with [n_eta x n_xi] arrays plus xi1D, eta1D, H, y_i and
+%   mesh_type='curvilinear'.
 
 %% =====================================================================
 %  0. Parse parameters
@@ -311,18 +302,18 @@ eta_cheb = a * (1 + z_cheb) ./ (b - z_cheb);   % [n_eta_new x 1]
 
 % Streamwise stations: uniform arc-length, or Gaussian clustering around
 % params.mug (see cluster_xi). xi is arc-length; centres are physical x, so map
-% the range ends to wall x. w_act (actuator half-width) sizes sig.
+% the range ends to wall x. spread (refinement half-width) sizes sig.
 mug   = get_opt(params, 'mug', []);
 ag    = get_opt(params, 'ag',  1);
-w_act = get_opt(params, 'w_act', []);
+spread = get_opt(params, 'spread', []);
 x_lo_p = X_wu(1);  x_hi_p = X_wu(end);
-if ~isempty(w_act)
-    sig = 3 * w_act ./ (0.5 * (x_hi_p - x_lo_p));
+if ~isempty(spread)
+    sig = 3 * spread ./ (0.5 * (x_hi_p - x_lo_p));
 else
     sig = get_opt(params, 'sig', 0.2);
 end
 xi1D_new = cluster_xi(0, xi_uniform(end), n_xi_new, mug, sig, ag, x_lo_p, x_hi_p);
-report_clustering(mug, sig, ag);
+report_clustering(mug, sig, ag, xi1D_new);
 
 % Interpolate wall geometry to target xi stations
 X_wall_t = interp1(xi_uniform, X_wu, xi1D_new, 'pchip');
@@ -390,12 +381,10 @@ end
 %% =====================================================================
 %  7. 2-D scattered interpolation onto the body-fitted target grid
 %  =====================================================================
-% Cell-centred CFD exports (e.g. OpenFOAM CSV) do not include the wall
-% itself — the lowest data row sits half a cell above it. We pick that row
-% as our "wall" target and let the natural cell-centre values stand. Do
-% NOT force U=0: the resulting step would be amplified by the near-wall
-% stencil into a spurious O(10) wall shear. u'=0 is enforced by the
-% stability operator independently.
+% Cell-centred CFD exports have no wall row: the lowest data row sits half a cell
+% above it, and is taken as the wall target with its own values. Do NOT force
+% U=0, since the near-wall stencil amplifies that step into a spurious wall
+% shear; u'=0 is enforced by the stability operator anyway.
 
 F_U = scatteredInterpolant(X_flat, Y_flat, U_flat, 'linear', 'nearest');
 F_V = F_U;  F_V.Values = V_flat;    % reuse triangulation, swap values
@@ -515,7 +504,7 @@ xc_xi = [];
 if ~isempty(mug)
     xc_xi = interp1(X_wu, xi_uniform, mug(:).', 'pchip');   % physical x -> arc-length
 end
-BF_new.cluster = struct('mug', mug, 'sig', sig, 'ag', ag, 'xc_xi', xc_xi, 'w', w_act);
+BF_new.cluster = struct('mug', mug, 'sig', sig, 'ag', ag, 'xc_xi', xc_xi, 'w', spread);
 
 fprintf('Unstructured resample done: %d η × %d ξ  (H=%.4f, y_i=%.4f)\n', ...
     n_eta_new, n_xi_new, H, y_i);

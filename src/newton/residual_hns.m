@@ -1,20 +1,19 @@
 function F_real = residual_hns(q_real, ctx)
-%RESIDUAL_HNS  Residual F(q) of the nonlinear HNS (harmonic Navier-Stokes)
-%   system, in real arithmetic.
+%RESIDUAL_HNS  Residual F(q) of the nonlinear HNS system, in real arithmetic.
 %
 %   F_real = residual_hns(q_real, ctx)
 %
-%   The state vector is REAL, of length 2*nphys*bsize:
-%       q_real = [real(q_phys); imag(q_phys)]
-%   where q_phys stacks the physical modes only. Working in real/imag
-%   parts is what makes the Jacobian-free Newton-Krylov (JFNK) linearization
-%   well posed: conjugate modes are reconstructed inside as conj(q_phys),
-%   and the NLT (nonlinear terms) depend on both q_phys and conj(q_phys), so
-%   the complex Jacobian is antilinear, not linear. Splitting into real and
-%   imaginary parts turns the operator into a genuinely linear one on
-%   q_real, which is what GMRES requires.
+%   The state is real, q_real = [real(q_phys); imag(q_phys)], of length
+%   2*nphys*bsize over the physical modes only; the conjugate modes are rebuilt
+%   inside. Real arithmetic is what makes the Newton-Krylov linearisation well
+%   posed: the NLT depends on both q_phys and conj(q_phys), so the complex
+%   Jacobian is antilinear, and splitting into real and imaginary parts gives
+%   GMRES the genuinely linear operator it needs.
 
 %% Unpack state
+%% Unpack state
+% jc = nf+1-j pairs each physical mode with its conjugate slot; NLT_HNS needs the
+% whole spectrum, so both halves are filled even though only phys is solved for.
 nphys = ctx.nphys;
 nf    = ctx.nf;
 ny    = ctx.ny;
@@ -26,8 +25,7 @@ N     = nphys * bsize;
 % Real -> complex physical state
 q_complex = q_real(1:N) + 1i * q_real(N+1:2*N);
 
-% Expand the physical-mode-only q into full (nf x ny x nx) fields, filling
-% in the conjugate modes
+% Expand to full (nf x ny x nx) fields, filling in the conjugate modes
 nvar = 4; if isfield(ctx,'nvar') && ~isempty(ctx.nvar); nvar = ctx.nvar; end
 tmp.u = zeros(nf, ny, nx);
 tmp.v = zeros(nf, ny, nx);
@@ -57,7 +55,7 @@ for k = 1:nphys
         pj   = (rho_b.*Tj + rhoj.*T_b) / gM2;          % linear pressure reconstruction
         tmp.rho(j,:,:) = rhoj;  tmp.T(j,:,:) = Tj;  tmp.p(j,:,:) = pj;
     end
-    if jc ~= j
+    if jc ~= j                      % jc == j only for the (0,0) mean-flow mode
         tmp.u(jc,:,:) = conj(uj);
         tmp.v(jc,:,:) = conj(vj);
         tmp.w(jc,:,:) = conj(wj);
@@ -72,7 +70,8 @@ end
 %% NLT forcing (computed only for physical modes inside NLT_HNS)
 f_all = NLT_HNS(ctx.StabGrid, 1:nf, tmp, ctx.D1, ctx.HB);
 
-% Buffer attenuation on NLT forcing
+% Damp the NLT forcing through the outflow buffer, matching what the Picard path
+% does, so the two solvers see the same forcing near the outflow.
 ib = ctx.Bound.ibuff;
 if ib <= nx
     bufcf_vec = repelem(ctx.Bound.bufcf(ib:nx), nvar*ny);
@@ -90,7 +89,9 @@ for k = 1:nphys
     qk  = q_complex(off+1:off+bsize);
     fk  = f_all(j,:).';
     rBC = AF * ctx.rBC{k};
-    fk(rBC ~= 0) = 0;
+    fk(rBC ~= 0) = 0;               % BC rows are Dirichlet: no NLT forcing there
+    % F = ML*q - BC - NLT, the paper's M*Q - b(A0) - r. lambda enters only through
+    % rBC, which is why the residual is affine in it and F_lambda is differenced once.
     F_complex(off+1:off+bsize) = ctx.ML{k}*qk - rBC - fk;
 end
 

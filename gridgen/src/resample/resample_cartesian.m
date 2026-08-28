@@ -3,24 +3,17 @@ function BF_new = resample_cartesian(BF, params)
 %
 %   BF_new = resample_cartesian(BF, params)
 %
-%   Designed for BF data that already lives on a structured (nx_raw × ny_raw)
-%   grid (e.g. heritage BF_SweptWing_flat.mat) but at a different resolution
-%   than what DeHNSSo expects. resample_curvilinear / resample_unstructured
-%   handle the body-fitted equivalents.
+%   For BF data already on a structured (nx_raw × ny_raw) grid but at a different
+%   resolution than DeHNSSo expects; resample_curvilinear and
+%   resample_unstructured handle the body-fitted equivalents.
 %
-%   Inputs:
-%     BF     — X, Y (1-D axes), U, V, W on a regular grid; or a flat scatter
-%              (paired vectors), canonicalised on entry.
-%     params — n_eta_new / n_xi_new   target eta / xi counts (default: source)
-%              H, y_i                 wall-normal height / Malik height (H=0.99 span, y_i=H/10)
-%              xi_range / xi_trim_*   restrict or trim the x-span
-%              mug, sig, ag           streamwise clustering (see cluster_xi)
-%              w_act                  actuator half-width, sizes sig (see prepare_forcing)
-%              interp_method          interp2 method (default 'makima')
-%              rescale, Uref, lref    non-dimensionalise U/X/Y before resampling
-%   Output:
-%     BF_new — DeHNSSo-ready (X, Y, U, V, W, H, y_i, cluster) + any
-%              Re/lref/Uref/nu present in BF.
+%   BF holds X, Y (1-D axes), U, V, W on a regular grid, or a flat scatter
+%   canonicalised on entry. params: n_eta_new / n_xi_new (default source);
+%   H, y_i (0.99 span, H/10); xi_range / xi_trim_* to restrict or trim the span;
+%   mug, sig, ag and spread for the streamwise clustering (see cluster_xi);
+%   interp_method (default 'makima'); rescale, Uref, lref to non-dimensionalise.
+%
+%   Output: BF_new (X, Y, U, V, W, H, y_i, cluster) plus any Re/lref/Uref/nu.
 
 %% Canonicalise a flat-scatter input to gridded (ny x nx); no-op if already 2-D
 BF = reshape_scatter(BF);
@@ -109,17 +102,17 @@ else
 end
 
 % xi is x here, so the range ends map directly onto the clustering axis.
-% w_act (actuator half-width) sizes sig to cover ~3x the orifice.
+% spread (refinement half-width) sizes sig to cover ~3x that width.
 mug   = get_opt(params, 'mug', []);
 ag    = get_opt(params, 'ag',  1);
-w_act = get_opt(params, 'w_act', []);
-if ~isempty(w_act)
-    sig = 3 * w_act ./ (0.5 * (x_hi - x_lo));
+spread = get_opt(params, 'spread', []);
+if ~isempty(spread)
+    sig = 3 * spread ./ (0.5 * (x_hi - x_lo));
 else
     sig = get_opt(params, 'sig', 0.2);
 end
 xi_new = cluster_xi(x_lo, x_hi, nx_new, mug, sig, ag, x_lo, x_hi);   % [1 × nx_new]
-report_clustering(mug, sig, ag);
+report_clustering(mug, sig, ag, xi_new);
 
 %% Interpolate onto the target grid ('makima': no overshoot on non-uniform data)
 interp_method = 'makima';
@@ -150,7 +143,7 @@ BF_new.eta1D = eta_new;
 
 % Clustering metadata for the caller (xi = x, so xc_xi = mug); w is the
 % provisioned actuator half-width. See build_stab_grid / add_wall_forcing.
-BF_new.cluster = struct('mug', mug, 'sig', sig, 'ag', ag, 'xc_xi', mug, 'w', w_act);
+BF_new.cluster = struct('mug', mug, 'sig', sig, 'ag', ag, 'xc_xi', mug, 'w', spread);
 
 % Compressible fields + thermo metadata (build_stab_grid runs Sutherland).
 if is_compr

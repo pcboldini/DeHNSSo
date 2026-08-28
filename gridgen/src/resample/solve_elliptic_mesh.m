@@ -2,29 +2,17 @@ function [X_out, Y_out] = solve_elliptic_mesh(X_init, Y_init, ...
     X_wall, Y_wall, nx_w, ny_w, eta_cheb, H, opts)
 %SOLVE_ELLIPTIC_MESH  Smooth a structured mesh via elliptic (Poisson) PDE.
 %
-%   Takes an algebraic (ray-shot) mesh as initial guess and iterates the
-%   Poisson equations on a uniform computational grid using point-by-point
-%   SOR.  After convergence the points are redistributed to Malik-Chebyshev
-%   spacing.
+%   Takes an algebraic (ray-shot) mesh as the initial guess, iterates the Poisson
+%   equations on a uniform computational grid with point-by-point SOR, then
+%   redistributes the points to Malik-Chebyshev spacing.
 %
-%   Inputs
-%     X_init, Y_init  [n_eta x n_xi]  algebraic mesh (initial guess)
-%     X_wall, Y_wall  [1 x n_xi]      wall coordinates
-%     nx_w, ny_w      [1 x n_xi]      outward wall normals
-%     eta_cheb        [n_eta x 1]     Malik-Chebyshev eta nodes (desc.)
-%     H               scalar           domain height
-%     opts             struct           options (see below)
+%   In: X_init, Y_init [n_eta x n_xi]; the wall X_wall, Y_wall and its outward
+%   normals nx_w, ny_w [1 x n_xi]; eta_cheb [n_eta x 1], descending; H the domain
+%   height. Out: X_out, Y_out on the Malik-Chebyshev nodes.
 %
-%   Options (fields of opts)
-%     .max_iter   maximum iterations          (default: 5000)
-%     .tol        convergence tolerance        (default: 1e-6)
-%     .omega      SOR relaxation factor        (default: 1.7)
-%     .n_uniform  uniform eta points for solve (default: 201)
-%     .P_strength source term strength         (default: 0, i.e. Laplace)
-%     .P_decay    source term decay rate       (default: 5)
-%
-%   Outputs
-%     X_out, Y_out    [n_eta x n_xi]  smoothed mesh on Malik-Chebyshev nodes
+%   opts: max_iter (5000), tol (1e-6), omega SOR factor (1.7), n_uniform eta
+%   points for the solve (201), P_strength source strength (0 = Laplace),
+%   P_decay source decay (5).
 
 %% Parse options
 max_iter   = 5000;
@@ -63,15 +51,13 @@ end
 % Convention: row 1 = wall (eta=0), row M = outer (eta=H)
 
 %% Step 2: Fix boundary conditions
-% Wall (eta=0): pinned to the wall locus. Outer boundary (eta=H): offset the
-% wall along the MEAN outward normal (a rigid translation) rather than the
-% local normal. The local-normal offset X_wall + H*n_w self-intersects on
-% concave walls (converging normals), which leaves the physical boundary
-% non-simple and forces the harmonic map to retain folds. The mean-normal
-% offset is non-self-intersecting for graph-like walls, so wall + outer form
-% a simple closed curve and the Laplace solution is a diffeomorphism (folds
-% are removed). Near-wall orthogonality is set by the wall pinning and the
-% Malik-Chebyshev redistribution, not by the outer-boundary shape.
+% Wall (eta=0) is pinned to the wall locus. The outer boundary (eta=H) is the
+% wall offset along the MEAN outward normal, not the local one: the local-normal
+% offset self-intersects on concave walls, leaving a non-simple boundary that
+% forces the harmonic map to keep folds. A mean-normal offset stays simple for
+% graph-like walls, so the Laplace solution is a diffeomorphism and the folds go.
+% Near-wall orthogonality comes from the wall pinning and the Malik-Chebyshev
+% redistribution, not from the outer-boundary shape.
 X_uni(1,:) = X_wall;
 Y_uni(1,:) = Y_wall;
 nm = [mean(nx_w), mean(ny_w)];  nm = nm / norm(nm);

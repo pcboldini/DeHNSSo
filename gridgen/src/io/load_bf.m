@@ -5,6 +5,7 @@ function [BF] = load_bf(input)
 %   input.filename (format controlled by input.format). Returns a struct
 %   with fields X, Y, U, V, W and any other scalars in the source file
 %   (Re, lref, Uref, nu when present).
+% An explicit filename wins; otherwise take the first file of the right format.
 if isfield(input, 'filename') && ~isempty(input.filename)
     filepath = fullfile(input.folder, input.filename);
 else
@@ -22,6 +23,8 @@ switch lower(input.format)
     case 'bin'
         [BF, ~] = read_BF_bin(filepath);
     case 'csv'
+        % readtable renames column headers that are not valid identifiers
+        % (OpenFOAM exports have several), which is expected here.
         warning('off', 'MATLAB:table:ModifiedAndSavedVarnames');
         BF = table2struct(readtable(filepath), 'ToScalar', true);
         warning('on', 'MATLAB:table:ModifiedAndSavedVarnames');

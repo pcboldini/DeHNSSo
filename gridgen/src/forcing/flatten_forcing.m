@@ -18,10 +18,10 @@ for i = 1:numel(forcing)
         assert(numel(w) == numel(xc), 'flatten_forcing: w must be scalar or match xc.');
         for k = 1:numel(xc)
             sk = s;  sk.xc = xc(k);  sk.w = w(k);
-            specs{end+1} = sk;   %#ok<AGROW>
+            specs{end+1} = sk;
         end
     else
-        specs{end+1} = s;        %#ok<AGROW>
+        specs{end+1} = s;
     end
 end
 end

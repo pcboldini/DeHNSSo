@@ -3,18 +3,13 @@ function class = classify_input(BF, input)
 %
 %   class = classify_input(BF, input)
 %
-%   Returns one of:
-%     'cartesian'             — structured rectangular grid. BF.X and BF.Y
-%                               are 1-D coordinate vectors, U/V/W are 2-D.
-%     'curvilinear_structured' — structured body-fitted grid. BF.X and BF.Y
-%                               are 2-D arrays of the same shape (ny × nx),
-%                               with Y varying along both axes (e.g. a hump).
-%     'unstructured'          — flat scatter cloud. BF.X and BF.Y are 1-D
-%                               column vectors of paired points, no implied
-%                               grid. Wall is not known a priori.
+%   'cartesian' is a structured rectangular grid, X and Y 1-D vectors with U/V/W
+%   2-D; 'curvilinear_structured' is body-fitted, X and Y both 2-D (ny × nx) with
+%   Y varying along both axes; 'unstructured' is a flat scatter of paired points
+%   with no implied grid, where the wall is not known a priori.
 %
-%   The decision uses input.structured (if supplied) as a strong hint and
-%   falls back to inspecting the shape / uniqueness of BF.X, BF.Y.
+%   input.structured is taken as a strong hint; otherwise the shape and
+%   uniqueness of BF.X, BF.Y decide.
 
 use_structured_hint = isfield(input, 'structured') && ~isempty(input.structured);
 structured_hint     = use_structured_hint && input.structured;

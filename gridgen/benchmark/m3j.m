@@ -41,7 +41,7 @@ params.FD_eta_order  = 4;
 
 %% Output
 output.folder   = fullfile(rootdir, '..', 'input');
-output.filename = 'DeHNSSo_input.mat';
+output.filename = 'DeHNSSo_input_m3j.mat';
 
 %% Run
 StabGrid = main_gridgen(input, params, output);

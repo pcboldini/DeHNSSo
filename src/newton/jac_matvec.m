@@ -1,21 +1,13 @@
 function w = jac_matvec(v_real, A, B, N)
-%JAC_MATVEC  Real-arithmetic matrix-vector product (matvec) for the Newton
-%   Jacobian of the HNS (harmonic Navier-Stokes) system.
+%JAC_MATVEC  Newton-Jacobian matrix-vector product in real arithmetic.
 %
 %   w = jac_matvec(v_real, A, B, N)
 %
-%   Applies the coupled Newton Jacobian in real arithmetic. With the
-%   holomorphic block A = ML - Jh, the antiholomorphic block B = -Ja, and
-%   vc = vr + i*vi, this returns
-%       J_real * [vr; vi] = [Re(A*vc + B*conj(vc)); Im(A*vc + B*conj(vc))].
-%
-%   Inputs:
-%     v_real  — stacked [real(vc); imag(vc)]
-%     A       — holomorphic Jacobian block ML - Jh
-%     B       — antiholomorphic Jacobian block -Ja
-%     N       — size of the complex system (length of vc)
-%   Outputs:
-%     w       — stacked [real(J*vc); imag(J*vc)]
+%   A = ML - Jh and B = -Ja are the paper's J_h and J_a, built from the build_JNL
+%   blocks. With vc = vr + 1i*vi this returns
+%       [Re(A*vc + B*conj(vc)); Im(A*vc + B*conj(vc))],
+%   which is the real Jacobian [Re(A+B), -Im(A-B); Im(A+B), Re(A-B)] applied to
+%   [vr; vi]. v_real stacks [real(vc); imag(vc)]; N is the length of vc.
 vc = v_real(1:N) + 1i * v_real(N+1:2*N);
 wc = A * vc + B * conj(vc);
 w  = [real(wc); imag(wc)];

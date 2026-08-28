@@ -35,9 +35,12 @@ cell_i3    = cell(nx,1);  cell_j3    = cell(nx,1);  cell_s3    = cell(nx,1);
 cell_i4    = cell(nx,1);  cell_j4    = cell(nx,1);  cell_s4    = cell(nx,1);
 
 % Chebyshev/Malik grid: index 1 = freestream (y=H), index ny = wall (y=0).
-bc_top     = [1, ny+1, 2*ny+1];
-bc_top_mfd = [1, 2*ny+1];
-bc_wall    = [ny, 2*ny, 3*ny];
+% Row maps come from bc_rows so that RHS writes the inhomogeneous values into
+% exactly the rows constrained here.
+B          = bc_rows(ny, false);
+bc_top     = B.top;        % u, v, w
+bc_top_mfd = B.top_mfd;    % MFD v is free (displacement velocity)
+bc_wall    = B.wall;
 bc_top_type = Opt.bc_top;  % cell array {'H_DR','H_DR','H_DR'} per component (u,v,w)
 
 iu  = Init.iu;
@@ -299,14 +302,14 @@ blk4(:, cur_off+1:cur_off+bsize) = Di*bufc_i;
 %   'H_DR'/'IH_DR' → identity row (Dirichlet);  'H_NM' → D1 row (Neumann: ∂/∂y=0)
 %   'free'         → keep the assembled equation (no imposed BC, as the mean-flow
 %                    distortion, MFD, does for v)
-for k = 1:3
+for k = 1:numel(bc_top)
     if strcmpi(bc_top_type{k}, 'free'); continue; end
-    r      = (k-1)*ny + 1;
+    r      = bc_top(k);
     is_mfd = ismember(r, bc_top_mfd);
     blk1(r,:) = 0;  blk2(r,:) = 0;  blk3(r,:) = 0;  blk4(r,:) = 0;
     if is_mfd; blk1MFD(r,:) = 0; end
     if strcmpi(bc_top_type{k}, 'H_NM')
-        cols = cur_off + (k-1)*ny + (1:ny);
+        cols = cur_off + r + (0:ny-1);   % column block of the variable on row r
         blk1(r, cols) = D1f(1,:);
         if is_mfd; blk1MFD(r, cols) = D1f(1,:); end
     else  % H_DR or IH_DR → identity row

@@ -30,7 +30,7 @@ is_compr = strcmpi(Opt.compressible, 'on');
 % its factor.
 bt_mark = block_thomas('free', [], 'mark');
 if nargout < 3
-    bt_ooc_cleanup = onCleanup(@() block_thomas('free', bt_mark, 'sweep')); %#ok<NASGU>
+    bt_ooc_cleanup = onCleanup(@() block_thomas('free', bt_mark, 'sweep'));
 end
 
 fprintf('\n');
@@ -155,6 +155,21 @@ elseif is_linear
         BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
     [StabRes, Mode, Stab] = update_modes(StabGrid, Bound, Mode, Opt, Stab, StabRes);
 
+    % A linear run has no convergence loop, so nothing else would notice a
+    % singular operator: it would return Inf/NaN silently. Picard makes the
+    % equivalent check per iteration.
+    lin_flds = {'u','v','w'};
+    if isfield(StabRes,'rho'); lin_flds = [lin_flds {'rho','T'}]; else; lin_flds = [lin_flds {'p'}]; end
+    for f = lin_flds
+        q = StabRes.(f{1});
+        if ~all(isfinite(q(:)))
+            error('main:linearNotFinite', ...
+                ['Linear solve returned non-finite %s''. The operator is singular ' ...
+                 'or badly conditioned; check Opt.bc_top (see the freestream ' ...
+                 'boundary-condition notes in docs/user_guide.md).'], f{1});
+        end
+    end
+
     if strcmpi(Opt.plot,'on')
         plot_intermediate(StabGrid, StabRes, Mode, Stab, Opt);
     end
@@ -174,6 +189,26 @@ else
     max_A_prev   = 0;          % previous iter's max_A — for runaway detection
     stall_msg_printed = false; % only print stall-disabled message once
 
+    % Opt.maxit caps the loop and Opt.miniter keeps it running past convergence
+    % (defaults: no cap, no minimum, so convergence alone decides). Use miniter
+    % rather than a smaller Opt.Conv to iterate further: Conv also gates the AF
+    % ramp in check_convergence, so lowering it changes the amplitude path.
+    % Opt.iter_history='on' records the modal amplitudes and max(dal) of every
+    % iteration in StabRes.iter_history, so two runs can be compared iteration
+    % by iteration.
+    if ~isfield(Opt,'maxit')   || isempty(Opt.maxit);   Opt.maxit   = inf; end
+    if ~isfield(Opt,'miniter') || isempty(Opt.miniter); Opt.miniter = 0;   end
+    keep_history = isfield(Opt,'iter_history') && strcmpi(Opt.iter_history,'on');
+    if keep_history; StabRes.iter_history = struct('A',{{}},'max_dal',[],'AF',[],'E_tot',[],'E_loc',[]); end
+    % Opt.backward_error='on' measures how well each per-mode system was solved,
+    % which needs no second run to compare against (see backward_error).
+    want_bwerr = isfield(Opt,'backward_error') && strcmpi(Opt.backward_error,'on');
+    if want_bwerr
+        % eta_mode/res_mode are cells: the number of active modes grows as
+        % harmonics switch on, so the rows are not the same length.
+        StabRes.bwerr = struct('eta_max',[],'eta_mode',{{}},'res_mode',{{}});
+    end
+
     % Anderson acceleration state (Walker-Ni 2011). Set Opt.anderson = m to
     % enable (history depth, typical 3-6); 0 disables.
     if ~isfield(Opt,'anderson'); Opt.anderson = 0; end
@@ -192,7 +227,7 @@ else
         [StabRes, Mode, Stab] = update_modes(StabGrid, Bound, Mode, Opt, Stab, StabRes);
     end
 
-    while max(abs(Opt.dal)) >= Opt.Conv || Opt.AF ~= 1
+    while (max(abs(Opt.dal)) >= Opt.Conv || Opt.AF ~= 1 || iter < Opt.miniter) && iter < Opt.maxit
         iter = iter + 1;
         Opt.dal = zeros(Mode.nf, 1);
         t_iter = tic;
@@ -203,6 +238,16 @@ else
         % Full Picard step: q_picard = ML⁻¹ * (rBC + f_NLT)
         [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff] = solve_modes( ...
             BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
+
+        % Backward error of this iteration's solves, before AVAL, Anderson or
+        % update_modes touch q or the forcing.
+        if want_bwerr
+            [e_max, e_mode, r_mode] = backward_error(Bound, StabGrid, Mode, Opt, ...
+                Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
+            StabRes.bwerr.eta_max(end+1)  = e_max;
+            StabRes.bwerr.eta_mode{end+1} = e_mode;
+            StabRes.bwerr.res_mode{end+1} = r_mode;
+        end
 
         % AVAL rescales the first iterate down to AMAX based on the
         % linear-regime prediction. Skip it when LOAD has warm-started
@@ -252,8 +297,8 @@ else
             end
 
             % Push new entry, drop oldest if full
-            AA_Xhist(:, end+1) = q_old(:);        %#ok<AGROW>
-            AA_Fhist(:, end+1) = f_k_vec;         %#ok<AGROW>
+            AA_Xhist(:, end+1) = q_old(:);
+            AA_Fhist(:, end+1) = f_k_vec;
             if size(AA_Xhist, 2) > AA_m
                 AA_Xhist(:, 1) = [];
                 AA_Fhist(:, 1) = [];
@@ -299,6 +344,15 @@ else
         solver_tag = 'P';
         fprintf('  Iter %3d [%s] | AF=%.3f | %d modes | max(A)=%.3e | max(dal)=%.3e | %.1f s\n', ...
             iter, solver_tag, Opt.AF, n_active, max_A, max_dal, toc(t_iter));
+
+        if keep_history
+            [E_tot, E_loc] = mode_energy(StabGrid, Bound, Mode, StabRes);
+            StabRes.iter_history.A{end+1}       = StabRes.A;
+            StabRes.iter_history.max_dal(end+1) = max_dal;
+            StabRes.iter_history.AF(end+1)      = Opt.AF;
+            StabRes.iter_history.E_tot(end+1)   = E_tot;
+            StabRes.iter_history.E_loc(end+1)   = E_loc;
+        end
 
         % --- Picard stall detection ---
         % Reset counter when AF changes or number of active modes changes

@@ -1,8 +1,28 @@
 # DeHNSSo — Developer Guide
 
-**Version 1.2** | Delft Harmonic Navier-Stokes Solver
+**DeHNSSo-v2** | Delft Harmonic Navier-Stokes Solver
 
 ---
+
+## Contents
+
+- [1. Repository layout](#1-repository-layout)
+- [2. Data structures](#2-data-structures)
+    - [StabGrid](#stabgrid)
+    - [Stab](#stab)
+    - [Opt](#opt)
+    - [Mode](#mode)
+    - [StabRes](#stabres)
+    - [Bound](#bound)
+- [3. Call flow](#3-call-flow)
+- [4. LHS matrix structure](#4-lhs-matrix-structure)
+- [5. RHS and inhomogeneous BCs](#5-rhs-and-inhomogeneous-bcs)
+- [6. LU strategies](#6-lu-strategies)
+- [6a. `lapack_band` MEX](#6a-lapackband-mex)
+- [7. ILST inflow computation](#7-ilst-inflow-computation)
+- [8. Adding a new inflow method](#8-adding-a-new-inflow-method)
+- [9. DeHNSSo-v2 changes relative to the heritage version](#9-dehnsso-v2-changes-relative-to-the-heritage-version)
+- [10. Reference cases](#10-reference-cases)
 
 ## 1. Repository layout
 
@@ -14,7 +34,7 @@ DeHNSSo/
 │       ├── sweptwing_flat.m        — Stationary CFI on flat-plate swept BL
 │       ├── sweptwing_hump.m        — Stationary CFI over a hump on swept BL
 │       └── m3j.m                   — Stationary CFI on M3J curved swept-wing BL
-├── input/                          — DeHNSSo_input.mat (gridgen → solver handoff, gitignored)
+├── input/                          — DeHNSSo_input_<case>.mat (gridgen → solver handoff, gitignored)
 ├── output/                         — Saved StabRes results (Opt.save_output, gitignored)
 ├── literature/                     — Committed reference data (auto-loaded by callers/benchmark/<case>.m via ref_file)
 │   ├── StabRes_Blasius_NPSE.mat        — NPSE for Blasius TS (Fig. 8)
@@ -34,7 +54,7 @@ DeHNSSo/
 │   │       ├── solver_IPSE.m       — Incompressible linear PSE (folds in the PSE marcher; seeded by solver_ILST)
 │   │       └── solver_CPSE.m       — Compressible linear PSE (Chang & Malik)
 │   ├── boundary/                   — Boundary conditions
-│   │   ├── setup_boundary.m        — Interpolate Stab.bcw/bct onto the grid; outflow buffer
+│   │   ├── setup_boundary.m        — Interpolate Stab.bcw/bct onto the grid; outflow buffer; resolve Opt.hr
 │   │   ├── add_wall_forcing.m      — Apply the gridgen-defined wall forcing (sets Stab.bcw)
 │   │   └── apply_resonator_wall.m  — Helmholtz-resonator impedance wall BC + optional mouth u'-slip (Opt.hr)
 │   ├── hns/                        — Core HNS equations + solve
@@ -53,8 +73,7 @@ DeHNSSo/
 │   │   ├── build_ctx.m             — Shared context: LHS, per-mode LU, BC vectors
 │   │   ├── build_JNL.m             — Analytical Jacobian of the NLT forcing (Jh, Ja)
 │   │   ├── residual_hns.m          — F(q) in real form [real(q_phys); imag(q_phys)]
-│   │   ├── jac_matvec.m            — Matrix-free Jacobian-vector product
-│   │   └── factor_precond_full.m   — Full ILU preconditioner (newton_precond='full')
+│   │   └── jac_matvec.m            — Matrix-free Jacobian-vector product
 │   ├── convergence/
 │   │   ├── check_convergence.m     — Convergence criterion, amplitude ramping
 │   │   └── update_modes.m          — Update u/v/w/p, amplitudes, active mode set
@@ -138,7 +157,7 @@ Solver control options.
 | Field | Default | Description |
 |---|---|---|
 | `bc_top` | `{'H_DR','H_DR','H_DR'}` | Freestream BC per component {u,v,w}: `'H_DR'`, `'IH_DR'`, `'H_NM'`, `'free'` |
-| `hr` | `[]` | Helmholtz-resonator impedance wall BC over a mouth (struct: `Y`, `mask`, optional `x`/`taper`/`uslip`); `[]` = rigid wall |
+| `hr` | `[]` | Helmholtz-resonator impedance wall BC over a mouth (struct: `Y` scalar or profile, or `mag`/`phi`; optional `mask`/`x`/`taper`/`uslip`); `[]` = rigid wall |
 | `buffer` | `'on'` | Buffer zone type |
 | `xb` | 85 | Buffer start (% of domain) |
 | `nltbufxb` | = `xb` | NLT-forcing buffer start (% of domain); begins the nonlinear buffer upstream of the linear buffer `xb` |
@@ -206,7 +225,8 @@ Interpolated BC arrays (set by `setup_boundary.m`).
 ## 3. Call flow
 
 ```
-callers/benchmark/<case>.m   (blasius / sweptwing_flat / sweptwing_hump / m3j)
+callers/benchmark/<case>.m   (blasius / blasius_compressible / sweptwing_flat /
+                              sweptwing_hump / m3j / resonator / synthetic_jet)
 └── main(Stab, StabGrid, Opt [, LHS])
     ├── init(StabGrid, Opt, Stab)          % defaults, mode numbering
     ├── inflow(Mode, Stab, StabGrid, StabRes, Opt)
@@ -249,7 +269,7 @@ bc_wall    = [ny, 2*ny, 3*ny];    % wall rows (u,v,w at y=0) — per station
 - `'H_NM'`: rows from `D1f(1,:)` (Chebyshev derivative row at freestream, evaluating `d/dy = 0`).
 - `'free'`: no row replacement — the governing equation is kept at `y = H` (as the MFD does for v), used with the parabolization buffer.
 
-**Wall BC:** always Dirichlet (no-slip), except over a resonator mouth when `Opt.hr` is set: `apply_resonator_wall` replaces the wall `v'`-row with the reactive relation `v' − Y·p' = 0` (compressible: on the `rho'`/`T'` columns via the EOS), applied to `MLA1` only so the `(0,0)` MFD keeps no-slip. Set `hr.uslip` for an optional free-slip `u'` (`du'/dy = 0`) over the mouth.
+**Wall BC:** always Dirichlet (no-slip), except over a resonator mouth when `Opt.hr` is set. `setup_boundary` resolves the settings once into `Bound.hr` (forming `Y` from `mag`/`phi` and the mouth from `StabGrid.forcing` where needed), and `apply_resonator_wall` replaces the wall `v'`-row with the reactive relation `v' − Y·p' = 0` (compressible: on the `rho'`/`T'` columns via the EOS), applied to `MLA1` only so the `(0,0)` MFD keeps no-slip. `Y` may be one value per mouth node for a resolved profile `Y(x)`. Set `hr.uslip` for an optional free-slip `u'` (`du'/dy = 0`) over the mouth.
 
 **`MFD_diff` compression:** the `(0,0)` mean-flow distortion mode (index `jmfd`) does not depend on `omega`/`beta`. Its LHS is stored as `MFD_diff = MLAMFD - MLA1` so that only the difference needs to be recomputed when the base-flow LHS `MLA1` changes.
 
@@ -281,7 +301,7 @@ Freestream values are only injected for components where `Opt.bc_top{k} = 'IH_DR
 
 **Banded LU** (`'lapack_band'`): LAPACK banded factor/solve via MEX (`src/linsolve/lapack_band/`; `dgbsv_factor.c` → `zgbtrf`, `dgbsv_solve_cached.c` → `zgbtrs`). Exploits the block-pentadiagonal structure with Apple Accelerate / OpenBLAS dense-banded BLAS3. Factors once per `(omega_j, beta_j)` and caches the factor (LRU, `Opt.lu_max_cache`), so Picard iterations reuse it. ~3× faster than the sparse path on a single solve. See section 6a.
 
-**Block-Thomas** (`'block_thomas'`, compressible only): dual-Schur block-pentadiagonal factorization (Paredes 2024, `src/linsolve/block_thomas/`), partitioned by `Opt.bt_np` (default 2). Factors once per `(omega_j, beta_j)` and caches like the banded path; `Opt.lu_cache='off'` forces a one-shot factor+solve, and `Opt.bt_ooc='on'` streams the factor to disk (out-of-core) for minimal RAM. Errors on the incompressible operator, whose zero-diagonal continuity rows make the unpivoted block factorization silently wrong.
+**Block-Thomas** (`'block_thomas'`, compressible only): dual-Schur block-pentadiagonal factorization (Paredes 2024, `src/linsolve/block_thomas/`), partitioned by `Opt.bt_np` (default 2). Factors once per `(omega_j, beta_j)` and caches like the banded path; `Opt.lu_cache='off'` forces a one-shot factor+solve, and `Opt.bt_ooc='on'` streams the factor to disk (out-of-core) for minimal RAM. `Opt.bt_apply` selects whether each diagonal station block is stored as its pivoted LU factors (default) or as its inverse ('inverse', Paredes 2024); the former is three orders more accurate on near-singular station blocks for ~4% more time; both forms are streamed out of core. Errors on the incompressible operator, whose zero-diagonal continuity rows make the unpivoted block factorization silently wrong.
 
 **Rerun:** when `Opt.rerun = 'on'`, the factor cache from the previous run is passed back in via `LHS.LU_cache`. If `(omega_j, beta_j)` is unchanged (e.g. an amplitude sweep) the factor is reused at no cost; if `omega_j` changes (frequency sweep) that mode is refactored. This applies to every caching mode (`'full'`, `'auto'`, `'lapack_band'`, `'block_thomas'`); `'seq'` and `'none'` never cache.
 
@@ -369,11 +389,13 @@ To add a method beyond the built-in `'ILST'`/`'CLST'`/`'PSE'`:
 
 ---
 
-## 9. v1.2 changes relative to heritage version
+## 9. DeHNSSo-v2 changes relative to the heritage version
 
 The heritage version is the published DeHNSSo monolithic function (Westerbeek et al., CPC 2024).
 
-| Feature | Heritage | v1.2 |
+The table below is not exhaustive: the compressible operator, the curvilinear formulation, the Newton pseudo-arclength continuation and the direct-solver back-ends are listed in `CHANGELOG.md`.
+
+| Feature | Heritage | DeHNSSo-v2 |
 |---|---|---|
 | Code structure | Single 900-line function | Modular: ~15 focused files |
 | LHS assembly | 6 redundant 14-line BC loops | Vectorized index vectors, no duplication |
@@ -395,7 +417,7 @@ The heritage version is the published DeHNSSo monolithic function (Westerbeek et
 
 ## 10. Reference cases
 
-Per-case stability runs live in `callers/benchmark/`. All four scripts share an identical layout (Setup → Spectral content → Inflow → BCs → Buffer → Solver options → Performance → Nonlinear solver choice → Adjoint → Run → Post-processing) and differ only in case-specific parameter values:
+Per-case stability runs live in `callers/benchmark/`. The scripts share an identical layout (Setup → Spectral content → Inflow → BCs → Buffer → Solver options → Performance → Nonlinear solver choice → Adjoint → Run → Post-processing) and differ only in case-specific parameter values:
 
 | Case | `Stab.M` | `Stab.N` | `Stab.omega_0` | `Stab.beta_0` | `Stab.phaseRef` | `Opt.buffer` |
 |---|---|---|---|---|---|---|
@@ -404,4 +426,4 @@ Per-case stability runs live in `callers/benchmark/`. All four scripts share an 
 | `sweptwing_hump` | 0 | 1 | 0 | `2π·lref/7.5e-3` | `'umax'` | `'para'` |
 | `m3j` | 0 | 1 | 0 | 0.40 | `'umax'` | `'on'` |
 
-The corresponding base flows are produced by `gridgen/benchmark/<case>.m` (which writes `input/DeHNSSo_input.mat`).
+The corresponding base flows are produced by `gridgen/benchmark/<case>.m` (which writes `input/DeHNSSo_input_<case>.mat`, one file per case so they cannot clobber each other).

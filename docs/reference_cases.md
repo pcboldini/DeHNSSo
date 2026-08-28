@@ -1,12 +1,14 @@
 # Reference cases
 
-Three reference cases ship with the repository. Each reproduces a published validation in Westerbeek et al., *DeHNSSo: The Delft Harmonic Navier-Stokes Solver for nonlinear stability problems with complex geometric features*, **Comput. Phys. Commun. 302 (2024) 109250** ([DOI](https://doi.org/10.1016/j.cpc.2024.109250)).
+Five reference cases ship with the repository. Cases 1-3 reproduce published validations in Westerbeek et al., *DeHNSSo: The Delft Harmonic Navier-Stokes Solver for nonlinear stability problems with complex geometric features*, **Comput. Phys. Commun. 302 (2024) 109250** ([DOI](https://doi.org/10.1016/j.cpc.2024.109250)). Cases 4 and 5 are v2 additions, validated against other references.
 
-| Case | Paper section | Paper figure | Caller | Base flow |
-|---|---|---|---|---|
-| Blasius TS — nonlinear | §6.1 | Fig. 8 | `callers/benchmark/blasius.m` | `bf_blasius.mat` |
-| Swept-wing CFI flat — nonlinear | §6.2 | Fig. 9 | `callers/benchmark/sweptwing_flat.m` | `bf_sweptwing_flat.mat` |
-| Swept-wing CFI hump — linear | §6.3 | Fig. 10 | `callers/benchmark/sweptwing_hump.m` | `bf_sweptwing_hump.mat` |
+| Case | Reference | Caller | Base flow |
+|---|---|---|---|
+| Blasius TS — nonlinear | §6.1, Fig. 8 | `callers/benchmark/blasius.m` | `bf_blasius.mat` |
+| Swept-wing CFI flat — nonlinear | §6.2, Fig. 9 | `callers/benchmark/sweptwing_flat.m` | `bf_sweptwing_flat.mat` |
+| Swept-wing CFI hump — linear | §6.3, Fig. 10 | `callers/benchmark/sweptwing_hump.m` | `bf_sweptwing_hump.mat` |
+| Compressible TS — linear | Zanus/Bertolotti | `callers/benchmark/blasius_compressible.m` | `BF_compressible.mat` |
+| Helmholtz resonator — linear | Michelis 2023 | `callers/benchmark/resonator.m` | `BF_compressible_M006_fine.mat` |
 
 The base flows are committed in `baseflow/output/benchmark/`. Both the gridgen and stability scripts read from there directly, so no manual file copying is required.
 
@@ -14,17 +16,39 @@ The base flows are committed in `baseflow/output/benchmark/`. Both the gridgen a
 
 > **Amplitude convention.** `Stab.A0_fund` is the **physical peak amplitude** `2|û|` of the disturbance — what you set in equals what post-process reports (`StabRes.A`). *(Changed in v2: it was previously the complex amplitude `|û|`, i.e. half this value; see the user guide "Amplitude convention".)*
 
-## Workflow (all three cases)
+## Contents
+
+- [Workflow (all cases)](#workflow-all-cases)
+- [Case 1 — Blasius TS waves](#case-1--blasius-ts-waves)
+- [Case 2 — Swept-wing CFI on a flat plate](#case-2--swept-wing-cfi-on-a-flat-plate)
+- [Case 3 — Swept-wing CFI over a smooth hump (linear)](#case-3--swept-wing-cfi-over-a-smooth-hump-linear)
+- [Case 4 — Compressible TS waves (Zanus/Bertolotti benchmark)](#case-4--compressible-ts-waves-zanusbertolotti-benchmark)
+- [Case 5 — Helmholtz-resonator wall (linear)](#case-5--helmholtz-resonator-wall-linear)
+- [Notes for replication](#notes-for-replication)
+
+## Case index
+
+| case | what it is | caller | runtime |
+|---|---|---|---|
+| [Case 1 — Blasius TS waves](#case-1--blasius-ts-waves) | 2-D nonlinear TS wave packet in a Blasius layer | `blasius` | see Heritage v1 note |
+| [Case 2 — Swept-wing CFI on a flat plate](#case-2--swept-wing-cfi-on-a-flat-plate) | nonlinear stationary crossflow, N=5, needs `Opt.anderson = 5` | `sweptwing_flat` | ~4 days (2544x100, workstation) |
+| [Case 3 — Swept-wing CFI over a smooth hump (linear)](#case-3--swept-wing-cfi-over-a-smooth-hump-linear) | linear CFI over a hump, conformal mesh | `sweptwing_hump` | ~0.6 h (2000x100, desktop) |
+| [Case 4 — Compressible TS waves (Zanus/Bertolotti benchmark)](#case-4--compressible-ts-waves-zanusbertolotti-benchmark) | compressible TS, five-variable operator | `blasius_compressible` | see Runtime (laptop, single thread) |
+| [Case 5 — Helmholtz-resonator wall (linear)](#case-5--helmholtz-resonator-wall-linear) | TS over a resonator mouth, impedance wall BC | `resonator` | ~180 s (4000x40, laptop) |
+
+Each case is documented with the same four subsections: physical parameters, numerical setup, expected output and runtime.
+
+## Workflow (all cases)
 
 ```matlab
 % 1. Build the stability grid from the base flow
 cd gridgen/benchmark/
 <case>            % blasius / sweptwing_flat / sweptwing_hump
-                  % writes ../../input/DeHNSSo_input.mat
+                  % writes ../../input/DeHNSSo_input_<case>.mat
 
 % 2. Run the stability solver
 cd ../../callers/benchmark/
-<case>            % loads ../../input/DeHNSSo_input.mat, runs main(), plots
+<case>            % loads ../../input/DeHNSSo_input_<case>.mat, runs main(), plots
 ```
 
 `<case>` is the same name in both folders. The stability caller plots amplitude evolution, growth rate, wavenumber, and eigenfunctions.
@@ -224,9 +248,58 @@ v2 single-thread on a 32 GB Apple Silicon laptop:
 
 ---
 
+## Case 5 — Helmholtz-resonator wall (linear)
+
+A Tollmien-Schlichting wave passing over a Helmholtz-resonator neck embedded in the wall, imposed as a reactive impedance boundary condition. Validated against Michelis, de Koning & Kotsonis, *On the interaction of Tollmien-Schlichting waves with a wall-embedded Helmholtz resonator*, **Phys. Fluids 35, 034104 (2023)**.
+
+### Physical parameters
+
+| Quantity | Value |
+|---|---|
+| Freestream velocity `U_0` | 20.9 m/s |
+| Reference length `l_ref` | `2.695×10⁻⁴` m (read from the base flow) |
+| Inflow Reynolds number `Re_0` | 371 |
+| Mach number | 0.061 (effectively incompressible) |
+| TS frequency `f_TS` | 295 Hz, equal to the resonance `f_r` (on resonance) |
+| Neck width | 1 mm, centred at `x_0 = 0.55` m |
+| Admittance | `\|Y\| = 12.7688`, `arg Y = π` |
+
+On resonance the reactances cancel, so the admittance is real and negative: the phase is exactly `π`, which is why a resonant passive resonator can only amplify.
+
+### Numerical setup
+
+| Knob | Default (shipped) |
+|---|---|
+| Spectral truncation `(M, N)` | `(1, 0)` — single TS mode |
+| `Opt.linear` | `'on'` |
+| `Opt.compressible` | `'on'` |
+| `Stab.IC` | `'CLST'` (compressible local stability, slow mode) |
+| `Stab.A0_fund` | `1×10⁻⁴` (arbitrary in linear mode) |
+| Streamwise grid `nx` | 4000, Gaussian-clustered at the neck (`spread = 30`, `refine = 5`) |
+| Wall-normal grid `ny` | 40 (FD, 4th-order) |
+| Buffer | `Opt.buffer = 'on'`, starts at 90% |
+
+The neck geometry lives in `gridgen/benchmark/resonator.m` as `params.forcing`, whose `w` is the **physical mouth half-width**; `params.spread` sets the refinement extent separately. That clustering puts 21 stations across the 1 mm mouth, at the finest spacing on the grid. The caller reads the centre and width back from `StabGrid.forcing`, so the two never drift apart.
+
+### Expected output
+
+```
+Resonator wall BC active: |Y| = 12.7688, arg Y = +180.0 deg, mouth = 21 stations.
+ neck Rx = 870,  measure Rx = 1053
+ dN_u' = +0.353,  dN_v' = +0.354    (Michelis ~ +0.4, amplifying)
+```
+
+Two solves are run, a rigid-wall baseline and the resonator, and the N-factor increment `ΔN` is their difference just upstream of the buffer. The resonator **amplifies**, consistent with Michelis 2023.
+
+### Runtime
+
+- 4000×40 grid, both solves: ~180 s on a laptop (Apple M-series, 32 GB)
+
+---
+
 ## Notes for replication
 
 - **Reference benchmark data.** NPSE (Cases 1, 2) and AHLNS (Case 3) reference curves are shipped in `literature/` and auto-loaded by the unified callers via `ref_file`. To override or skip the overlay, edit the `ref_file = ...` line near the top of the post-processing block in `callers/benchmark/<case>.m`.
-- **Buffer treatment.** The hump (Case 3) and compressible (Case 4) cases use parabolisation (`Opt.buffer = 'para'`); the Blasius and swept-wing-flat cases use amplitude damping (`'on'`). The buffer starts at 70–90% of the streamwise domain depending on the case.
+- **Buffer treatment.** The hump (Case 3) and compressible (Case 4) cases use parabolisation (`Opt.buffer = 'para'`); the Blasius, swept-wing-flat and resonator (Case 5) cases use amplitude damping (`'on'`). The buffer starts at 70–90% of the streamwise domain depending on the case.
 - **Convergence criterion.** `Opt.Conv = 1e-4` (default); for the nonlinear CFI case the absolute floor `1e-14` in `check_convergence.m` is what allows the harmonics to fully converge despite their tiny amplitudes.
-- **Memory.** Cases 1 and 3 fit comfortably on a laptop. Case 2 (nonlinear CFI, 6 modes) needs roughly 15 GB of RAM at peak.
+- **Memory.** Cases 1, 3 and 5 fit comfortably on a laptop. Case 2 (nonlinear CFI, 6 modes) needs roughly 15 GB of RAM at peak.

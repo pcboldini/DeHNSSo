@@ -3,13 +3,10 @@ function BF_new = ensure_metadata(BF_raw, BF_new, params)
 %
 %   BF_new = ensure_metadata(BF_raw, BF_new, params)
 %
-%   Fills missing reference scales on BF_new using this precedence:
-%       1. value already set on BF_new
-%       2. value carried over from BF_raw
-%       3. value provided explicitly in params
-%       4. derived from the other three (nu = Uref*lref/Re, etc.)
-%
-%   Errors if Re cannot be established — downstream build_stab_grid needs it.
+%   Fills missing reference scales on BF_new, in order of precedence: already set
+%   on BF_new, carried from BF_raw, given in params, or derived from the other
+%   three (nu = Uref*lref/Re). Errors if Re cannot be established, since
+%   build_stab_grid needs it.
 
 fields = {'Re','lref','Uref','nu'};
 

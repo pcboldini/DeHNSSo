@@ -23,7 +23,7 @@ nonzeromodesic   = [];
 nf_bc = min(size(Stab.bcw,3), Mode.nf);
 for j = 1:nf_bc
     if any(Stab.bcw(:,:,j),'all') || any(Stab.bct(:,:,j),'all')
-        nonzeromodeswall(end+1) = j; %#ok<AGROW>
+        nonzeromodeswall(end+1) = j;
     end
 end
 
@@ -81,10 +81,60 @@ if Stab.IC=="LOAD"
 
     if isfield(loaded,'phiIC')
         phiIC_load = loaded.phiIC;
-        assert(size(phiIC_load,1) == Mode.nf && size(phiIC_load,2) == nvar*StabGrid.ny, ...
-            'Loaded phiIC size [%d x %d] does not match expected [%d x %d].', ...
-            size(phiIC_load,1), size(phiIC_load,2), Mode.nf, nvar*StabGrid.ny);
         ny = StabGrid.ny;
+
+        % Per-variable layout, the natural one for an externally computed
+        % profile: [ny x nvar] for a single mode, or [ny x nvar x k] for k of
+        % them, with the wall-normal index down each column and one column per
+        % variable (u,v,w,p or u,v,w,rho,T). Folded here into the internal
+        % [k x nvar*ny] row stacking; MATLAB is column-major, so A(:) already
+        % concatenates the columns in the required order.
+        if size(phiIC_load,1) == ny && size(phiIC_load,2) == nvar
+            nblk = size(phiIC_load,3);
+            stacked = zeros(nblk, nvar*ny);
+            for r = 1:nblk
+                A = phiIC_load(:,:,r);
+                stacked(r,:) = A(:).';
+            end
+            phiIC_load = stacked;
+        end
+
+        assert(size(phiIC_load,2) == nvar*StabGrid.ny, ...
+            'Loaded phiIC has %d columns but %d are expected (nvar*ny = %d*%d).', ...
+            size(phiIC_load,2), nvar*StabGrid.ny, nvar, StabGrid.ny);
+
+        % Two accepted forms. Without phiIC_modes the array spans the whole mode
+        % list, row j being mode j. With it, only the listed modes are supplied:
+        % phiIC_modes is a k-by-2 list of (m,n) pairs naming each row, so a linear
+        % run needs a single row rather than a mostly empty nf-row array.
+        if isfield(loaded,'phiIC_modes')
+            pm = loaded.phiIC_modes;
+            assert(size(pm,2) == 2 && size(pm,1) == size(phiIC_load,1), ...
+                ['phiIC_modes must be [%d x 2], one (m,n) pair per phiIC row; ' ...
+                 'got [%d x %d].'], size(phiIC_load,1), size(pm,1), size(pm,2));
+            assert(isfield(Stab,'Mvec') && isfield(Stab,'Nvec'), ...
+                'phiIC_modes needs Stab.Mvec/Nvec (set by init).');
+            rows = zeros(size(pm,1),1);
+            for r = 1:size(pm,1)
+                jr = find(Stab.Mvec(:).' == pm(r,1) & Stab.Nvec(:).' == pm(r,2));
+                assert(isscalar(jr), ...
+                    'phiIC_modes row %d names mode (%d,%d), which is not in this run (M=%d, N=%d).', ...
+                    r, pm(r,1), pm(r,2), Stab.M, Stab.N);
+                rows(r) = jr;
+            end
+            assert(numel(unique(rows)) == numel(rows), 'phiIC_modes names the same mode twice.');
+            full = zeros(Mode.nf, nvar*ny);
+            full(rows,:) = phiIC_load;
+            phiIC_load = full;
+            fprintf('  LOAD: %d user profile(s) mapped to mode(s)%s\n', numel(rows), ...
+                    sprintf(' (%d,%d)', pm.'));
+        else
+            assert(size(phiIC_load,1) == Mode.nf, ...
+                ['Loaded phiIC has %d rows but %d are expected (the full mode list). ' ...
+                 'Supply phiIC_modes, a k-by-2 list of (m,n) pairs, to give only some modes.'], ...
+                size(phiIC_load,1), Mode.nf);
+        end
+
         for j = 1:Mode.nf
             StabRes.u(j,:,1) = phiIC_load(j,      1:ny);
             StabRes.v(j,:,1) = phiIC_load(j,   ny+1:2*ny);
@@ -415,7 +465,7 @@ if isfield(Opt,'pse_inflow') && ~isempty(Opt.pse_inflow)
         if cc; u=conj(u); v=conj(v); w=conj(w); r=conj(r); T=conj(T); p=conj(p); end
         StabRes.u(j,:,1)=u; StabRes.v(j,:,1)=v; StabRes.w(j,:,1)=w;
         StabRes.rho(j,:,1)=r; StabRes.T(j,:,1)=T; StabRes.p(j,:,1)=p;
-        StabRes.phi(j,:,1)=[u,v,w,r,T]; loaded=[loaded j]; %#ok<AGROW>
+        StabRes.phi(j,:,1)=[u,v,w,r,T]; loaded=[loaded j];
     end
     nonzeromodesic = unique([nonzeromodesic, loaded]);
     fprintf('PSE inflow: loaded %d modes from %s\n', numel(loaded), Opt.pse_inflow);
@@ -450,7 +500,7 @@ omega = StabRes.omegavec(j);
 beta = StabRes.betavec(j);
 ny = StabGrid.ny;
 
-if ~exist('bc_top','var'); bc_top = 'H_DR'; end  %#ok<NASGU> % seed mode decays: freestream BC immaterial
+if ~exist('bc_top','var'); bc_top = 'H_DR'; end % seed mode decays: freestream BC immaterial
 if ~exist('Opt','var');   Opt.plot = 'on'; end
 if ~isfield(Opt,'verbose'); Opt.verbose = 'on'; end
 

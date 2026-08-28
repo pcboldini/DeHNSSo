@@ -1,12 +1,12 @@
 %% DeHNSSo — Stationary CFI on the M3J curved-wall BL
-%  Base flow: DeHNSSo_input.mat (run gridgen/benchmark/m3j.m first).
+%  Base flow: DeHNSSo_input_m3j.mat (run gridgen/benchmark/m3j.m first).
 
 clear all; close all; clc
 restoredefaultpath
 rootdir = fullfile(fileparts(mfilename('fullpath')), '..', '..');
 addpath(genpath(fullfile(rootdir, 'src')))
 addpath(genpath(fullfile(rootdir, 'gridgen', 'src')))   % deriv2_uneven etc. used by init()
-load(fullfile(rootdir, 'input', 'DeHNSSo_input.mat'));   % StabGrid
+load(fullfile(rootdir, 'input', 'DeHNSSo_input_m3j.mat'));   % StabGrid
 
 %% Spectral content — (2M+1)(2N+1) modes incl. conjugates
 Stab.M = 0;                 % temporal modes

@@ -20,11 +20,8 @@ load(fullfile(input.folder, 'DeHNSSo_input_resonator.mat'));   % neck-clustered 
 
 Opt.compressible = 'on';        % (u,v,w,rho,T) path
 
-% Michelis (2023) reference scales & neck geometry
-U0   = 20.9;   lref = 2.6955e-4;   Re0 = 371;
+U0   = StabGrid.Uref;   lref = StabGrid.lref;   Re0 = StabGrid.Re;
 f_TS = 295;                        % TS frequency = resonator resonance [Hz] (on resonance)
-s_nd = 1e-3/lref;                  % neck (mouth) width [non-dim]
-Xc   = 0.55/lref + s_nd/2;         % neck centre [non-dim]
 
 %% Spectral content — single TS mode
 Stab.M = 1;                        % omega (temporal) modes
@@ -54,10 +51,7 @@ Opt.parfor  = 'off';
 Opt.solver  = 'picard';
 
 %% Resonator — admittance imposed over the neck mouth
-Ynd  = -12.7688;                   % non-dim resonator admittance at f_TS = 295 Hz (on resonance)
-x    = StabGrid.xun(1, :);   nx = numel(x);
-in_neck = (x >= Xc - s_nd/2) & (x <= Xc + s_nd/2);   % mouth stations
-fprintf('Ynd = %.4f,  neck = %d stations\n', Ynd, nnz(in_neck));
+hr = struct('mag', 12.7688, 'phi', pi);   % |Y| at f_TS = 295 Hz ; arg Y [rad], pi = on resonance
 
 %% Run — rigid-wall baseline, then the resonator (each a fresh operator)
 Opt.rerun       = 'off';
@@ -66,12 +60,13 @@ Opt.save_output = [];
 tic_total = tic;
 StabRes0 = main(Stab, StabGrid, Opt);                          % baseline (rigid wall)
 
-Opt.hr   = struct('Y', Ynd, 'mask', in_neck, 'x', x, 'taper', 0, 'uslip', false);
+Opt.hr   = hr;
 StabResA = main(Stab, StabGrid, Opt);                          % resonator
 fprintf('\nTotal execution time: %.1f s\n', toc(tic_total));
 
 %% Post-processing — N-factor increment dN (Michelis Eq. 4)
 %  dN_u' at the u-peak, dN_v' at the v-peak, measured just upstream of the buffer.
+x     = StabGrid.xun(1, :);   nx = numel(x);   Xc = StabGrid.forcing(1).xc;
 jA    = find(abs(StabRes0.omegavec(:).' - Stab.omega_0) < 1e-9, 1);
 imeas = max(1, round(Opt.xb*nx/100) - 1);
 Rx    = sqrt(Re0 * x);

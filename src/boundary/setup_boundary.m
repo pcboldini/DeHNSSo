@@ -62,6 +62,9 @@ Bound.bufsp = ones(Grid.ny, Grid.nx);
 Bound.stepi = 0;
 
 %% Inhomogeneous BCs: interpolate Stab.bcw / Stab.bct onto numerical grid
+% pchip, not cubic: interp1's 'cubic' is cubic convolution and needs uniform
+% spacing, so on a clustered grid it warns and falls back to spline. pchip also
+% avoids the overshoot that would put spurious forcing outside a compact source.
 is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
 n_bc     = 3 + double(is_compr);   % u,v,w [,T]
 nf = size(Stab.bcw, 3);
@@ -73,15 +76,29 @@ if has_bcw || has_bct
     for j = 1:nf
         for k = 1:n_bc
             if has_bcw && any(Stab.bcw(k,:,j))
-                Bound.bcw(k,:,j) = interp1(Stab.bcx, Stab.bcw(k,:,j), Grid.xun, 'cubic', 0);
+                Bound.bcw(k,:,j) = interp1(Stab.bcx, Stab.bcw(k,:,j), Grid.xun, 'pchip', 0);
             end
             if has_bct && any(Stab.bct(k,:,j))
-                Bound.bct(k,:,j) = interp1(Stab.bcx, Stab.bct(k,:,j), Grid.xun, 'cubic', 0);
+                Bound.bct(k,:,j) = interp1(Stab.bcx, Stab.bct(k,:,j), Grid.xun, 'pchip', 0);
             end
         end
     end
     if has_bcw; fprintf(' Inhomogeneous wall BC active (%d modes).\n', nnz(squeeze(any(any(Stab.bcw,1),2)))); end
     if has_bct; fprintf(' Inhomogeneous freestream BC active (%d modes).\n', nnz(squeeze(any(any(Stab.bct,1),2)))); end
+end
+
+%% Resonator reactive wall: resolve the admittance and the mouth once
+if isfield(Opt, 'hr') && ~isempty(Opt.hr)
+    hr = Opt.hr;
+    if ~isfield(hr, 'Y') || isempty(hr.Y); hr.Y = hr.mag .* exp(1i*hr.phi); end
+    if ~isfield(hr, 'mask') || isempty(hr.mask)
+        F       = Grid.forcing(1);
+        hr.mask = abs(Grid.xun(1,:) - F.xc) <= F.w;
+    end
+    hr.mask  = logical(hr.mask(:).');
+    Bound.hr = hr;
+    fprintf(' Resonator wall BC active: |Y| = %.4f, arg Y = %+.1f deg, mouth = %d stations.\n', ...
+            abs(hr.Y(1)), rad2deg(angle(hr.Y(1))), nnz(hr.mask));
 end
 
 end

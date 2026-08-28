@@ -66,7 +66,7 @@ mk_count = 0;
 for j = 1:size(StabRes.A, 1)
     if ~any(StabRes.A(j,:)); continue; end
     Aj = A_get(StabRes, j);
-    A_all = [A_all, Aj(Aj > 0)]; %#ok<AGROW>
+    A_all = [A_all, Aj(Aj > 0)];
 
     if ~isempty(omega_f); m = round(omega_vec(j)/omega_f); else; m = 0; end
     if ~isempty(beta_f);  n = round(beta_vec(j)/beta_f);   else; n = 0; end
@@ -81,8 +81,8 @@ for j = 1:size(StabRes.A, 1)
         ls = linestyles{mod(mk_count-1, numel(linestyles))+1};
         h = semilogy(R_vec, Aj, ['k' ls], 'LineWidth', 1.5);
     end
-    h_list(end+1) = h; %#ok<AGROW>
-    legs{end+1}   = lbl; %#ok<AGROW>
+    h_list(end+1) = h;
+    legs{end+1}   = lbl;
 end
 
 % Reference data (red, optional)
@@ -116,7 +116,7 @@ if nargin >= 3 && ~isempty(ref_data) && isfile(ref_data.file)
             else
                 Aj = ref_res.A(j, :) / sqrt2;
             end
-            A_all = [A_all, Aj(Aj > 0)]; %#ok<AGROW>
+            A_all = [A_all, Aj(Aj > 0)];
 
             if ~isempty(ref_omega_f) && numel(ref_omega_vec) >= j
                 m = round(ref_omega_vec(j)/ref_omega_f);
@@ -141,8 +141,8 @@ if nargin >= 3 && ~isempty(ref_data) && isfile(ref_data.file)
                 mk = marker{mod(mk_count_r-1, numel(marker))+1};
                 h = semilogy(xmark, ym, mk, 'Color', 'r', 'MarkerSize', 5);
             end
-            h_list(end+1) = h; %#ok<AGROW>
-            legs{end+1}   = lbl; %#ok<AGROW>
+            h_list(end+1) = h;
+            legs{end+1}   = lbl;
         end
     else
         warning('Could not find StabRes/StabGrid in %s', ref_data.file);
@@ -201,9 +201,9 @@ if nargin >= 4 && ~isempty(scholten_csv)
                 mk = marker{mod(mk_count_s-1, numel(marker))+1};
                 h  = semilogy(R_k, u_k, mk, 'Color', 'b', ...
                               'MarkerSize', 6, 'LineStyle', 'none');
-                h_list(end+1) = h; %#ok<AGROW>
-                legs{end+1}   = lbl; %#ok<AGROW>
-                A_all = [A_all, u_k(:)']; %#ok<AGROW>
+                h_list(end+1) = h;
+                legs{end+1}   = lbl;
+                A_all = [A_all, u_k(:)'];
             end
         end
     end

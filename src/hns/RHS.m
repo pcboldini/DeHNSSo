@@ -30,11 +30,15 @@ function [R] = RHS(Bound,Grid,Mode,Opt,StabRes,j)
         % Bound.bcw/bct are the PHYSICAL peak amplitude 2|û|; seed the complex
         % amplitude û = value/2 so the reconstructed field (post-process 2|û|) equals
         % the value the user set (same convention as the inflow A0; user_guide §5).
+        % Same row map the LHS uses, so each channel's value lands on the row
+        % whose BC type was consulted. The freestream and wall maps differ in the
+        % compressible case (see bc_rows).
+        B = bc_rows(ny, is_compr);
         for k = 1:n_bc
             if strcmpi(Opt.bc_top{k}, 'IH_DR')
-                R(base + (k-1)*ny + 1) = 0.5 * Bound.bct(k, i_vec, j);  % freestream
+                R(base + B.top(k)) = 0.5 * Bound.bct(k, i_vec, j);   % freestream
             end
-            R(base + k*ny) = 0.5 * Bound.bcw(k, i_vec, j);             % wall
+            R(base + B.wall(k)) = 0.5 * Bound.bcw(k, i_vec, j);      % wall
         end
     end
 end

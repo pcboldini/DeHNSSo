@@ -10,9 +10,24 @@ function [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff] = solve_modes(BF
 %     'none'         — backslash each solve (no caching)
 %   Opt.lu_cache='off' forces the cached back-ends to one-shot factor+solve.
 %   Opt.parfor='on' distributes the mode solves (auto-set in init).
+%   Opt.bt_apply selects how block_thomas applies the diagonal station block:
+%     'lu' (default) stores its pivoted LU factors, 'inverse' stores G^-1.
 
-if ~isfield(Opt, 'lu_mode'); Opt.lu_mode = 'full'; end
+if ~isfield(Opt, 'lu_mode'); Opt.lu_mode = 'auto'; end
 if ~isfield(Opt, 'parfor');  Opt.parfor  = 'off';  end
+% Fill-reducing ordering for the sparse-LU back-ends: 'auto' (default) picks
+% symrcm for the compressible operator and COLAMD for the incompressible one,
+% which is the better choice on each (see do_lu). 'symrcm' or 'colamd' force one.
+if ~isfield(Opt, 'lu_ordering') || isempty(Opt.lu_ordering); Opt.lu_ordering = 'auto'; end
+% Opt.lu_scaling='on' keeps UMFPACK's row scaling by taking the five-output lu.
+% The reduced-output forms below drop it, which costs accuracy on this operator
+% because its rows differ in scale by many decades.
+use_scaling = isfield(Opt,'lu_scaling') && strcmpi(Opt.lu_scaling,'on');
+% Opt.bt_apply chooses how block_thomas applies the diagonal station block:
+% 'inverse' (default) stores G^-1 as in Paredes et al. (2024), 'lu' keeps the
+% pivoted factors instead. See block_thomas for the measured difference.
+if ~isfield(Opt,'bt_apply') || isempty(Opt.bt_apply); Opt.bt_apply = 'lu'; end
+bt_amode = Opt.bt_apply;
 
 phys_modes = Mode.RunJ(Mode.RunJ >= round(Mode.nf/2));
 
@@ -37,8 +52,8 @@ if Opt.mmry ~= 1
     % free-slip u' over the mouth. Applied to MLA1 only, so the (0,0) mean-flow
     % distortion (MFD) mode keeps no-slip while the fluctuations see the resonator
     % (MFD_diff = MLAMFD - MLA1 restores no-slip for the MFD mode).
-    if isfield(Opt,'hr') && ~isempty(Opt.hr)
-        MLA1 = apply_resonator_wall(MLA1, Opt.hr, BF, StabGrid, is_compr);
+    if isfield(Bound,'hr') && ~isempty(Bound.hr)
+        MLA1 = apply_resonator_wall(MLA1, Bound.hr, BF, StabGrid, is_compr);
     end
     MFD_diff = MLAMFD - MLA1;
     clear MLAMFD
@@ -84,10 +99,10 @@ if strcmpi(Opt.lu_mode, 'seq')
         key = ml_key(StabRes.omegavec(j), StabRes.betavec(j));
         idx = find(strcmp(unique_keys, key), 1);
         if isempty(idx)
-            unique_keys{end+1} = key; %#ok<AGROW>
-            mode_groups{end+1} = k;   %#ok<AGROW>
+            unique_keys{end+1} = key;
+            mode_groups{end+1} = k;
         else
-            mode_groups{idx}(end+1) = k; %#ok<AGROW>
+            mode_groups{idx}(end+1) = k;
         end
     end
 
@@ -100,15 +115,16 @@ if strcmpi(Opt.lu_mode, 'seq')
         tic_g = tic;
 
         ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
-        r  = symrcm(ML);
-        [L, U, p] = lu(ML(r,r), 'vector');
+        % Same factorization and ordering choice as the cached back-ends, so that
+        % Opt.lu_ordering reaches this path too; lu_solve handles either layout.
+        lu_s = do_lu(ML, pick_ordering(Opt, is_compr), use_scaling);
 
         % Iterative refinement (Opt.iterref passes, default 0 = off). The operator
         % is severely ill-conditioned, so plain LU leaves deeply sub-dominant modes
         % at ~kappa*eps; refinement recovers accuracy towards eps. Reuses the LU.
         niter = 0;
         if isfield(Opt,'iterref') && ~isempty(Opt.iterref); niter = Opt.iterref; end
-        if niter > 0; Arr = ML(r,r); end
+        if niter > 0; MLr = ML; end          % refinement needs the unpermuted operator
         clear ML
 
         for ki = 1:numel(k_list)
@@ -117,18 +133,14 @@ if strcmpi(Opt.lu_mode, 'seq')
             R_j = RHS(Bound, StabGrid, Mode, Opt, StabRes, j);
             f_j = Stab_f(j,:);
             f_j(R_j ~= 0) = 0;
-            rhs   = R_j + f_j.';
-            rhs_r = rhs(r);
-            x_r   = U \ (L \ rhs_r(p));
-            for it = 1:niter
-                res = rhs_r - Arr*x_r;
-                x_r = x_r + U \ (L \ res(p));
+            rhs = R_j + f_j.';
+            x   = lu_solve(lu_s, rhs);
+            for it = 1:niter                  % refine on the original ordering
+                x = x + lu_solve(lu_s, rhs - MLr*x);
             end
-            x     = zeros(size(rhs));
-            x(r)  = x_r;
             q_out(k,:) = x.';
         end
-        clear L U p r
+        clear lu_s MLr
         fprintf(' done (%.1f s)\n', toc(tic_g));
     end
 
@@ -155,10 +167,10 @@ elseif strcmpi(Opt.lu_mode, 'lapack_band')
         key = ml_key(StabRes.omegavec(j), StabRes.betavec(j));
         idx = find(strcmp(unique_keys, key), 1);
         if isempty(idx)
-            unique_keys{end+1} = key; %#ok<AGROW>
-            mode_groups{end+1} = k;   %#ok<AGROW>
+            unique_keys{end+1} = key;
+            mode_groups{end+1} = k;
         else
-            mode_groups{idx}(end+1) = k; %#ok<AGROW>
+            mode_groups{idx}(end+1) = k;
         end
     end
 
@@ -275,9 +287,9 @@ elseif strcmpi(Opt.lu_mode, 'block_thomas')
         key = ml_key(StabRes.omegavec(j), StabRes.betavec(j));
         idx = find(strcmp(unique_keys, key), 1);
         if isempty(idx)
-            unique_keys{end+1} = key; mode_groups{end+1} = k; %#ok<AGROW>
+            unique_keys{end+1} = key; mode_groups{end+1} = k;
         else
-            mode_groups{idx}(end+1) = k; %#ok<AGROW>
+            mode_groups{idx}(end+1) = k;
         end
     end
     ntot = size(MLA1,1); b = round(ntot / StabGrid.nx);
@@ -303,9 +315,10 @@ elseif strcmpi(Opt.lu_mode, 'block_thomas')
             omgf = omg(fi); betf = bet(fi);
             fprintf(' Block-Thomas: parallel factor of %d group(s) [np=%d] ...\n', numel(fi), np_);
             tf = tic;
+            amode_p = bt_amode;                 % broadcast into the parfor body
             parfor ii = 1:numel(fi)
                 MLp = assemble_ML(omgf(ii), betf(ii), MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
-                btF_new{ii} = block_thomas('factor', MLp, b, np_, '');
+                btF_new{ii} = block_thomas('factor', MLp, b, np_, '', [], amode_p);
             end
             fprintf(' Block-Thomas parallel factor done (%.1f s)\n', toc(tf));
             for ii = 1:numel(fi)
@@ -336,7 +349,7 @@ elseif strcmpi(Opt.lu_mode, 'block_thomas')
             ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
             oocdir = '';
             if bt_ooc; oocdir = fullfile(tempdir, sprintf('btooc_g%d', g)); end
-            Xsol = block_thomas('solve', ML, b, RHSm, Opt.bt_np, oocdir);
+            Xsol = block_thomas('solve', ML, b, RHSm, Opt.bt_np, oocdir, [], bt_amode);
             clear ML
             fprintf(' done (%.1f s)\n', toc(tic_g));
         else
@@ -358,7 +371,7 @@ elseif strcmpi(Opt.lu_mode, 'block_thomas')
                 ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff);
                 oocdir = '';
                 if bt_ooc; oocdir = [tempname '_btcache']; block_thomas('free', oocdir,'reg'); end
-                Opt.LU_cache.(key) = struct('btF', block_thomas('factor', ML, b, Opt.bt_np, oocdir));
+                Opt.LU_cache.(key) = struct('btF', block_thomas('factor', ML, b, Opt.bt_np, oocdir, [], bt_amode));
                 clear ML
                 fprintf(' done (%.1f s)\n', toc(tic_g));
             else
@@ -398,12 +411,12 @@ else
                 case 'full'
                     fprintf(' LU (%d,%d) [cache all] ...', Stab.Mvec(j), Stab.Nvec(j));
                     tic_lu = tic;
-                    Opt.LU_cache.(ML_key) = do_lu(ML, is_compr);
+                    Opt.LU_cache.(ML_key) = do_lu(ML, pick_ordering(Opt, is_compr), use_scaling);
                     fprintf(' (%.1f s, L+U: %.0f MB)', toc(tic_lu), ...
                         (nnz(Opt.LU_cache.(ML_key).L)+nnz(Opt.LU_cache.(ML_key).U))*16/1e6);
 
                 case 'auto'
-                    if ~isfield(Opt, 'lu_max_cache'); Opt.lu_max_cache = 3; end
+                    if ~isfield(Opt, 'lu_max_cache'); Opt.lu_max_cache = max(8, nphys); end
                     if ~isfield(Opt, 'lu_order');     Opt.lu_order = {}; Opt.lu_order_label = {}; end
                     n_cached = numel(fieldnames(Opt.LU_cache));
                     if n_cached >= Opt.lu_max_cache
@@ -438,7 +451,7 @@ else
                     else
                         fprintf(' LU (%d,%d) [%d/%d cached] ...', Stab.Mvec(j), Stab.Nvec(j), n_cached+1, Opt.lu_max_cache);
                     end
-                    Opt.LU_cache.(ML_key) = do_lu(ML, is_compr);   % ordering picked for the operator (see do_lu)
+                    Opt.LU_cache.(ML_key) = do_lu(ML, pick_ordering(Opt, is_compr), use_scaling);
                     Opt.lu_order{end+1}       = ML_key;
                     Opt.lu_order_label{end+1} = sprintf('(%d,%d)', Stab.Mvec(j), Stab.Nvec(j));
 
@@ -469,12 +482,13 @@ else
     if strcmpi(Opt.parfor, 'on')
         fprintf(' Solving %d modes in parallel ...\n', nphys);
         tic_solve = tic;
+        Stab_fk = Stab_f(phys_modes, :);   % row per worker: sliced, not broadcast
         parfor k = 1:nphys
             j   = phys_modes(k);
             R_j = RHS(Bound, StabGrid, Mode, Opt, StabRes, j);
-            f_j = Stab_f(j,:);
+            f_j = Stab_fk(k,:);
             f_j(R_j ~= 0) = 0;
-            q_out(k,:) = lu_solve(LU_cell{k}, R_j + f_j.').';   %#ok<PFBNS>
+            q_out(k,:) = lu_solve(LU_cell{k}, R_j + f_j.').';
         end
         fprintf(' Solve done in %.1f s\n', toc(tic_solve));
     else
@@ -524,7 +538,16 @@ end
 
 function x = lu_solve(lu_s, rhs)
 %LU_SOLVE  Solve using cached LU.
-if isstruct(lu_s) && isfield(lu_s, 'q')
+if isstruct(lu_s) && isfield(lu_s, 'D')
+    % Five-output lu: P*(D\ML)*Q = L*U  =>  x = Q*(U\(L\(P*(D\rhs))))
+    if isfield(lu_s, 'r')
+        y = lu_s.Q * (lu_s.U \ (lu_s.L \ (lu_s.P * (lu_s.D \ rhs(lu_s.r)))));
+        x = zeros(size(rhs));
+        x(lu_s.r) = y;
+    else
+        x = lu_s.Q * (lu_s.U \ (lu_s.L \ (lu_s.P * (lu_s.D \ rhs))));
+    end
+elseif isstruct(lu_s) && isfield(lu_s, 'q')
     % [L,U,p,q] = lu(ML,'vector'):  ML(p,q) = L*U  =>  x(q) = U\(L\rhs(p))
     x = zeros(size(rhs));
     x(lu_s.q) = lu_s.U \ (lu_s.L \ rhs(lu_s.p));
@@ -543,13 +566,35 @@ else
 end
 end
 
-function s = do_lu(ML, use_symrcm)
-%DO_LU  LU with the fill-reducing ordering chosen for the operator.
-%   use_symrcm=true: symrcm + 3-output lu — needed on the COMPRESSIBLE operator
-%     (COLAMD gives catastrophic fill there). false: 4-output lu (COLAMD), better
-%     on the INCOMPRESSIBLE operator. Both handled by lu_solve.
-if nargin < 2 || isempty(use_symrcm); use_symrcm = false; end
-if use_symrcm
+function s = do_lu(ML, use_symrcm, use_scaling)
+%DO_LU  LU with a fill-reducing ordering.
+%   use_symrcm=true: symrcm + 3-output lu. The operator is a chain of station
+%     blocks, so it is banded and bandwidth reduction is what limits the fill;
+%     needed on the COMPRESSIBLE operator, where COLAMD fills catastrophically.
+%   use_symrcm=false: 4-output lu (COLAMD with column pivoting), which gives both
+%     less fill and a faster factorization on the INCOMPRESSIBLE operator.
+%   Both are handled by lu_solve. The caller decides; solve_modes picks by
+%   operator unless Opt.lu_ordering overrides it.
+%
+%   Measured fill, nnz(L+U)/nnz(M), at 40/60/80 stations:
+%     incompressible  COLAMD 6.7/6.8/6.8   symrcm 7.1/7.3/7.3
+%     compressible    COLAMD 25/43/50      symrcm 36.4/37.1/37.7
+%   symrcm stays flat in Nx while COLAMD grows, crossing near Nx=55; at Nx=200
+%   COLAMD gave nearly double the fill. AMD and nested dissection are far worse
+%   on both (up to 79x and 174x), so neither is offered.
+if nargin < 2 || isempty(use_symrcm);  use_symrcm  = false; end
+if nargin < 3 || isempty(use_scaling); use_scaling = false; end
+if use_scaling
+    % Five-output lu: P*(D\ML)*Q = L*U, so the row scaling D is kept.
+    if use_symrcm
+        r = symrcm(ML);
+        [L, U, P, Q, D] = lu(ML(r,r));
+        s = struct('L', L, 'U', U, 'P', P, 'Q', Q, 'D', D, 'r', r);
+    else
+        [L, U, P, Q, D] = lu(ML);
+        s = struct('L', L, 'U', U, 'P', P, 'Q', Q, 'D', D);
+    end
+elseif use_symrcm
     r = symrcm(ML);
     [L, U, p] = lu(ML(r,r), 'vector');
     s = struct('L', L, 'U', U, 'p', p, 'r', r);
@@ -559,15 +604,19 @@ else
 end
 end
 
-function ML = assemble_ML(omega, beta, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff)
-% MLA5 = iβ·∂_x cross-viscous block (compressible only; zero sparse otherwise).
-if omega == 0 && beta == 0
-    ML = MLA1 + MFD_diff;
-elseif omega == 0
-    ML = MLA1 + MLA3*beta + MLA4*beta^2 + MLA5*beta;
-elseif beta == 0
-    ML = MLA1 + MLA2*omega;
-else
-    ML = MLA1 + MLA2*omega + MLA3*beta + MLA4*beta^2 + MLA5*beta;
+function use_symrcm = pick_ordering(Opt, is_compr)
+%PICK_ORDERING  Resolve Opt.lu_ordering to the flag do_lu expects.
+%   'auto' (default) follows the operator: symrcm for the compressible one,
+%   COLAMD for the incompressible one. 'symrcm' and 'colamd' force the choice,
+%   which is worth doing on small compressible cases, where COLAMD is both
+%   leaner and faster below roughly Nx = 55.
+switch lower(Opt.lu_ordering)
+    case 'auto';   use_symrcm = is_compr;
+    case 'symrcm'; use_symrcm = true;
+    case 'colamd'; use_symrcm = false;
+    otherwise
+        error('solve_modes:lu_ordering', ...
+            'Opt.lu_ordering must be ''auto'', ''symrcm'' or ''colamd'' (got ''%s'')', ...
+            Opt.lu_ordering);
 end
 end

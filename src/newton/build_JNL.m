@@ -3,39 +3,31 @@ function [Jh, Ja] = build_JNL(q_complex, ctx)
 %
 %   [Jh, Ja] = build_JNL(q_complex, ctx)
 %
-%   Returns sparse complex matrices Jh, Ja, each of size (nphys*bsize) x
-%   (nphys*bsize), representing the Wirtinger derivatives of the NLT
-%   (nonlinear-terms) forcing:
+%   Returns sparse complex (nphys*bsize)^2 matrices holding the Wirtinger
+%   derivatives of the NLT forcing,
 %
 %       d f_NLT = Jh * dq_phys + Ja * conj(dq_phys)
 %
-%   Jh holds the contributions where the differentiated slot is a physical
-%   mode. Ja holds the contributions where the differentiated slot is the
-%   conjugate of a physical mode, so the derivative there acts on
-%   conj(q_phys).
+%   Jh collecting the terms where the differentiated slot is a physical mode and
+%   Ja those where it is the conjugate of one. NB these are the forcing derivatives
+%   alone, dr/dQ and dr/dQ*: the paper's J_h and J_a are ML - Jh and -Ja, formed in
+%   jac_matvec. Only the momentum rows (u, v, w)
+%   are filled; the inflow rows (station i=1) are zero. Buffer attenuation from
+%   ctx.Bound.bufcf is applied.
 %
-%   Only the momentum rows (u, v, w) are filled. The inflow rows (station
-%   i=1) are zero. Buffer-zone attenuation from ctx.Bound.bufcf is applied.
-%
-%   rho-bar convection block (compressible group (a)): for nvar=5, the
-%   convective momentum forcing is weighted by the base density rho_bar,
-%   xm_j = rho_bar*(...), and the spanwise iu*beta*w_gh coupling is kept:
+%   For nvar=5 the convective momentum forcing is weighted by the base density
+%   and keeps the spanwise iu*beta*w_gh coupling:
 %
 %       xm_j = rho_bar * ( - u_gh*Dx(u_jk) - v_gh*Dy(u_jk) - i*beta_jk*w_gh*u_jk )
 %       ym_j = rho_bar * ( - u_gh*Dx(v_jk) - v_gh*Dy(v_jk) - i*beta_jk*w_gh*v_jk )
 %       zm_j = rho_bar * ( - u_gh*Dx(w_jk) - v_gh*Dy(w_jk) - i*beta_jk*w_gh*w_jk )
 %
-%   Incompressible case (nvar=4): rho_bar = 1 and beta = 0, so this reduces
-%   to the original convective bilinear terms:
+%   For nvar=4, rho_bar = 1 and beta = 0, so these reduce to the plain
+%   convective bilinear terms.
 %
-%       xm_j = - u_gh * Dx(u_jk) - v_gh * Dy(u_jk)
-%       ym_j = - u_gh * Dx(v_jk) - v_gh * Dy(v_jk)
-%
-%   ctx fields used:
-%     nphys, nf, ny, nx, bsize, phys_modes
-%     HB, dxi, D1, xix, etax, xiy, etay, Bound.bufcf
-%   Cached on first call (optional):
-%     ctx.Dx_op, ctx.Dy_op  — one-mode physical derivative operators
+%   ctx fields used: nphys, nf, ny, nx, bsize, phys_modes, HB, dxi, D1, xix,
+%   etax, xiy, etay, Bound.bufcf. Optionally cached on first call: ctx.Dx_op,
+%   ctx.Dy_op, the one-mode physical derivative operators.
 
 %% Setup: dimensions and mode indexing
 nphys = ctx.nphys;
@@ -48,30 +40,24 @@ half  = round(nf/2);
 nv    = ctx.nvar;                       % 4 incompressible | 5 compressible
 Ntot  = nphys * bsize;
 
-% Precomputed grid -> block-local index base for gmap. gbase(k) maps a grid
-% index k in 1..ny*nx (column-major, y fastest) to its offset within a mode
-% block, for the u/rho/etc sub-block at sub=0. gmap then just adds
-% base_off+sub: a plain indexed lookup, avoiding a floor/mod on long vectors
-% at every call, which matters since this is a hot path in the cubic group.
-% gi is always an integer index into 1..ny*nx.
+% Grid -> block-local index base for gmap: gbase(k) maps a grid index k in
+% 1..ny*nx (column-major) to its offset within a mode block at sub=0, so gmap
+% only adds base_off+sub. Avoids a floor/mod on long vectors in the cubic hot path.
 gk    = (1:ny*nx).' - 1;
 gbase = floor(gk/ny)*nv*ny + mod(gk, ny) + 1;
 
-% Compressible NLT (nonlinear-terms) group selector, for debugging and
-% validation: assemble only the listed groups. Default is all groups.
-% 'a' momentum convection, 'b' continuity, 'c' rho'-coupling,
-% 'd' equation-of-state (EOS) pressure, 'e' viscous variable-mu,
+% Compressible NLT group selector, for debugging and validation: assemble only
+% the listed groups (default all). 'a' momentum convection, 'b' continuity,
+% 'c' rho'-coupling, 'd' equation-of-state pressure, 'e' viscous variable-mu,
 % 'f' energy viscous, 'g' cubic.
 jgroups = 'abcdefg';
 if isfield(ctx,'jac_groups') && ~isempty(ctx.jac_groups); jgroups = lower(ctx.jac_groups); end
 wantg = @(c) any(jgroups==c);
 wa = (nv == 4) || wantg('a');   % momentum convection (always on for incompressible)
 
-% Base density for the compressible density-weighted convection term
-% rho_bar*(u'.grad)u'. Incompressible: rho_bar = 1 (identity), so the block
-% reduces to the original form. Stored column-major (y fastest) to match
-% the Dx_op/Dy_op grid ordering and the ndgrid(1:ny,1:nx) value vectors
-% used below.
+% Base density for the compressible density-weighted convection rho_bar*(u'.grad)u'.
+% Incompressible: rho_bar = 1. Stored column-major (y fastest) to match the
+% Dx_op/Dy_op ordering and the ndgrid(1:ny,1:nx) value vectors
 if nv == 5
     rhob_vec = ctx.StabGrid.rho(:);
 else
@@ -122,10 +108,8 @@ else
 end
 
 % Unpack all physical and conjugate modes into ny x nx arrays (u, v, w[, rho]).
-% w is included even in the 2D case, because NLT_HNS still computes the
-% w-momentum forcing zm_j, whose derivatives are nonzero whenever w != 0.
-% rho (compressible only) is needed for the continuity NLT (nonlinear term)
-% -div(rho' u') in group (b).
+% w is kept even in 2D, since NLT_HNS still computes zm_j, whose derivatives are
+% nonzero whenever w ~= 0. rho (compressible) feeds the continuity NLT in group (b).
 u_mode = zeros(nf, ny, nx);
 v_mode = zeros(nf, ny, nx);
 w_mode = zeros(nf, ny, nx);
@@ -156,16 +140,11 @@ for k = 1:nphys
     end
 end
 
-% Triplet accumulators. Triplets are periodically folded into the sparse
-% accumulators Jh_acc/Ja_acc (via fold_tr) to bound peak memory: the raw
-% triplet list carries roughly 4x duplicate (row,col) entries plus
-% concatenation overhead, which balloons on large grids, so folding sums the
-% duplicates and frees the arrays. Triplets are collected in CELL arrays
-% (each push_entries call appends one cell) and concatenated once per mode
-% via fold_tr (vertcat + a single sparse() call). This is O(n) and avoids
-% the O(n^2) growth of numeric [Ih;rows] concatenation, which used to
-% dominate build time on large M/nx grids (the cubic group pushes many
-% entries).
+% Triplet accumulators, periodically folded into Jh_acc/Ja_acc by fold_tr to
+% bound peak memory: the raw list carries ~4x duplicate (row,col) entries, so
+% folding sums them and frees the arrays. Triplets are collected in CELL arrays
+% and concatenated once per mode, which is O(n); numeric [Ih;rows] growth is
+% O(n^2) and used to dominate build time on large M/nx grids.
 Ih = {}; Jh_cols = {}; Vh = {};
 Ia = {}; Ja_cols = {}; Va = {};
 Jh_acc = sparse(Ntot, Ntot);
@@ -247,14 +226,10 @@ for kk = 1:nphys
         Dx_w_jk = reshape(Dx_op * w_jk(:), ny, nx);
         Dy_w_jk = reshape(Dy_op * w_jk(:), ny, nx);
 
-        % Contributions from the gh slot (diagonal in y,x), weighted by rho_bar:
-        %   ∂xm_j/∂u_gh = -rho_bar*diag(Dx_u_jk);  ∂xm_j/∂v_gh = -rho_bar*diag(Dy_u_jk)
-        %   ∂ym_j/∂u_gh = -rho_bar*diag(Dx_v_jk);  ∂ym_j/∂v_gh = -rho_bar*diag(Dy_v_jk)
-        % plus the spanwise coupling (compressible, beta_jk ~= 0):
-        %   ∂xm_j/∂w_gh = -rho_bar*i*beta_jk*diag(u_jk), etc.
-        %
-        % These place diagonal entries at rows u_row/v_row/w_row and columns
-        % u/v/w_col_gh in column block "col_blk(gh)", targeting Jh or Ja.
+        % gh slot, diagonal in (y,x), weighted by rho_bar:
+        %   ∂xm_j/∂u_gh = -rho_bar*diag(Dx_u_jk),  ∂xm_j/∂v_gh = -rho_bar*diag(Dy_u_jk)
+        %   ∂xm_j/∂w_gh = -rho_bar*i*beta_jk*diag(u_jk)   (compressible only)
+        % Rows u/v/w_row, columns u/v/w_col_gh in col_blk(gh).
         cb_gh  = col_blk(gh);
         conj_gh = is_conj(gh);
         if cb_gh > 0 && wa   % gh mode active + group (a) selected
@@ -297,12 +272,9 @@ for kk = 1:nphys
             end
         end
 
-        % Contributions from the jk slot (operator blocks), weighted by rho_bar.
-        % The same operator differentiates all three momentum rows with
-        % respect to their own velocity component (xm<-u_jk, ym<-v_jk,
-        % zm<-w_jk):
+        % jk slot, operator blocks. One operator serves all three momentum rows
+        % against their own component (xm<-u_jk, ym<-v_jk, zm<-w_jk):
         %   ∂q_m/∂q_jk = -diag(u_gh)*Dx - diag(v_gh)*Dy - i*beta_jk*diag(w_gh)
-        % rho_bar multiplies each entry at its row's grid point.
         cb_jk   = col_blk(jk);
         conj_jk = is_conj(jk);
         if cb_jk > 0 && wa   % jk mode active + group (a) selected
@@ -337,9 +309,7 @@ for kk = 1:nphys
             end
         end
 
-        % Shared compressible perturbation fields, independent of which
-        % group is selected, used by groups (b)-(e): gh density and jk
-        % temperature, and their gradients.
+        % Shared by groups (b)-(e): gh density, jk temperature, and their gradients.
         if nv == 5
             rho_gh    = squeeze(rho_mode(gh,:,:));
             Dx_rho_gh = reshape(Dx_op*rho_gh(:), ny, nx);   % d rho_gh / dx
@@ -350,11 +320,9 @@ for kk = 1:nphys
             omega_jk  = ctx.omegavec(jk);
         end
 
-        % Group (b): continuity NLT (nonlinear term)  c_j = -div(rho' u'),
-        %   with rho' = rho_gh and u' = the jk velocity:
-        %     c_j = -[d_x(rho_gh u_jk) + d_y(rho_gh v_jk) + d_z(rho_gh w_jk)]
-        %   Row = rho-row (+3ny). Bilinear in rho_gh (gh slot) and
-        %   (u,v,w)_jk (jk slot).
+        % Group (b): continuity  c_j = -div(rho' u')
+        %   = -[d_x(rho_gh u_jk) + d_y(rho_gh v_jk) + d_z(rho_gh w_jk)]
+        % rho-row (+3ny), bilinear in rho_gh (gh) and (u,v,w)_jk (jk).
         if nv == 5 && wantg('b')
             % --- gh slot: d c_j / d rho_gh  (column = rho of gh block) ---
             if cb_gh > 0
@@ -403,11 +371,9 @@ for kk = 1:nphys
             end
         end
 
-        % Group (c): rho'-coupling  q_r = -rho'( d_t q' + Ubar.grad q' )
-        %   - rho'( u'.grad Qbar ),  with rho' = rho_gh, d_t -> -i*omega_jk,
-        %   and base d_z = 0. Writes the x/y/z-momentum rows (offsets
-        %   0, ny, 2ny) and the energy row (4ny). This group is NOT
-        %   weighted by rho_bar, since rho_gh IS the perturbation density.
+        % Group (c): rho'-coupling  q_r = -rho'(d_t q' + Ubar.grad q') - rho'(u'.grad Qbar),
+        % d_t -> -i*omega_jk, base d_z = 0. Momentum rows (0, ny, 2ny) and energy (4ny).
+        % NOT weighted by rho_bar: rho_gh IS the perturbation density.
         if nv == 5 && wantg('c')
             n2 = ny*nx;
             rvec = rho_gh(:);
@@ -466,14 +432,10 @@ for kk = 1:nphys
             end
         end
 
-        % Group (d): nonlinear equation-of-state (EOS) pressure. The
-        %   reconstructed p' is linear in (rho',T'), so the quadratic
-        %   rho'T' piece is a forcing term: momentum
-        %   -grad(rho'T')/(gamma Ma^2); energy
-        %   +Ec*(d_t+Ubar.grad)(rho'T')/(gamma Ma^2), with d_t -> -i(om_gh+om_jk).
-        %   Bilinear in rho'=rho_gh (gh slot, rho-col) and T'=T_jk (jk slot,
-        %   T-col). Reuses rho_gh/Dx_rho_gh/Dy_rho_gh from group (b) and
-        %   T_jk/Dx_T_jk/Dy_T_jk from group (c).
+        % Group (d): nonlinear EOS pressure. p' is linear in (rho',T'), so the
+        % quadratic rho'T' piece forces: momentum -grad(rho'T')/(gamma Ma^2),
+        % energy +Ec*(d_t+Ubar.grad)(rho'T')/(gamma Ma^2), d_t -> -i(om_gh+om_jk).
+        % Bilinear in rho_gh (gh, rho-col, from group b) and T_jk (jk, T-col, from c).
         if nv == 5 && wantg('d')
             n2   = ny*nx;
             gam  = ctx.StabGrid.gamma;  Ma = ctx.StabGrid.Ma;
@@ -529,13 +491,11 @@ for kk = 1:nphys
             end
         end
 
-        % Group (e): variable-viscosity (variable-mu) viscous momentum
-        %   forcing (flat-plate 2nd derivatives, matching NLT_HNS lines
-        %   226-280). Bilinear in mu'=muT*T_gh (gh slot, T-col) and the
-        %   velocity_jk 1st/2nd derivatives (jk slot, u/v/w-cols). Each
-        %   viscous term has the form C(T_gh).*(op*vel_jk): the gh-slot
-        %   derivative d/dT_gh gives diag/Dx/Dy/i*beta_gh contributions, and
-        %   the jk-slot derivative d/dvel gives diag(C)*op.
+        % Group (e): variable-mu viscous momentum forcing (NLT_HNS 226-280). Bilinear
+        % in mu'=muT*T_gh
+        % (gh, T-col) and the velocity_jk 1st/2nd derivatives (jk, u/v/w-cols). Each
+        % term is C(T_gh).*(op*vel_jk): d/dT_gh gives diag/Dx/Dy/i*beta_gh, d/dvel
+        % gives diag(C)*op.
         if nv == 5 && wantg('e')
             n2 = ny*nx;
             dg = @(f) spdiags(f(:),0,n2,n2);
@@ -631,10 +591,9 @@ for kk = 1:nphys
             end
         end
 
-        % Group (f): energy-equation viscous forcing (matching NLT lines
-        % 282-302), energy (T) row only. First sub-part: heat conduction
-        % (k=mu), bilinear in k'=muT*T_gh (gh slot, T-col) and the T_jk 2nd
-        % derivatives (jk slot, T-col), with factor 1/(Re*Pr).
+        % Group (f): energy viscous forcing (NLT_HNS 282-302), T-row only. Heat
+        % conduction (k=mu), bilinear in k'=muT*T_gh (gh, T-col) and the T_jk 2nd
+        % derivatives (jk, T-col), factor 1/(Re*Pr).
         if nv == 5 && wantg('f')
             n2 = ny*nx;
             dg = @(f) spdiags(f(:),0,n2,n2);
@@ -719,11 +678,9 @@ for kk = 1:nphys
         end
     end
 
-    % Group (g): cubic (3-wave) nonlinear term, trilinear in the state.
-    % Sums over triples (a,b,c) whose spectral indices add up to mode j.
-    % First sub-part: cubic convection -rho_a (u_b.grad) q_c, writing the
-    % x/y/z-momentum and energy rows. Three Jacobian slots: a (rho-col,
-    % diagonal), b (velocity-cols, diagonal), c (q-col, convective operator).
+    % Group (g): cubic term, trilinear, summed over triples (a,b,c) whose spectral
+    % indices add to j. First sub-part -rho_a (u_b.grad) q_c writes momentum and
+    % energy rows; slots a (rho-col), b (velocity-cols), c (q-col, operator).
     if nv == 5 && wantg('g')
         dg = @(f) spdiags(f(:),0,ny*nx,ny*nx);
         j = phys(kk);  mj=mmv(j); nj=nnv(j);
@@ -864,9 +821,8 @@ for kk = 1:nphys
           end
         end
     end
-    % Fold this mode's triplets into the sparse accumulators. This bounds
-    % peak memory, and resetting the cell arrays per mode keeps each
-    % cell-append O(1) rather than letting the whole thing grow O(n^2).
+    % Fold this mode's triplets into the accumulators: bounds peak memory, and
+    % resetting the cells per mode keeps each append O(1) rather than O(n^2).
     [Jh_acc,Ih,Jh_cols,Vh]=fold_tr(Jh_acc,Ih,Jh_cols,Vh,Ntot);
     [Ja_acc,Ia,Ja_cols,Va]=fold_tr(Ja_acc,Ia,Ja_cols,Va,Ntot);
 end
@@ -889,10 +845,8 @@ if ib <= nx
     Ja = D * Ja;
 end
 
-% The inflow station rows (i=1) must be zero, mirroring what NLT_HNS does:
-% it writes f(j, nv*ny+1:end) and leaves the first-station block untouched
-% at zero. The gh-slot diagonal part uses u/v/w_row, which INCLUDES station
-% 1, so zero the whole first-station block (nv*ny rows: u, v, w[, rho, T]).
+% Zero the inflow station rows (i=1), as NLT_HNS leaves them: the gh-slot diagonal
+% uses u/v/w_row, which includes station 1, so clear the whole first block.
 inflow_rows_one = 1:nv*ny;   % all vars at station 1
 for kk = 1:nphys
     r = (kk-1)*bsize + inflow_rows_one;
@@ -906,9 +860,8 @@ end
 %% Local helpers
 
 function [acc, I, J, V] = fold_tr(acc, I, J, V, Ntot)
-%FOLD_TR  Concatenate the collected triplet cells (vertcat, which is O(n)),
-%   fold them into the sparse accumulator (this sums any duplicate
-%   (row,col) entries), then clear the cell arrays.
+%FOLD_TR  Concatenate the triplet cells (vertcat, O(n)) and fold them into the
+%   sparse accumulator, which sums duplicate (row,col) entries, then clear.
 if ~isempty(V)
     acc = acc + sparse(vertcat(I{:}), vertcat(J{:}), vertcat(V{:}), Ntot, Ntot);
     I = {}; J = {}; V = {};

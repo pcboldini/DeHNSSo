@@ -3,11 +3,10 @@ function plot_raw_bf(BF, class)
 %
 %   plot_raw_bf(BF, class)
 %
-%   One figure with four stacked panels: mesh, then U, V, W contours on the
-%   raw (pre-resample) grid. Works for all three input classes:
-%     'cartesian'              — 1-D axes; mesh via meshgrid, contourf on (Xg, Yg, field)
-%     'curvilinear_structured' — 2-D X, Y arrays; contourf directly
-%     'unstructured'           — scatter points; coloured scatter per component
+%   One figure, four stacked panels: mesh, then U, V, W contours on the raw grid.
+%   Handles all three input classes: 'cartesian' via meshgrid and contourf,
+%   'curvilinear_structured' by contouring the 2-D X, Y directly, and
+%   'unstructured' as a coloured scatter per component.
 
 U = BF.U; V = BF.V; W = BF.W;
 comps = {U, V, W};
@@ -15,6 +14,8 @@ names = {'U','V','W'};
 
 figure('Name','Raw BF');
 
+% Each class needs a different call: contourf on a meshgrid, contourf on the
+% 2-D arrays directly, or a coloured scatter.
 switch class
     case 'cartesian'
         % Flat-lattice scatter (paired vectors) → 1-D axes + 2-D fields.
@@ -59,7 +60,8 @@ switch class
             xlabel('x'); ylabel('y'); title(names{c});
         end
 
-        % ----- Diagnostic figure: wall-row values & dy* on the RAW source -----
+        % Wall-row diagnostics on the RAW source, before any interpolation, so a
+        % bad wall row can be told apart from a resampling artefact.
         x_wall = Xg(k_wall, :);
 
         figure('Name','Raw BF — wall row diagnostics');

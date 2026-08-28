@@ -20,14 +20,24 @@ cell_i2    = cell(nx,1);  cell_j2    = cell(nx,1);  cell_s2    = cell(nx,1);
 cell_i3    = cell(nx,1);  cell_j3    = cell(nx,1);  cell_s3    = cell(nx,1);
 cell_i4    = cell(nx,1);  cell_j4    = cell(nx,1);  cell_s4    = cell(nx,1);
 
-bc_top      = [1, 2*ny+1, 3*ny+1, 4*ny+1];
-bc_top_mfd  = bc_top;
-bc_wall     = [ny, 2*ny, 3*ny, 5*ny];
+% Row maps come from bc_rows so that RHS writes the inhomogeneous values into
+% exactly the rows constrained here. Freestream constrains u, w, rho, T (v is
+% free, it carries the displacement); the wall constrains u, v, w, T.
+B           = bc_rows(ny, true);
+bc_top      = B.top;
+bc_top_mfd  = B.top_mfd;
+bc_wall     = B.wall;
 
-if isfield(Opt,'bc_top') && iscell(Opt.bc_top) && numel(Opt.bc_top) >= 4
-    bc_top_type = Opt.bc_top(1:4);
+% init validates the length, so a short cell here means LHS_compressible was
+% called directly. Fail rather than silently substituting all-Dirichlet.
+if ~isfield(Opt,'bc_top') || isempty(Opt.bc_top)
+    bc_top_type = repmat({'H_DR'}, 1, numel(bc_top));
+elseif ~iscell(Opt.bc_top) || numel(Opt.bc_top) ~= numel(bc_top)
+    error('LHS_compressible:badBCtop', ...
+          'Opt.bc_top must be a cell array of %d entries (u, w, rho, T); got %d.', ...
+          numel(bc_top), numel(Opt.bc_top));
 else
-    bc_top_type = {'H_DR','H_DR','H_DR','H_DR'};
+    bc_top_type = Opt.bc_top;
 end
 wall_thermal = 'isothermal';
 if isfield(Opt,'bc_wall_thermal'); wall_thermal = Opt.bc_wall_thermal; end

@@ -7,12 +7,8 @@ function DD = deriv1_uneven(x, y, order)
 %   differences on a non-uniform grid (central in the interior, one-sided at the
 %   ends). For a matrix y, each column is differentiated independently.
 %
-%   Inputs:
-%     x     — grid coordinates (column vector or matrix)
-%     y     — values at x (column vector or matrix)
-%     order — accuracy 2, 4, or 6 (default 2)
-%   Outputs:
-%     DD    — dy/dx, same size as y
+%   x holds the coordinates and y the values, either a column vector or a matrix;
+%   order is 2, 4 or 6 (default 2). DD is dy/dx, the same size as y.
 
 %% Default order
 if nargin < 3

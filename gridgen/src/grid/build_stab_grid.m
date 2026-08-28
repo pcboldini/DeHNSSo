@@ -1,20 +1,17 @@
 function Grid = build_stab_grid(BF, Grid)
 %BUILD_STAB_GRID  Build the DeHNSSo StabGrid struct from a resampled BF.
 %
-%   For a Cartesian mesh (default):
-%     BF must have: BF.X [1 x nx], BF.Y [ny x 1], BF.U/V/W [ny x nx]
-%     Optional: BF.H, BF.y_i (Malik parameters; estimated from data if absent)
-%     Metric tensors are set analytically (identity transform).
+%   Cartesian (default): BF.X [1 x nx], BF.Y [ny x 1], BF.U/V/W [ny x nx], with
+%   optional Malik parameters BF.H and BF.y_i estimated from the data if absent.
+%   The metrics are the analytic identity transform.
 %
-%   For a curvilinear mesh (BF.mesh_type = 'curvilinear'):
-%     BF must be the output of resample_curvilinear or resample_unstructured.
-%     Metric tensors are computed via finite differences.
+%   Curvilinear (BF.mesh_type = 'curvilinear'): BF is the output of
+%   resample_curvilinear or resample_unstructured, and the metrics come from
+%   finite differences.
 %
-%   Compressible base flow (auto-detected from BF.rho and BF.T):
-%     If BF carries BF.rho and BF.T, they are copied to Grid and Sutherland's
-%     law is evaluated to populate Grid.mu, Grid.dmuT, Grid.d2muT2 (needed by
-%     the energy equation and the LHS_compressible operator).
-%     Thermo metadata BF.Ma, BF.Pr, BF.gamma, BF.Sstar is passed through.
+%   A compressible BF is detected from BF.rho and BF.T: both are copied to Grid
+%   and Sutherland's law fills Grid.mu, Grid.dmuT, Grid.d2muT2 for the energy
+%   equation and LHS_compressible. BF.Ma, BF.Pr, BF.gamma and BF.Sstar pass through.
 
 curvilinear = isfield(BF, 'mesh_type') && strcmp(BF.mesh_type, 'curvilinear');
 
@@ -159,12 +156,10 @@ if curvilinear
     Grid.etaxx = ( c.*d.^2.*xxi_xi - a.*d.^2.*yxi_xi + c.^3.*xeta_eta   - a.*c.^2.*yeta_eta - 2*c.^2.*d.*xxi_eta + 2*a.*c.*d.*yxi_eta) ./ J3;
     Grid.etayy = ( b.^2.*c.*xxi_xi - a.*b.^2.*yxi_xi + a.^2.*c.*xeta_eta - a.^3.*yeta_eta   - 2*a.*b.*c.*xxi_eta + 2*a.^2.*b.*yxi_eta) ./ J3;
 
-    % Mixed second-order inverse metrics xixy, etaxy. The incompressible operator
-    % needs only the Laplacian (xixx+xiyy), but the compressible operator has
-    % explicit d_x d_y cross-derivatives, whose chain rule needs the mixed terms.
-    % Computed by chain-ruling the (exact, closed-form) first-order inverse metrics:
-    %   xixy  = d/dy(xix)  = xiy.*d_dxi(xix)  + etay.*d_deta(xix)
-    %   etaxy = d/dy(etax) = xiy.*d_dxi(etax) + etay.*d_deta(etax)
+    % Mixed inverse metrics, needed only by the compressible operator's explicit
+    % d_x d_y cross-derivatives; the incompressible one uses just the Laplacian.
+    % Obtained by chain-ruling the closed-form first-order metrics:
+    %   xixy = xiy.*d_dxi(xix) + etay.*d_deta(xix),  likewise etaxy from etax.
     dxix_dxi  = zeros(Grid.ny, Grid.nx);   dxix_deta  = Grid.D1 * Grid.xix;
     detax_dxi = zeros(Grid.ny, Grid.nx);   detax_deta = Grid.D1 * Grid.etax;
     for j = 1:Grid.ny

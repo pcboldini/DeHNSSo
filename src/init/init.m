@@ -100,8 +100,36 @@ end
 valid_bc = {'H_DR','IH_DR','H_NM','free'};
 assert(all(ismember(lower(Opt.bc_top), lower(valid_bc))), ...
     'init:badBCtop', 'bc_top entries must be one of: %s.', strjoin(valid_bc, ', '));
-if ~isfield(Opt,'lu_mode');    Opt.lu_mode = 'full'; end  % 'full', 'auto', or 'none'
-if ~isfield(Opt,'lu_max_cache'); Opt.lu_max_cache = 3; end  % max cached LU for 'auto' mode
+% One entry per freestream channel. Compressible constrains u, w, rho, T (v is free);
+% incompressible constrains u, v, w. A wrong count used to be silently padded.
+% Freestream Neumann on v is redundant with continuity when u' is pinned there
+% and dw'/dz vanishes too (beta_0 = 0, or w' pinned): continuity then already
+% gives dv'/dy = 0 at the top, so the imposed row adds no information and the
+% operator is singular. Caught here because a linear run would otherwise return
+% Inf without complaint.
+if ~is_compr && numel(Opt.bc_top) >= 3
+    u_pinned = strcmpi(Opt.bc_top{1}, 'H_DR') || strcmpi(Opt.bc_top{1}, 'IH_DR');
+    w_pinned = strcmpi(Opt.bc_top{3}, 'H_DR') || strcmpi(Opt.bc_top{3}, 'IH_DR');
+    beta0    = ~isfield(Stab,'beta_0') || Stab.beta_0 == 0;
+    if strcmpi(Opt.bc_top{2}, 'H_NM') && u_pinned && (beta0 || w_pinned)
+        error('init:bcTopSingular', ...
+            ['Opt.bc_top = {''%s'',''H_NM'',''%s''} with beta_0 = %g makes the '  ...
+             'operator singular: with u'' pinned at the freestream and '          ...
+             'dw''/dz = 0 there, continuity already forces dv''/dy = 0, so the '  ...
+             'Neumann row on v'' is redundant. Use ''free'' on v'' to leave it '  ...
+             'unconstrained, or relax u'' (and w'', if beta_0 ~= 0) to ''H_NM''.'], ...
+             Opt.bc_top{1}, Opt.bc_top{3}, Stab.beta_0*(~beta0));
+    end
+end
+
+B_chan = bc_rows(1, is_compr);
+assert(numel(Opt.bc_top) == n_bc_top, 'init:bcTopSize', ...
+    ['Opt.bc_top has %d entries but %d are expected (Opt.compressible=%s): ' ...
+     'the freestream channels are %s.'], numel(Opt.bc_top), n_bc_top, ...
+    Opt.compressible, strjoin(B_chan.top_names, ', '));
+if ~isfield(Opt,'lu_mode');    Opt.lu_mode = 'auto'; end  % 'auto' (bounded cache), 'full', or 'none'
+% Opt.lu_max_cache is left unset here: solve_modes defaults it to max(8, n_modes),
+% where the number of active modes is known.
 if ~isfield(Opt,'parfor')
     has_pct = license('test','Distrib_Computing_Toolbox') && ~isempty(ver('parallel'));
     if has_pct; Opt.parfor = 'on'; else; Opt.parfor = 'off'; end

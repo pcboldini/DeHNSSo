@@ -7,7 +7,6 @@ addpath(genpath(rootdir));
 %% ===== USER INPUTS =====
 
 % Case: Zanus/Bertolotti 2017 PSE CPG benchmark, Ma=0.5, Te=206 K, adiabatic flat plate.
-% Mirror of tests/configs/case_M500_F40.m.
 
 % Flow parameters
 BL.Ma       = 0.50;
@@ -113,9 +112,9 @@ v = continuity_V(y_phys, x_phys, u, rho);
 
 % Reference scales (Blasius lref convention)
 BF.Ma    = BL.Ma;
-BF.Pr    = BL.Pr;
-BF.gamma = BL.gamma;
-BF.Sstar = BL.Sstar;
+BF.Pr    = BL.Pr; 
+BF.gamma = BL.gamma; 
+BF.Sstar = BL.Sstar; 
 BF.Uref  = Uref;
 BF.lref  = lref;
 BF.nu    = BL.nu;

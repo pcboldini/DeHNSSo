@@ -1,19 +1,14 @@
 function plot_resampled_bf(BF, opts)
 %PLOT_RESAMPLED_BF  Visualise the interpolated base-flow on the new curvilinear mesh.
 %
-% Produces up to five figures:
-%   1.  Mesh and U, V, W contours in physical (x, y)
-%   1b. Same mesh and contours in computational (ξ, η) — body-fitted view
-%   2.  Wall-normal U, V, W profiles at several ξ stations
-%   3.  (optional) Streamwise U, V, W profiles at several η stations
-%   4.  Wall-normal ∂/∂η profiles at the same ξ stations as Figure 2
+%   Up to five figures: mesh and U, V, W contours in physical (x, y) and again in
+%   computational (ξ, η); wall-normal profiles at several ξ stations; optional
+%   streamwise profiles at several η stations; and wall-normal ∂/∂η profiles at
+%   the same ξ stations.
 %
-% Optional opts fields:
-%   .xi_slices      : xi indices or fractions [0,1] to plot wall-normal profiles
-%                     (default: 8 equally spaced stations)
-%   .eta_slices     : eta indices or fractions [0,1] to plot streamwise profiles
-%   .mesh_skip_xi   : draw every N-th ξ-line (default: max(1, round(n_xi/60)))
-%   .mesh_skip_eta  : draw every N-th η-line (default: max(1, round(n_eta/20)))
+%   opts: xi_slices and eta_slices, as indices or fractions in [0,1] (default 8
+%   equally spaced ξ stations); mesh_skip_xi and mesh_skip_eta to draw every N-th
+%   grid line (defaults n_xi/60 and n_eta/20).
 
 if nargin < 2;  opts = struct();  end
 

@@ -106,7 +106,7 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://doi.org
 DeHNSSo/
 ├── callers/
 │   └── benchmark/               — Reference example callers (blasius.m, blasius_compressible.m, ...)
-├── input/                       — Stability grid input (DeHNSSo_input.mat | DeHNSSo_input_compressible.mat)
+├── input/                       — Stability grid input, one per case (DeHNSSo_input_<case>.mat)
 ├── literature/                  — Reference data for validation plots (PSE, DNS, LPSE, Zanus/Bertolotti)
 ├── src/                         — Solver source code
 │   ├── main.m                   — Main solver entry point
@@ -164,7 +164,7 @@ flowchart TD
     IBL -. ".mat" .-> GG
     OF -. ".csv" .-> GG
     DNS -. ".mat / .csv" .-> GG
-    GG == "DeHNSSo_input.mat" ==> HNS
+    GG == "DeHNSSo_input_case.mat" ==> HNS
     HNS ==> RES
 
     style S1 fill:none,stroke:#0aa6d6,stroke-width:2px
