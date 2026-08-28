@@ -37,6 +37,8 @@ BF.Y = BL.y/BF.lref;
 BF.U = BL.u/BF.Uref;
 BF.V = BL.v/BF.Uref;
 BF.W = BL.w/BF.Uref;
+BF.H   = BL.H   / BF.lref;
+BF.y_i = BL.y_i / BF.lref;
 % Derivatives are produced by gridgen (compute_bf_derivatives).
 
 %% Postprocessing
