@@ -37,7 +37,7 @@ function [EV,u,v,w,p,y,fn]=solver_ILST(Re,Ur,Wr,dUr,dWr,y_md,omega,beta,N,y_max,
 [y,D1,D2] = MappingMalik(y_max,y_i,eta',DM(:,:,1),DM(:,:,2));
 clear DM eta
 
-% The transformed matrices represent the full operators. Removing the outer 
+% The transformed matrices represent the full operators. Removing the outer
 % elements yields the Dirichlet conditions
 D1e = D1(1,  :);
 D1w = D1(end,:);
@@ -125,21 +125,21 @@ A = [A11  A12   Z  [Zc  Z  Zc]   % x-momentum
       Z   A42  A43 [Zc  Z  Zc]]; % continuity
 
 % RHS matrix (alpha)
-B = [B11   Z    Z  [Zc B14 Zc] 
+B = [B11   Z    Z  [Zc B14 Zc]
       Zr   Zr   Zr [0   Zr  0]
-      Z   B22   Z  [Zc  Z  Zc] 
+      Z   B22   Z  [Zc  Z  Zc]
       Zr   Zr   Zr [0   Zr  0]
-      Z    Z   B33 [Zc  Z  Zc] 
+      Z    Z   B33 [Zc  Z  Zc]
      B41   Z    Z  [Zc  Z  Zc] ];
- 
+
 % RHS matrix (alpha^2)
-C = [C11   Z    Z  [Zc  Z  Zc] 
+C = [C11   Z    Z  [Zc  Z  Zc]
       Zr   Zr   Zr [0   Zr  0]
-      Z   C22   Z  [Zc  Z  Zc] 
+      Z   C22   Z  [Zc  Z  Zc]
       Zr   Zr   Zr [0   Zr  0]
-      Z    Z   C33 [Zc  Z  Zc] 
+      Z    Z   C33 [Zc  Z  Zc]
       Z    Z    Z  [Zc  Z  Zc] ];
-  
+
 %% Construct companion matrices
 
 % A-sized zero and identity matrices for the companion linearisation
@@ -167,7 +167,7 @@ V = V(1:end/2,:);
 V = [zeros(1,2*(4*(N-2)+2)); V(0*(N-2)+1:1*(N-2)+0,:); zeros(1,2*(4*(N-2)+2));...
      zeros(1,2*(4*(N-2)+2)); V(1*(N-2)+1:2*(N-2)+0,:); zeros(1,2*(4*(N-2)+2));...
      zeros(1,2*(4*(N-2)+2)); V(2*(N-2)+1:3*(N-2)+0,:); zeros(1,2*(4*(N-2)+2));...
-                             V(3*(N-2)+1:4*(N-2)+2,:)]; 
+                             V(3*(N-2)+1:4*(N-2)+2,:)];
 
 % Extract the eigenvectors
 u   = V(0*N+1:1*N,:);

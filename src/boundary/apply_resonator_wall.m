@@ -1,7 +1,7 @@
-function MLA1 = apply_resonator_wall(MLA1, hr, BF, StabGrid, is_compr)
+function [MLA1, rows] = apply_resonator_wall(MLA1, hr, BF, StabGrid, is_compr)
 %APPLY_RESONATOR_WALL  Helmholtz-resonator reactive wall boundary condition (BC) over a mouth.
 %
-%   MLA1 = apply_resonator_wall(MLA1, hr, BF, StabGrid, is_compr)
+%   [MLA1, rows] = apply_resonator_wall(MLA1, hr, BF, StabGrid, is_compr)
 %
 %   Over the mouth, replaces the wall row enforcing v' = 0 with
 %
@@ -27,6 +27,8 @@ if numel(Yv) ~= numel(mouth)
           'hr.Y must be a scalar or have %d entries, one per mouth node.', numel(mouth));
 end
 
+rows = zeros(1, numel(mouth));
+
 % Reactive wall: v'|wall - Y*p'|wall = 0 over the mouth
 if is_compr
     ga  = 1.4;  if isfield(BF,'gamma') && ~isempty(BF.gamma); ga = BF.gamma; end
@@ -38,6 +40,7 @@ if is_compr
         cT   = off + 5*ny;                  % wall T'-column
         MLA1(vrow, crho) = -tap(k)*Yv(k) * BF.T(ny,i)   / gM2;   % -Y * (dp'/drho') at the wall
         MLA1(vrow, cT)   = -tap(k)*Yv(k) * BF.rho(ny,i) / gM2;   % -Y * (dp'/dT')   at the wall
+        rows(k) = vrow;
     end
 else
     for k = 1:numel(mouth)
@@ -45,6 +48,7 @@ else
         vrow = off + 2*ny;                  % wall v'-row
         cp   = off + 4*ny;                  % wall p'-column (p is a state variable)
         MLA1(vrow, cp) = -tap(k)*Yv(k);         % v' - Y*p' = 0
+        rows(k) = vrow;
     end
 end
 
@@ -52,13 +56,16 @@ end
 % condition with du'/dy = 0. This is applied to MLA1 only, so only the
 % fundamental mode sees it.
 if isfield(hr,'uslip') && hr.uslip
-    D1w = StabGrid.D1(ny, :);               % wall row of the eta-derivative operator
+    D1w  = StabGrid.D1(ny, :);              % wall row of the eta-derivative operator
+    urows = zeros(1, numel(mouth));
     for k = 1:numel(mouth)
         off  = bsize*(mouth(k)-1);
         urow = off + ny;                    % wall u'-row (u-block comes first, wall is the last eta point)
         MLA1(urow, :)            = 0;        % clear the u' = 0 identity row
         MLA1(urow, off+1:off+ny) = D1w;      % impose du'/dy = 0 (free slip) instead
+        urows(k) = urow;
     end
+    rows = [rows, urows];
 end
 end
 

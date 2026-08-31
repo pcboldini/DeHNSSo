@@ -87,11 +87,22 @@ print_config(StabGrid, Stab, Opt);
 
 %% 2. Convergence loop
 % Reuse from a previous run (Opt.rerun='on'): restore the assembled blocks and
-% the per-mode LU cache (both independent of A0) to skip assembly + factorization.
+% the per-mode LU cache to skip assembly + factorization.
 MLA1 = []; MLA2 = []; MLA3 = []; MLA4 = []; MLA5 = []; MFD_diff = [];
+Opt.hr_in_MLA1 = false;   % does the current MLA1 already carry the resonator rows?
+Opt.hr_rows    = [];      % rows a previous resonator wrote into MLA1
 if strcmpi(Opt.rerun,'on')
     has_mla = isfield(LHS,'MLA1') && ~isempty(LHS.MLA1);
     has_lu  = isfield(LHS,'LU_cache') && ~isempty(fieldnames(LHS.LU_cache));
+    % The resonator rows live in MLA1, so a cached factorization belongs to one
+    % admittance. 
+    hr_now = hr_signature(Bound);
+    if isfield(LHS,'hr_sig'); hr_was = LHS.hr_sig; else; hr_was = hr_signature([]); end
+    if isfield(LHS,'hr_rows'); hr_rows_was = LHS.hr_rows; else; hr_rows_was = []; end
+    if ~isequaln(hr_was, hr_now) && has_lu
+        has_lu = false;   % different wall rows -> different matrix
+        fprintf(' Resonator differs from the cached LHS: reusing the assembly, refactorizing.\n');
+    end
     if has_mla
         MLA1     = LHS.MLA1;
         MLA2     = LHS.MLA2;
@@ -100,6 +111,8 @@ if strcmpi(Opt.rerun,'on')
         if isfield(LHS, 'MLA5'); MLA5 = LHS.MLA5; end
         MFD_diff = LHS.MFD_diff;
         Opt.mmry = 1;   % signal solve_modes to skip LHS construction
+        Opt.hr_in_MLA1 = isequaln(hr_was, hr_now) && hr_was.active;
+        Opt.hr_rows    = hr_rows_was;   % rows to reset if the resonator changed
     end
     if has_lu
         Opt.LU_cache = LHS.LU_cache;
@@ -116,8 +129,7 @@ is_linear = isfield(Opt,'linear') && strcmpi(Opt.linear,'on');
 % Opt.solver must be 'picard' or 'newton'. 'newton' means pseudo-arclength
 % continuation (see src/newton/solve_newton.m). There is no fixed-amplitude
 % Newton solve: a cold start does not converge at the amplitudes this solver
-% targets, which is exactly what the continuation is for. Validate the value
-% here instead of silently falling back to Picard.
+% targets, which is exactly what the continuation is for. 
 if isfield(Opt,'solver') && ~ismember(lower(Opt.solver), {'picard','newton'})
     error('main:badSolver', ...
         ['Opt.solver must be ''picard'' or ''newton'' (= pseudo-arclength ' ...
@@ -532,14 +544,14 @@ LHS.MLA3     = MLA3;
 LHS.MLA4     = MLA4;
 LHS.MLA5     = MLA5;
 LHS.MFD_diff = MFD_diff;
+LHS.hr_sig   = hr_signature(Bound);   % resonator included into LHS.MLA1 (see Opt.rerun above)
+LHS.hr_rows  = Opt.hr_rows;           % the rows it wrote, so a later run can reset them
 % Carry the LU cache so the next Opt.rerun can skip factorization (reference, no copy).
 if isfield(Opt,'LU_cache') && ~isempty(fieldnames(Opt.LU_cache))
     LHS.LU_cache = Opt.LU_cache;
     if isfield(Opt,'lu_order');       LHS.lu_order       = Opt.lu_order;       end
     if isfield(Opt,'lu_order_label'); LHS.lu_order_label = Opt.lu_order_label; end
 end
-% Out-of-core factor files are freed by the onCleanup guard installed at entry
-% (crash-safe; skipped for nargout>=3 so a rerun keeps its factor).
 
 %% Completion message
 if isfield(Opt,'save_output') && ~isempty(Opt.save_output)
@@ -548,4 +560,17 @@ else
     fprintf('\n=== DeHNSSo finished (output not saved; set Opt.save_output to save) ===\n');
 end
 
+end
+
+function s = hr_signature(Bound)
+%HR_SIGNATURE  Identify the resonator included into MLA1, for the Opt.rerun cache.
+if isempty(Bound) || ~isfield(Bound,'hr') || isempty(Bound.hr)
+    s = struct('active', false);
+    return
+end
+hr = Bound.hr;
+s  = struct('active', true, 'mouth', find(hr.mask(:).'), 'Y', hr.Y(:).');
+if isfield(hr,'taper'); s.taper = hr.taper; end
+if isfield(hr,'uslip'); s.uslip = hr.uslip; end
+if isfield(hr,'x');     s.x     = hr.x;     end
 end

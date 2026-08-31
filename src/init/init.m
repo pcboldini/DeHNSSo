@@ -20,7 +20,7 @@ assert(isfield(Grid,'Re') && ~isempty(Grid.Re),      'Grid.Re (Reynolds number) 
 if ~isfield(Opt,'compressible'); Opt.compressible = 'off'; end
 is_compr  = strcmpi(Opt.compressible, 'on');
 nvar      = 4 + double(is_compr);      % (u,v,w,p) | (u,v,w,rho,T)
-n_bc_top  = 3 + double(is_compr);      % boundary-condition (BC) channels: u,v,w [,T]
+n_bc_top  = 3 + double(is_compr);      % freestream BC channels: u,v,w | u,w,rho,T (bc_rows)
 if is_compr && ~isfield(Opt,'bc_wall_thermal'); Opt.bc_wall_thermal = 'isothermal'; end
 
 % Stab: homogeneous BCs by default
@@ -82,7 +82,8 @@ if ~isfield(Opt,'plot');        Opt.plot = 'on'; end
 if ~isfield(Opt,'buffer');     Opt.buffer = 'on'; end     % 'on', 'para', or 'off'
 if ~isfield(Opt,'allmodes');   Opt.allmodes = 'off'; end  % 'on' activates the full (m,n) mode set (2D oblique cascade); 'off' = 1D incremental introduction
 % Freestream BC: per-component type — 3 entries (u,v,w) incompressible,
-% 4 entries (u,v,w,T) compressible.
+% 4 entries (u,w,rho,T) compressible. NB v is not a freestream channel in the
+% compressible case: it is left free to carry the displacement (see bc_rows).
 %   'H_DR'  = homogeneous Dirichlet  (q̂ = 0)
 %   'IH_DR' = inhomogeneous Dirichlet (q̂ = bct value)
 %   'H_NM'  = homogeneous Neumann    (∂q̂/∂y = 0)
@@ -101,12 +102,7 @@ valid_bc = {'H_DR','IH_DR','H_NM','free'};
 assert(all(ismember(lower(Opt.bc_top), lower(valid_bc))), ...
     'init:badBCtop', 'bc_top entries must be one of: %s.', strjoin(valid_bc, ', '));
 % One entry per freestream channel. Compressible constrains u, w, rho, T (v is free);
-% incompressible constrains u, v, w. A wrong count used to be silently padded.
-% Freestream Neumann on v is redundant with continuity when u' is pinned there
-% and dw'/dz vanishes too (beta_0 = 0, or w' pinned): continuity then already
-% gives dv'/dy = 0 at the top, so the imposed row adds no information and the
-% operator is singular. Caught here because a linear run would otherwise return
-% Inf without complaint.
+% incompressible constrains u, v, w. 
 if ~is_compr && numel(Opt.bc_top) >= 3
     u_pinned = strcmpi(Opt.bc_top{1}, 'H_DR') || strcmpi(Opt.bc_top{1}, 'IH_DR');
     w_pinned = strcmpi(Opt.bc_top{3}, 'H_DR') || strcmpi(Opt.bc_top{3}, 'IH_DR');
@@ -127,9 +123,8 @@ assert(numel(Opt.bc_top) == n_bc_top, 'init:bcTopSize', ...
     ['Opt.bc_top has %d entries but %d are expected (Opt.compressible=%s): ' ...
      'the freestream channels are %s.'], numel(Opt.bc_top), n_bc_top, ...
     Opt.compressible, strjoin(B_chan.top_names, ', '));
-if ~isfield(Opt,'lu_mode');    Opt.lu_mode = 'auto'; end  % 'auto' (bounded cache), 'full', or 'none'
-% Opt.lu_max_cache is left unset here: solve_modes defaults it to max(8, n_modes),
-% where the number of active modes is known.
+if ~isfield(Opt,'lu_mode');    Opt.lu_mode = 'auto'; end  % lapack_band|block_thomas|full|auto|seq|none (see solve_modes)
+% Opt.lu_max_cache is left unset here
 if ~isfield(Opt,'parfor')
     has_pct = license('test','Distrib_Computing_Toolbox') && ~isempty(ver('parallel'));
     if has_pct; Opt.parfor = 'on'; else; Opt.parfor = 'off'; end
@@ -138,13 +133,12 @@ end
 % Define imaginary unit
 Init.iu=sqrt(-1);
 
-
 %% Initialization of the modes
 
 % Find all mode interactions
 [Mode.Nmat, Mode.Mmat, Mode.Modevec, Stab.Mvec, Stab.Nvec] = Mint(Stab.M,Stab.N);
 
-% Set up Harmonic Balancing matrix 
+% Set up Harmonic Balancing matrix
 [Stab.HB] = Hbalancing(Stab.M, Stab.N, Mode.Mmat, Mode.Nmat, Mode.Modevec ); 
 
 % Create vectors of omegas and betas per mode

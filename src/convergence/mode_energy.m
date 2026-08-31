@@ -46,6 +46,10 @@ E_tot = trapz(x(xr), e_x);
 if nargin < 5 || isempty(x_loc); x_loc = 1700; end
 assert(x_loc >= x(1) && x_loc <= x(ib), ...
     'x_loc = %g is outside the buffer-free range [%g, %g]', x_loc, x(1), x(ib));
-[~, i_loc] = min(abs(x(xr) - x_loc));
-E_loc = e_x(i_loc);
+% Interpolate rather than snap to the nearest station. The nearest node lands at
+% a different fraction of dx on every grid (up to 0.47*dx over N_xi = 500..1000),
+% which puts a sampling error on top of the discretization error and kinks the
+% local curve where the offset changes sign. A spline keeps the interpolation
+% error at the order of the FD_4 stencil, so it does not limit the measured rate.
+E_loc = interp1(x(xr), e_x, x_loc, 'spline');
 end

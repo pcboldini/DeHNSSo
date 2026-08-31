@@ -19,6 +19,11 @@ if is_compr
 else
     [MLAMFD, MLA1, MLA2, MLA3, MLA4]       = LHS(BF, Bound, StabGrid, Init, Stab, StabRes, Opt);
 end
+% Helmholtz-resonator reactive wall (Opt.hr), written into MLA1 only, so the (0,0)
+% MFD mode keeps no-slip through MFD_diff.
+if isfield(Bound,'hr') && ~isempty(Bound.hr)
+    MLA1 = apply_resonator_wall(MLA1, Bound.hr, BF, StabGrid, is_compr);
+end
 % Keep only the difference: the MFD (0,0) operator differs from MLA1 in its
 % boundary rows alone, so it is rebuilt below as MLA1 + MFD_diff.
 MFD_diff = MLAMFD - MLA1;

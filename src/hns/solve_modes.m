@@ -40,6 +40,8 @@ end
 is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible, 'on');
 if Opt.mmry ~= 1
     Opt.mmry = 1;
+    Opt.hr_in_MLA1 = false;
+    Opt.hr_rows    = [];
     fprintf(' Constructing LHS matrices ...\n');
     tic
     if is_compr
@@ -47,13 +49,6 @@ if Opt.mmry ~= 1
     else
         [MLAMFD, MLA1, MLA2, MLA3, MLA4]       = LHS(BF, Bound, StabGrid, Init, Stab, StabRes, Opt);
         MLA5 = sparse(size(MLA1,1), size(MLA1,2));
-    end
-    % Helmholtz-resonator impedance wall boundary condition (BC), plus an optional
-    % free-slip u' over the mouth. Applied to MLA1 only, so the (0,0) mean-flow
-    % distortion (MFD) mode keeps no-slip while the fluctuations see the resonator
-    % (MFD_diff = MLAMFD - MLA1 restores no-slip for the MFD mode).
-    if isfield(Bound,'hr') && ~isempty(Bound.hr)
-        MLA1 = apply_resonator_wall(MLA1, Bound.hr, BF, StabGrid, is_compr);
     end
     MFD_diff = MLAMFD - MLA1;
     clear MLAMFD
@@ -70,13 +65,31 @@ if Opt.mmry ~= 1
     end
 end
 
+%% Phase 1b: Resonator wall rows (also applied to a restored LHS)
+% Helmholtz-resonator impedance wall boundary condition (BC), plus an optional
+% free-slip u' over the mouth. Applied to MLA1 only, so the (0,0) mean-flow
+% distortion (MFD) mode keeps no-slip while the fluctuations see the resonator
+% (MFD_diff = MLAMFD - MLA1 restores no-slip for the MFD mode).
+want_hr = isfield(Bound,'hr') && ~isempty(Bound.hr);
+if ~Opt.hr_in_MLA1 && (want_hr || ~isempty(Opt.hr_rows))
+    MLAMFD = MLA1 + MFD_diff;                        % invariant under the wall rows
+    if ~isempty(Opt.hr_rows)
+        MLA1(Opt.hr_rows, :) = MLAMFD(Opt.hr_rows, :);
+        Opt.hr_rows = [];
+    end
+    if want_hr
+        [MLA1, Opt.hr_rows] = apply_resonator_wall(MLA1, Bound.hr, BF, StabGrid, is_compr);
+    end
+    MFD_diff = MLAMFD - MLA1;
+    Opt.hr_in_MLA1 = want_hr;   % Picard calls solve_modes per iteration; write once
+    clear MLAMFD
+end
+
 %% Phase 2 & 3: Factorize and solve
 nphys  = numel(phys_modes);
 q_out  = zeros(nphys, size(StabRes.q, 2));
 Stab_f = Stab.f;
 % Zero the nonlinear-term (NLT) forcing on all Dirichlet BC rows (single-entry).
-% The f_j(R_j~=0)=0 masks catch only inhomogeneous BCs, so homogeneous wall rows
-% would otherwise inherit forcing (e.g. spurious (0,0) wall transpiration).
 bc_dir     = full(sum(MLA1 ~= 0, 2)) == 1;
 bc_dir_mfd = full(sum((MLA1 + MFD_diff) ~= 0, 2)) == 1;
 for jj = 1:size(Stab_f, 1)

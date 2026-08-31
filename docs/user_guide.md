@@ -909,6 +909,23 @@ When `Opt.rerun = 'on'`:
 - LU factorizations are reused when `omega` and `beta` are unchanged (actuation/amplitude sweeps).
 - LU factorizations are recomputed when `omega` or `beta` changes (frequency/wavenumber sweeps).
 
+**With a resonator (`Opt.hr`).** The admittance sits in `MLA1` (the wall `v'`-row),
+so a factorization belongs to one admittance. The assembly is still reused — the
+previous mouth rows are reset and the new ones written — but the factorization is
+redone whenever `Y`, the mouth or `uslip` changes. This covers a clean run followed
+by a forced one, a sweep over `Y`, a moved mouth, and a return to a rigid wall:
+
+```matlab
+Opt.rerun = 'off';
+[StabRes0, StabGrid, LHS] = main(Stab, StabGrid, Opt);   % clean: capture LHS
+Opt.hr = hr;  Opt.rerun = 'on';
+StabResA = main(Stab, StabGrid, Opt, LHS);               % forced: reuses assembly
+```
+
+Expect ~1.3x (assembly only) when the wall rows change, and ~3.8x when they do not
+(4000x40 compressible: assembly ~20 s, factorization ~50 s). Every case reproduces
+the from-scratch result bit-for-bit.
+
 Indicative cost on the nonlinear Blasius TS case (M=5, Nx=800, Ny=40, `lu_mode='full'`):
 
 | call | what runs | wall-clock |

@@ -98,7 +98,6 @@ end
 % Update active modes
 Aactive_old = Mode.Aactive;
 for j = 1:Mode.nf
-    % fixed
     Mode.Aactive(j) = Aactive_old(j) || any((StabRes.A(j,:) + Amode(j,:)) >= Opt.TH);
 end
 NewModes = find(Mode.Aactive - Aactive_old > 0);

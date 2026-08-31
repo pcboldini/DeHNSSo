@@ -305,6 +305,8 @@ Freestream values are only injected for components where `Opt.bc_top{k} = 'IH_DR
 
 **Rerun:** when `Opt.rerun = 'on'`, the factor cache from the previous run is passed back in via `LHS.LU_cache`. If `(omega_j, beta_j)` is unchanged (e.g. an amplitude sweep) the factor is reused at no cost; if `omega_j` changes (frequency sweep) that mode is refactored. This applies to every caching mode (`'full'`, `'auto'`, `'lapack_band'`, `'block_thomas'`); `'seq'` and `'none'` never cache.
 
+**Rerun with `Opt.hr`:** the resonator rows live in `MLA1`, so a cached factor belongs to one admittance. `main` records what the cached `MLA1` carries (`LHS.hr_sig`, `LHS.hr_rows`) and drops `LHS.LU_cache` whenever it differs. The assembly survives regardless: `solve_modes` recovers `MLAMFD = MLA1 + MFD_diff` (invariant under the wall rows), resets any rows a previous resonator wrote, then applies the current one — so any transition reuses the assembly, including back to a rigid wall. `Opt.hr_in_MLA1` keeps Picard from rewriting the rows every iteration. `build_ctx` (Newton) always assembles fresh and so needs no reset.
+
 ---
 
 ## 6a. `lapack_band` MEX

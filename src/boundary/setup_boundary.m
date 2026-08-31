@@ -10,8 +10,9 @@ function [Bound]=setup_boundary(Grid,Opt,Stab)
 %   from wherever they were defined onto the numerical grid and stores the
 %   result in Bound.bcw, Bound.bct.
 %
-%   Output: Bound struct with fields bufc, bufs, bufsp, bufcf, ibuf,
-%           bcw (3 x nx x nf), bct (3 x nx x nf).
+%   Output: Bound struct with fields bufc, bufp, bufs, bufsp, bufcf, ibuf,
+%           ibuff, stepi, bcw and bct (n_bc x nx x nf, n_bc = 3 | 4), and hr
+%           when Opt.hr is set.
 
 %% Buffer
 
@@ -62,11 +63,9 @@ Bound.bufsp = ones(Grid.ny, Grid.nx);
 Bound.stepi = 0;
 
 %% Inhomogeneous BCs: interpolate Stab.bcw / Stab.bct onto numerical grid
-% pchip, not cubic: interp1's 'cubic' is cubic convolution and needs uniform
-% spacing, so on a clustered grid it warns and falls back to spline. pchip also
-% avoids the overshoot that would put spurious forcing outside a compact source.
+% pchip, not cubic
 is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
-n_bc     = 3 + double(is_compr);   % u,v,w [,T]
+n_bc     = 3 + double(is_compr);   % wall u,v,w[,T]; freestream u,v,w | u,w,rho,T (bc_rows)
 nf = size(Stab.bcw, 3);
 Bound.bcw = zeros(n_bc, Grid.nx, nf);
 Bound.bct = zeros(n_bc, Grid.nx, nf);
