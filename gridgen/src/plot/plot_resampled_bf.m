@@ -50,7 +50,7 @@ axis tight;
 
 for c = 1:3
     subplot(4, 1, 1 + c);
-    if range(comps{c}(:)) > eps
+    if (max(comps{c}(:)) - min(comps{c}(:))) > eps
         contourf(X, Y, comps{c}, 40, 'LineColor', 'none');
     else
         pcolor(X, Y, comps{c}); shading flat;
@@ -75,7 +75,7 @@ axis tight;
 
 for c = 1:3
     subplot(4, 1, 1 + c);
-    if range(comps{c}(:)) > eps
+    if (max(comps{c}(:)) - min(comps{c}(:))) > eps
         contourf(Xi_g, Eta_g, comps{c}, 40, 'LineColor', 'none');
     else
         pcolor(Xi_g, Eta_g, comps{c}); shading flat;

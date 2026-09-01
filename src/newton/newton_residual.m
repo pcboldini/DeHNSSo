@@ -1,7 +1,7 @@
-function F_real = residual_hns(q_real, ctx)
-%RESIDUAL_HNS  Residual F(q) of the nonlinear HNS system, in real arithmetic.
+function F_real = newton_residual(q_real, ctx)
+%NEWTON_RESIDUAL  Residual F(q) of the nonlinear HNS system, in real arithmetic.
 %
-%   F_real = residual_hns(q_real, ctx)
+%   F_real = newton_residual(q_real, ctx)
 %
 %   The state is real, q_real = [real(q_phys); imag(q_phys)], of length
 %   2*nphys*bsize over the physical modes only; the conjugate modes are rebuilt
@@ -10,7 +10,6 @@ function F_real = residual_hns(q_real, ctx)
 %   Jacobian is antilinear, and splitting into real and imaginary parts gives
 %   GMRES the genuinely linear operator it needs.
 
-%% Unpack state
 %% Unpack state
 % jc = nf+1-j pairs each physical mode with its conjugate slot; NLT_HNS needs the
 % whole spectrum, so both halves are filled even though only phys is solved for.

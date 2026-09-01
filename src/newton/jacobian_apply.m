@@ -1,9 +1,9 @@
-function w = jac_matvec(v_real, A, B, N)
-%JAC_MATVEC  Newton-Jacobian matrix-vector product in real arithmetic.
+function w = jacobian_apply(v_real, A, B, N)
+%JACOBIAN_APPLY  Newton-Jacobian matrix-vector product in real arithmetic.
 %
-%   w = jac_matvec(v_real, A, B, N)
+%   w = jacobian_apply(v_real, A, B, N)
 %
-%   A = ML - Jh and B = -Ja are the paper's J_h and J_a, built from the build_JNL
+%   A = ML - Jh and B = -Ja are the paper's J_h and J_a, built from the nlt_jacobian
 %   blocks. With vc = vr + 1i*vi this returns
 %       [Re(A*vc + B*conj(vc)); Im(A*vc + B*conj(vc))],
 %   which is the real Jacobian [Re(A+B), -Im(A-B); Im(A+B), Re(A-B)] applied to

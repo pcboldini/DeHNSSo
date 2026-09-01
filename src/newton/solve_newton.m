@@ -11,7 +11,7 @@ function [StabRes, info] = solve_newton(Stab, StabGrid, Opt)
 %   reused across steps until it ages out or stalls, a factorisation costing far
 %   more than a back-solve. lambda enters F only through the inflow BC, hence
 %   affinely,
-%       F(q,lambda) = residual_hns(q,ctx0) + (lambda-lam0)*F_lambda,
+%       F(q,lambda) = newton_residual(q,ctx0) + (lambda-lam0)*F_lambda,
 %   with F_lambda finite-differenced once.
 %
 %   Opt (defaults): newton_target (required), newton_start (Stab.A0_fund),
@@ -19,7 +19,7 @@ function [StabRes, info] = solve_newton(Stab, StabGrid, Opt)
 %   newton_maxit (25), newton_dsmax (3), newton_maxstep (400), newton_tol (1e-6),
 %   newton_seedfile, newton_ckfile, newton_resume ('off').
 %
-%   See also BUILD_CTX, BUILD_JNL, RESIDUAL_HNS.
+%   See also NEWTON_CONTEXT, NLT_JACOBIAN, NEWTON_RESIDUAL.
 
 %% Options and continuation parameters
 t_all = tic; cum = 0;
@@ -72,7 +72,7 @@ do_resume   = isfield(Opt,'newton_resume') && strcmpi(Opt.newton_resume,'on');
 fprintf('\n--- Pseudo-arclength continuation: A0 %.4e -> %.4e (u_rms %.4f) ---\n', ...
         lam0, A_target, A_target/sqrt(2));
 
-% Base flow fields for build_ctx (as assembled by the callers/drivers).
+% Base flow fields for newton_context (as assembled by the callers/drivers).
 BF.Re  = StabGrid.Re;
 BF.U   = StabGrid.U;   BF.V   = StabGrid.V;   BF.W   = StabGrid.W;
 BF.dxU = StabGrid.dxU; BF.dxV = StabGrid.dxV; BF.dxW = StabGrid.dxW;
@@ -95,7 +95,7 @@ end
         [Mode_o, SR_o] = inflow(Mode_o, Stab_o, SG_o, SR_o, Opt_o);
         [Bnd_o]        = setup_boundary(SG_o, Opt_o, Stab_o);
         Mode_o.RunJ    = 1:Mode_o.nf; Mode_o.Aactive = ones(1, Mode_o.nf);
-        ctx_o = build_ctx(BF, Bnd_o, SG_o, Init_l, Mode_o, Opt_o, Stab_o, SR_o);
+        ctx_o = newton_context(BF, Bnd_o, SG_o, Init_l, Mode_o, Opt_o, Stab_o, SR_o);
         ctx_o.AF = 1;
         Nl_l = ctx_o.nphys*ctx_o.bsize; qc_l = zeros(Nl_l,1);
         for k_l = 1:ctx_o.nphys
@@ -124,20 +124,20 @@ end
 
 %% dF/dlambda (affine in lambda: inflow BC only)
 h = 1e-6; [ctxh, ~] = mkctx(lam0 + h);
-Fa = residual_hns(q_init, ctx0); Fb = residual_hns(q_init, ctxh);
+Fa = newton_residual(q_init, ctx0); Fb = newton_residual(q_init, ctxh);
 % phi = -g, with g = dF/dlambda of the paper. Carrying the sign here is what
 % turns the paper's dx = z1 - dA0*z2 into the addition dq = a + dl*b below.
 Flam = (Fb - Fa)/h; phi = -Flam; phi = phi(:); Flam = Flam(:);
-[ctx2, ~] = mkctx(lam0 + 50*h); Fchk = residual_hns(q_init, ctx2);
+[ctx2, ~] = mkctx(lam0 + 50*h); Fchk = newton_residual(q_init, ctx2);
 fprintf(' ||F_lambda||=%.3e  linearity rel.err=%.2e\n', ...
         norm(Flam), norm(Fchk - (Fa + 50*h*Flam))/max(norm(Fchk), eps));
 clear ctxh ctx2
 
-evalF = @(q,lam) residual_hns(q, ctx0) + (lam - lam0)*Flam;
+evalF = @(q,lam) newton_residual(q, ctx0) + (lam - lam0)*Flam;
 
     function Jr = Jreal(q)
         qcx = q(1:N) + 1i*q(N+1:twoN);
-        [Jh, Ja] = build_JNL(qcx, ctx0); A = ML - Jh; B = -Ja;
+        [Jh, Ja] = nlt_jacobian(qcx, ctx0); A = ML - Jh; B = -Ja;
         Jr = [real(A)+real(B), -imag(A)+imag(B); imag(A)+imag(B), real(A)-real(B)];
     end
 % Natural-parameter Newton for the seeds. Locals are suffixed _n: nested, so a
@@ -159,9 +159,9 @@ evalF = @(q,lam) residual_hns(q, ctx0) + (lam - lam0)*Flam;
             F_n = evalF(q_out, lam); nF_n = norm(F_n);
             fprintf('   nat it%d lam=%.5e ||F||=%.3e\n', it_n, lam, nF_n);
             if nF_n < tol, break; end
-            Jr_n = Jreal(q_out); id_n = mumps_factor(Jr_n, Opt);
-            [dq_n, id_n] = mumps_bsolve(id_n, Jr_n, -F_n);
-            id_n = mumps_destroy(id_n);
+            Jr_n = Jreal(q_out); id_n = mumps_solve('factor', Jr_n, Opt, 0, lam);
+            [dq_n, id_n] = mumps_solve('bsolve', id_n, Jr_n, -F_n);
+            id_n = mumps_solve('destroy', id_n);
             q_out = q_out + dq_n;
         end
     end
@@ -207,9 +207,9 @@ if do_resume && ~isempty(ckfile) && exist(ckfile,'file') == 2
     L = load(ckfile); qc = L.q(:); lc = L.l; traj = L.traj;
     if isfield(L,'nfac_total'); nfac_total = L.nfac_total; end
     fprintf('   [factorising: resume] ... '); tfac = tic;
-    Jr = Jreal(qc); id = mumps_factor(Jr, Opt); nfac_total = nfac_total + 1; age = 0;
+    Jr = Jreal(qc); id = mumps_solve('factor', Jr, Opt, size(traj,1), lc); nfac_total = nfac_total + 1; age = 0;
     fprintf('done in %.1f min\n', toc(tfac)/60);
-    [w, id] = mumps_bsolve(id, Jr, phi);
+    [w, id] = mumps_solve('bsolve', id, Jr, phi);
     [qs, ls] = arcscale(qc, lc, is_rel);
     w = w*ls/qs;                       % dq/dlam -> d(q/qs)/d(lam/ls)
     % Next tangent, the paper's [-z2', 1]' normalised, signed so lambda increases.
@@ -244,7 +244,7 @@ for step = (size(traj,1)+1):maxstep
         end
         if ~all(isfinite(q)) || ~isfinite(l)
             fprintf(' STEP %d: predictor still non-finite; ds %.3e -> %.3e\n', step, ds, ds/2);
-            if ~isempty(id), id = mumps_destroy(id); id = []; end
+            if ~isempty(id), id = mumps_solve('destroy', id); id = []; end
             ds = ds/2;
             if ds < 1e-6
                 fprintf(' ds too small; stop\n'); info.status = 'ds_underflow'; break
@@ -265,12 +265,12 @@ for step = (size(traj,1)+1):maxstep
             res = sqrt(F'*F + Nc^2);
             if res < arctol, conv = true; break; end
             fprintf('   [factorising: full Newton, iteration %d] ... ', it); tfac = tic;
-            if ~isempty(id), id = mumps_destroy(id); id = []; end
-            Jr = Jreal(q); id = mumps_factor(Jr, Opt);
+            if ~isempty(id), id = mumps_solve('destroy', id); id = []; end
+            Jr = Jreal(q); id = mumps_solve('factor', Jr, Opt, step, l);
             nfac_step = nfac_step + 1; nfac_total = nfac_total + 1; age = 0;
             fprintf('done in %.1f min\n', toc(tfac)/60);
-            [a, id] = mumps_bsolve(id, Jr, -F);  a = a(:);
-            [b, id] = mumps_bsolve(id, Jr, phi); b = b(:);
+            [a, id] = mumps_solve('bsolve', id, Jr, -F);  a = a(:);
+            [b, id] = mumps_solve('bsolve', id, Jr, phi); b = b(:);
             dl = (-Nc - tq(:).'*a/qs)/(tq(:).'*b/qs + tl/ls); dl = dl(1);
             dq = a + dl*b; q = q(:) + dq(:); l = l + dl;
         end
@@ -286,14 +286,14 @@ for step = (size(traj,1)+1):maxstep
             why = sprintf('last corrector took %d its > %d', it_prev, it_thresh);
         end
         fprintf('   [factorising: %s] ... ', why); tfac = tic;
-        if ~isempty(id), id = mumps_destroy(id); id = []; end
-        Jr = Jreal(q); id = mumps_factor(Jr, Opt);
+        if ~isempty(id), id = mumps_solve('destroy', id); id = []; end
+        Jr = Jreal(q); id = mumps_solve('factor', Jr, Opt, step, l);
         nfac_step = 1; nfac_total = nfac_total + 1; age = 0;
         fprintf('done in %.1f min\n', toc(tfac)/60);
     end
     % b is the paper's z2 (up to the sign in phi), the solve against the parameter
     % derivative. It is fixed within the corrector, so it is taken once per step.
-    [b, id] = mumps_bsolve(id, Jr, phi); b = b(:);
+    [b, id] = mumps_solve('bsolve', id, Jr, phi); b = b(:);
 
     % Corrector, Eq. (newton_two_solves) of the paper: Nc is the constraint S, a is
     % z1 and b is z2, and each iteration combines the two so the step satisfies S=0.
@@ -302,7 +302,7 @@ for step = (size(traj,1)+1):maxstep
         Nc  = tq(:).'*((q - qc)/qs) + tl*((l - lc)/ls) - ds;
         res = sqrt(F'*F + Nc^2);
         if res < arctol, conv = true; break; end
-        [a, id] = mumps_bsolve(id, Jr, -F); a = a(:);
+        [a, id] = mumps_solve('bsolve', id, Jr, -F); a = a(:);
         dl = (-Nc - tq(:).'*a/qs)/(tq(:).'*b/qs + tl/ls); dl = dl(1);
         dq = a + dl*b; q = q(:) + dq(:); l = l + dl;
     end
@@ -310,17 +310,17 @@ for step = (size(traj,1)+1):maxstep
     % stale-factor fallback: refactor at current q, finish with a fresh factor
     if ~conv
         fprintf('   [factorising: corrector stalled after %d its] ... ', reuse_maxit); tfac = tic;
-        if ~isempty(id), id = mumps_destroy(id); id = []; end
-        Jr = Jreal(q); id = mumps_factor(Jr, Opt);
+        if ~isempty(id), id = mumps_solve('destroy', id); id = []; end
+        Jr = Jreal(q); id = mumps_solve('factor', Jr, Opt, step, l);
         nfac_step = nfac_step + 1; nfac_total = nfac_total + 1; age = 0;
         fprintf('done in %.1f min\n', toc(tfac)/60);
-        [b, id] = mumps_bsolve(id, Jr, phi); b = b(:);
+        [b, id] = mumps_solve('bsolve', id, Jr, phi); b = b(:);
         for it = 1:40
             q = q(:); F = evalF(q, l); F = F(:);
             Nc  = tq(:).'*((q - qc)/qs) + tl*((l - lc)/ls) - ds;
             res = sqrt(F'*F + Nc^2);
             if res < arctol, conv = true; break; end
-            [a, id] = mumps_bsolve(id, Jr, -F); a = a(:);
+            [a, id] = mumps_solve('bsolve', id, Jr, -F); a = a(:);
             dl = (-Nc - tq(:).'*a/qs)/(tq(:).'*b/qs + tl/ls); dl = dl(1);
             dq = a + dl*b; q = q(:) + dq(:); l = l + dl;
         end
@@ -333,7 +333,7 @@ for step = (size(traj,1)+1):maxstep
             step, l, urms, amp, it, nfac_step, age, tern(conv,'ok','FAIL'), ds, dt, cum, nfac_total);
 
     if ~conv
-        if ~isempty(id), id = mumps_destroy(id); id = []; end
+        if ~isempty(id), id = mumps_solve('destroy', id); id = []; end
         ds = ds/2;
         if ds < 1e-6, fprintf(' ds too small; stop\n'); info.status = 'ds_underflow'; break; end
         continue
@@ -364,7 +364,7 @@ for step = (size(traj,1)+1):maxstep
                 for it_l = 1:reuse_maxit
                     F_l = evalF(q_try, A_target); F_l = F_l(:);
                     if norm(F_l) < arctol, land_ok = true; break; end
-                    [dq_l, id] = mumps_bsolve(id, Jr, -F_l);
+                    [dq_l, id] = mumps_solve('bsolve', id, Jr, -F_l);
                     q_try = q_try + dq_l(:);
                 end
                 if land_ok
@@ -387,7 +387,7 @@ for step = (size(traj,1)+1):maxstep
                 save(ckfile, 'q', 'l', 'N', 'twoN', 'step', 'traj', 'nfac_total', '-v7.3');
             end
         end
-        if ~isempty(id), id = mumps_destroy(id); id = []; end
+        if ~isempty(id), id = mumps_solve('destroy', id); id = []; end
         fprintf('\n >>> reached target A0=%.6e u_rms=%.5f |q|=%.4e\n', l, l/sqrt(2), amp);
         fprintf(' >>> TOTAL wall time: %.1f min (%.2f h) over %d steps | nfac_total=%d\n', ...
                 toc(t_all)/60, toc(t_all)/3600, step, nfac_total);
@@ -413,7 +413,7 @@ for step = (size(traj,1)+1):maxstep
     elseif it >= it_hard,          ds = ds*0.8;     % strain: back off before failing
     end
 end
-if ~isempty(id), id = mumps_destroy(id); end
+if ~isempty(id), id = mumps_solve('destroy', id); end
 
 info.nfac_total = nfac_total;
 info.steps      = size(traj,1);
@@ -451,187 +451,4 @@ if isfield(Opt, name) && ~isempty(Opt.(name)); v = Opt.(name); else; v = dflt; e
 end
 function s = tern(c, a, b)
 if c, s = a; else, s = b; end
-end
-
-%% MUMPS helpers
-%  JOB=4 (analyze+factor), JOB=3 (solve), JOB=-2 (destroy). The factor is held
-%  across steps, so the id/Jr pair is threaded explicitly through the caller
-%  rather than captured in a closure: refactoring destroys the instance, and a
-%  closure holding a destroyed id would segfault on the next solve.
-function id = mumps_factor(Jr, Opt)
-% Guard against a NaN/Inf in the Jacobian (a state overshooting into nonphysical
-% rho'/T'), which makes dmumps crash hard. Check only the stored nonzeros:
-% structural zeros are always finite, and ~isfinite on the full sparse matrix
-% would densify it.
-nbad = nnz(~isfinite(nonzeros(Jr)));
-if nbad > 0
-    error('mumps_factor:badJacobian', ...
-          ['Jacobian has %d non-finite entries before factorisation — the state ' ...
-           'is nonphysical (likely a cold-start overshoot). Lower Opt.newton_start ' ...
-           'or newton_dsmax.'], nbad);
-end
-% Attempt schedule, columns = [ICNTL(14) relax, ICNTL(22) out-of-core]. In-core
-% first, OOC last: the factor grows steeply along the branch, so most steps fit in
-% RAM and only those near saturation pay the disk penalty. OOC needs about one
-% front in core, so it cannot fail for lack of memory. Nothing else survived
-% measurement (BLR, preconditioned Krylov); see project_m4_memory_wall.
-sched = [100 0; 200 0; 100 1];
-if isfield(Opt,'newton_mumps_relax') && ~isempty(Opt.newton_mumps_relax)
-    r = Opt.newton_mumps_relax(:);
-    sched = [[r, zeros(numel(r),1)]; [r(1), 1]];   % keep an OOC last resort
-end
-if isfield(Opt,'newton_mumps_ooc') && ~isempty(Opt.newton_mumps_ooc)
-    sched(:,2) = Opt.newton_mumps_ooc;                    % force OOC on/off throughout
-end
-info1 = NaN;
-fprintf('   [mumps_factor] Jr: %dx%d nnz=%.3e square=%d sympat=%d maxabs=%.3e\n', ...
-        size(Jr,1), size(Jr,2), nnz(Jr), size(Jr,1)==size(Jr,2), ...
-        nnz(Jr-Jr.')==0, full(max(abs(nonzeros(Jr))))+0);
-for attempt = 1:size(sched,1)
-    relax = sched(attempt,1); ooc = sched(attempt,2);
-    crashed = false; info2 = NaN;
-    try
-        id = initmumps; id.SYM = 0; id = dmumps(id);
-        % Default ordering is ICNTL(7)=0 (AMD), not METIS: the saturated M=4 Jacobian
-        % does not fit under METIS, which fails intermittently with INFOG(1)=-13. The
-        % seed Jacobian is far sparser than the saturated one, since ILST fills only
-        % the fundamental, so never size this solver from a seed-state probe.
-        % ICNTL(7)=4 (PORD) segfaults this MUMPS build.
-        vrb = get_o(Opt,'newton_mumps_verbose',0);   % 0=silent; >0 -> MUMPS diagnostics
-        id.ICNTL(3) = tern(vrb>0,6,0); id.ICNTL(4) = vrb; id.ICNTL(16) = 1;
-        id.ICNTL(7) = get_o(Opt, 'newton_mumps_ordering', 0);
-        id.ICNTL(14) = relax;
-        id.ICNTL(22) = ooc;
-        % ICNTL(23): hard cap on MUMPS working memory, in MB per process.
-        % ICNTL(22)=1 writes the FACTORS to disk but keeps the active frontal
-        % stack in core, so out-of-core alone does NOT bound the footprint: the
-        % analysis estimate can sit far below what the factorisation climbs to.
-        % Set this whenever the run must fit a cgroup, leaving headroom for
-        % MATLAB's own copy of Jr.
-        % 0 (MUMPS default) means "size it yourself", which is what ran away.
-        mxm = get_o(Opt, 'newton_mumps_maxmem', 0);
-        if mxm > 0, id.ICNTL(23) = mxm; end
-        % Block low-rank (BLR) compression, which targets the factorisation itself
-        % rather than the ordering. ICNTL(35) selects the variant (1 = low-rank
-        % throughout, 2 = BLR factorisation with full-rank solve, 3 = compress after
-        % factorisation), CNTL(7) the dropping tolerance. The factorisation becomes
-        % APPROXIMATE to within CNTL(7): Newton tolerates that, since an inexact factor
-        % only costs extra back-solves, but it must be validated against a BLR-off run
-        % before production numbers.
-        blr = get_o(Opt, 'newton_mumps_blr', 0);
-        if blr > 0
-            id.ICNTL(35) = blr;
-            id.CNTL(7)   = get_o(Opt, 'newton_mumps_blr_tol', 1e-9);
-        end
-        % MUMPS does NOT remove out-of-core scratch on destroy: JOB=-2 closes the files
-        % but leaves them, and a killed process leaves everything. One leaked
-        % factorisation can fill the disk, so each OOC factorisation gets its own
-        % MUMPS_OOC_PREFIX and destroy deletes only its own files.
-        if ooc
-            ooc_pfx = sprintf('dehnsso_%d_%s', feature('getpid'), ...
-                              char('a' + floor(26*rand(1,8))));
-            setenv('MUMPS_OOC_PREFIX', ooc_pfx);
-            if isempty(getenv('MUMPS_OOC_TMPDIR')); setenv('MUMPS_OOC_TMPDIR', tempdir); end
-            ooc_check_space(getenv('MUMPS_OOC_TMPDIR'));
-            ooc_track(ooc_pfx, 'push');
-        end
-        id.JOB = 4; id = dmumps(id, Jr);
-    catch ME
-        crashed = true;
-        fprintf('   [mumps_factor] exception: %s | %s\n', ME.identifier, ME.message);
-    end
-    if ~crashed && isstruct(id) && ~isempty(id.INFOG)
-        info1 = id.INFOG(1); info2 = id.INFOG(2);
-        if info1 >= 0
-            if attempt > 1
-                fprintf('   [mumps_factor] OK on attempt %d (relax=%d ooc=%d)\n', attempt, relax, ooc);
-            end
-            return
-        end
-        fprintf('   [mumps_factor] attempt %d relax=%d ooc=%d FAILED: INFOG(1)=%d INFOG(2)=%d\n', ...
-                attempt, relax, ooc, info1, info2);
-        try, id.JOB = -2; id = dmumps(id); catch, end
-        ooc_purge();   % a failed attempt leaks its scratch otherwise
-    else
-        fprintf('   [mumps_factor] attempt %d relax=%d ooc=%d HARD CRASH\n', attempt, relax, ooc);
-        try, if isstruct(id), id.JOB = -2; id = dmumps(id); end; catch, end
-        ooc_purge();   % a failed attempt leaks its scratch otherwise
-    end
-    pause(20);
-end
-error('mumps_factor: failed after %d attempts (last INFOG(1)=%g)', size(sched,1), info1);
-end
-
-function [X, id] = mumps_bsolve(id, Jr, RHS)
-id.JOB = 3; id.RHS = RHS; id = dmumps(id, Jr); X = double(id.SOL);
-end
-
-function id = mumps_destroy(id)
-%MUMPS_DESTROY  Release the instance and its out-of-core scratch.
-%   JOB=-2 closes the OOC files but does not unlink them, so without this the
-%   scratch accumulates until the filesystem fills. Deletes only files carrying
-%   THIS instance's prefix, so a
-id.JOB = -2; id = dmumps(id);
-ooc_purge();
-end
-
-function ooc_check_space(d)
-%OOC_CHECK_SPACE  Refuse to start an out-of-core factorisation on a nearly full disk.
-%   The scratch defaults to tempdir, which on most machines is the system volume. A
-%   large factorisation writes tens of GB, and a run that fills the system volume can
-%   take the machine down rather than just failing. Point Opt-side
-%   MUMPS_OOC_TMPDIR at a roomy filesystem (an external SSD, a scratch mount) instead.
-MIN_FREE_GB = 50;
-try
-    if ispc
-        return                                   % no cheap portable check; skip
-    end
-    [st, out] = system(sprintf('df -Pk "%s" 2>/dev/null | tail -1', d));
-    if st ~= 0 || isempty(out); return; end
-    tok = regexp(strtrim(out), '\s+', 'split');
-    if numel(tok) < 4; return; end
-    free_gb = str2double(tok{4}) / 2^20;         % df -Pk reports 1K blocks
-    if isnan(free_gb); return; end
-    if free_gb < MIN_FREE_GB
-        error('solve_newton:oocDiskSpace', ...
-            ['Out-of-core scratch directory "%s" has only %.1f GB free (want >= %d GB). '  ...
-             'A factorisation of this size writes tens of GB and filling this volume can ' ...
-             'wedge the machine. Set MUMPS_OOC_TMPDIR to a filesystem with room, or free ' ...
-             'space, before rerunning.'], d, free_gb, MIN_FREE_GB);
-    end
-    fprintf('   [mumps_factor] OOC scratch: %s (%.0f GB free)\n', d, free_gb);
-catch ME
-    if strcmp(ME.identifier, 'solve_newton:oocDiskSpace'); rethrow(ME); end
-    % any probing failure is non-fatal: never block a run over a df quirk
-end
-end
-
-function ooc_purge()
-%OOC_PURGE  Delete the out-of-core scratch of the most recent OOC factorisation.
-%   Pops this instance's prefix and unlinks only files carrying it, so a
-%   concurrently live factorisation (natnewton holds its own) is untouched.
-pfx = ooc_track('', 'pop');
-if isempty(pfx); return; end
-d = getenv('MUMPS_OOC_TMPDIR'); if isempty(d); d = tempdir; end
-f = dir(fullfile(d, [pfx '*']));
-for k = 1:numel(f)
-    if ~f(k).isdir
-        try
-            delete(fullfile(d, f(k).name));
-        catch
-        end
-    end
-end
-end
-
-function out = ooc_track(pfx, op)
-%OOC_TRACK  LIFO registry of OOC prefixes, so destroy removes the right set.
-persistent stack
-if isempty(stack); stack = {}; end
-out = '';
-switch op
-    case 'push'; stack{end+1} = pfx;
-    case 'pop'
-        if ~isempty(stack); out = stack{end}; stack(end) = []; end
-end
 end

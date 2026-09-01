@@ -178,11 +178,11 @@ By default the gridgen scripts distribute `nx` stations uniformly in ξ (wall ar
 
 | Parameter | Meaning |
 |---|---|
-| `params.mug` | Clustering center(s) in physical x (scalar or vector for multiple centers) |
-| `params.sig` | Gaussian width as a fraction of the half-domain (default 0.2). Scalar broadcasts to all centers; vector must match `mug` length |
-| `params.ag` | Step-size modulation at the peak: `<1` denser, `=1` no refinement, `>1` sparser (default 1). Scalar or vector |
-| `params.refine` | Friendlier form of `ag`: how many times finer Δξ is at the peak than on an equidistant mesh (`ag = 1/refine`) |
-| `params.spread` | How far the refinement reaches: half-width in physical x, setting `sig = 3·spread / half-domain`. Defaults to the `params.forcing` half-width. Larger means gentler stretching |
+| `params.mug` | Clustering center(s) in physical x (scalar or vector for multiple centers). Taken from `params.forcing.xc` when a forcing is defined, so set it explicitly only for a feature that is not a wall source, such as a hump |
+| `params.spread` | How far the refinement reaches: half-width in physical x. Defaults to the `params.forcing` half-width. Larger means gentler stretching |
+| `params.refine` | How many times finer Δξ is at the peak than on an equidistant mesh |
+
+All three are in physical units, so they read the same way as the feature they follow. Internally `spread` becomes the Gaussian width `sig = 3·spread / half-domain` and `refine` becomes `ag = 1/refine`; `params.sig` and `params.ag` are **not** accepted as inputs and raise an error naming the replacement.
 
 These fields work for both the curvilinear (`resample_curvilinear.m`) and flat-plate (`resample_cartesian.m`) paths, which share one implementation in `gridgen/src/resample/cluster_xi.m`.
 
@@ -197,22 +197,22 @@ Example (heritage `sweptwing_hump.m`):
 
 ```matlab
 x_m = 0.1837410879 / 2.1394e-4;   % physical hump center / lref ≈ 859
-params.mug = [x_m];               % single hump
-params.sig = [0.2];               % Gaussian half-width fraction
-params.ag  = [0.5];               % step size halved at the peak
+params.mug    = [x_m];            % single hump (no forcing here, so set the centre)
+params.spread = 55.137096;        % half-width the refinement reaches
+params.refine = 2;                % dxi twice as fine at the peak
 ```
 
 Multi-hump example:
 
 ```matlab
-params.mug = [x_m1, x_m2];        % two humps
-params.sig = [0.2, 0.15];         % per-hump widths
-params.ag  = [0.5, 0.7];          % per-hump strengths
+params.mug    = [x_m1, x_m2];     % two humps
+params.spread = [55.1, 41.4];     % per-hump half-widths
+params.refine = [2, 1.43];        % per-hump strengths
 ```
 
-Gridgen reports what the mesh actually does, not just what was asked for: the finest Δξ as a multiple of the equidistant spacing, and the stretching, the worst ratio between neighbouring Δξ (1.00 means none). The measured refinement is always milder than the nominal `1/ag`, because compressing the mesh at the peak stretches it elsewhere. Aim for stretching near 1.0; widen `spread` or lower `refine` if it grows.
+Gridgen reports what the mesh actually does, not just what was asked for: the finest Δξ as a multiple of the equidistant spacing, and the stretching, the worst ratio between neighbouring Δξ (1.00 means none). The measured refinement is always milder than the nominal `refine`, because compressing the mesh at the peak stretches it elsewhere. Aim for stretching near 1.0; widen `spread` or lower `refine` if it grows.
 
-Leave `params.mug = []` or `params.ag = 1` everywhere to fall back to uniform spacing (wall arc length for curvilinear, `x` for the flat plate).
+Leave `params.mug = []` and define no `params.forcing`, or set `params.refine = 1`, to fall back to uniform spacing (wall arc length for curvilinear, `x` for the flat plate).
 
 ### Step 1c — Cartesian / OpenFOAM CSV input
 
@@ -716,7 +716,7 @@ Use it when plain Picard **oscillates** near saturation — the maximum amplitud
 
 ### Pseudo-arclength continuation (`solve_newton`)
 
-For high-amplitude K-type cases (Scholten), a direct solve at the target amplitude does not converge from a cold start. `src/newton/solve_newton.m` continues the solution along the branch in the inflow amplitude `A0_fund` instead of trying to reach the target in one go. Call it directly (it does its own `init`/`inflow`/`setup_boundary`/`build_ctx`) rather than through `main`:
+For high-amplitude K-type cases (Scholten), a direct solve at the target amplitude does not converge from a cold start. `src/newton/solve_newton.m` continues the solution along the branch in the inflow amplitude `A0_fund` instead of trying to reach the target in one go. Call it directly (it does its own `init`/`inflow`/`setup_boundary`/`newton_context`) rather than through `main`:
 
 ```matlab
 [StabRes, info] = solve_newton(Stab, StabGrid, Opt);
@@ -753,7 +753,7 @@ Opt.newton_arclength = 'absolute'; % arclength metric; see below
 
 `newton_reuse` is the reuse policy and the main performance knob: `newton_reuse=1` refactors every step (most robust), larger values trade factorizations for more corrector back-solves. Which wins is case-dependent — measure it, and only trust a timing from a log whose first step is `STEP 1` (a resumed run's reported total covers only its own segment).
 
-`lambda` enters the residual only through the inflow Dirichlet BC, hence affinely: `F(q,λ) = residual_hns(q,ctx0) + (λ−λ0)·F_λ`. `F_λ` is computed once by finite difference and its linearity is checked and reported at startup.
+`lambda` enters the residual only through the inflow Dirichlet BC, hence affinely: `F(q,λ) = newton_residual(q,ctx0) + (λ−λ0)·F_λ`. `F_λ` is computed once by finite difference and its linearity is checked and reported at startup.
 
 **Memory.** The coupled Jacobian is factorized whole (2N ≈ 1.7M for M=4 on a 1050×40 grid). Peak RSS during factorization reaches ~150 GB at M=4 and falls back to ~35 GB once the factor is formed — each refactor re-spikes. M=4 needs a workstation; a 16 GB laptop is limited to roughly M ≤ 3.
 

@@ -1,12 +1,12 @@
-function ctx = build_ctx(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes)
-%BUILD_CTX  Assemble the Newton solver context.
+function ctx = newton_context(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes)
+%NEWTON_CONTEXT  Assemble the Newton solver context.
 %
-%   ctx = build_ctx(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes)
+%   ctx = newton_context(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes)
 %
 %   Builds the per-mode LHS operators, their block-preconditioner LU factors and
 %   the inhomogeneous boundary-condition vectors, packed into one context struct.
 %   Used by solve_newton (pseudo-arclength continuation in A0_fund) and by the
-%   build_JNL instrumentation in paper/checks/.
+%   nlt_jacobian instrumentation in paper/checks/.
 
 %% Assemble LHS operators
 is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
@@ -48,12 +48,12 @@ ctx.nx         = StabGrid.nx;
 ctx.nvar       = nvar;
 ctx.bsize      = nvar*ctx.ny*ctx.nx;
 
-% Grid and wall-normal operator, read by the NLT and by build_JNL.
+% Grid and wall-normal operator, read by the NLT and by nlt_jacobian.
 ctx.StabGrid   = StabGrid;
 ctx.D1         = StabGrid.D1;
 
 % HB is the mode-interaction table: HB(:,:,j) lists the (gh,jk) pairs whose
-% product forces mode j, which is what build_JNL walks.
+% product forces mode j, which is what nlt_jacobian walks.
 ctx.HB         = Stab.HB;
 ctx.omegavec   = StabRes.omegavec;
 ctx.betavec    = StabRes.betavec;
@@ -84,7 +84,7 @@ ctx.ML  = cell(nphys, 1);
 ctx.rBC = cell(nphys, 1);
 
 Opt_rhs = Opt;
-Opt_rhs.AF = 1;   % store UNIT amplitude BC; residual_hns scales by ctx.AF
+Opt_rhs.AF = 1;   % store UNIT amplitude BC; newton_residual scales by ctx.AF
 key_cache = struct();
 
 %% Per-mode LHS blocks
@@ -116,7 +116,7 @@ for k = 1:nphys
         key_cache.(key) = struct('ML', ML);
     end
     ctx.ML{k} = key_cache.(key).ML;
-    % Inflow BC at unit amplitude; residual_hns scales it by the continuation AF.
+    % Inflow BC at unit amplitude; newton_residual scales it by the continuation AF.
     ctx.rBC{k} = RHS(Bound, StabGrid, Mode, Opt_rhs, StabRes, j);
 end
 

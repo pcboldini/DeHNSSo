@@ -59,14 +59,6 @@ if isfield(Stab,'A0_fund') && ~isfield(Stab,'A0')
 end
 if ~isfield(Stab,'A0');  Stab.A0 = []; end
 
-% Grid: straight geometry without streamwise refinement by default
-if ~isfield(Grid,'ytype'),      Grid.ytype ="malik"; end
-if ~isfield(Grid,'xtype'),      Grid.xtype ="equidistant"; end
-if ~isfield(Grid,'mug'),        Grid.mug = 0; end
-if ~isfield(Grid,'sig'),        Grid.sig = 1; end
-if ~isfield(Grid,'ag'),         Grid.ag = 0; end
-if ~isfield(Grid,'ft'),         Grid.ft = 1; end
-
 % Opt: Set default solver specifications
 if ~isfield(Opt,'xb'),          Opt.xb = 85; end
 if ~isfield(Opt,'xbe'),         Opt.xbe = 85; end

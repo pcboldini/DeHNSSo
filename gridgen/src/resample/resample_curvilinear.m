@@ -229,7 +229,7 @@ for dn = bf_deriv_fields()
     if isfield(BF, dn{1}) && ~isempty(BF.(dn{1})); Draw.(dn{1}) = BF.(dn{1}); end
 end
 
-if range(X(1, :)) < range(X(:, 1))
+if (max(X(1, :)) - min(X(1, :))) < (max(X(:, 1)) - min(X(:, 1)))
     X = X.'; Y = Y.'; U = U.'; V = V.'; W = W.';
     for dn = fieldnames(Draw)'; Draw.(dn{1}) = Draw.(dn{1}).'; end
     fprintf('Input transposed so streamwise is dim 2.\n');

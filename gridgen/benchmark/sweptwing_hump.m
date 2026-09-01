@@ -27,7 +27,7 @@ params.plot      = false;
 %% Streamwise refinement — Gaussian cluster at the hump centre
 x_m = 0.1837410879 / 2.1394e-4;  % hump centre ~859
 params.mug    = x_m;
-params.spread = 55.137096;       % = heritage sig 0.2 on this domain
+params.spread = 55.137096;       % half-width the refinement reaches (matches the heritage grid)
 params.refine = 2;
 
 %% Grid operators (fd eta: sparse pentadiagonal, avoids cheb OOM on laptop)

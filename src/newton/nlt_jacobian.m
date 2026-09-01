@@ -1,7 +1,7 @@
-function [Jh, Ja] = build_JNL(q_complex, ctx)
-%BUILD_JNL  Analytical Jacobian of NLT_HNS with respect to q (2D case only).
+function [Jh, Ja] = nlt_jacobian(q_complex, ctx)
+%NLT_JACOBIAN  Analytical Jacobian of NLT_HNS with respect to q (2D case only).
 %
-%   [Jh, Ja] = build_JNL(q_complex, ctx)
+%   [Jh, Ja] = nlt_jacobian(q_complex, ctx)
 %
 %   Returns sparse complex (nphys*bsize)^2 matrices holding the Wirtinger
 %   derivatives of the NLT forcing,
@@ -10,10 +10,9 @@ function [Jh, Ja] = build_JNL(q_complex, ctx)
 %
 %   Jh collecting the terms where the differentiated slot is a physical mode and
 %   Ja those where it is the conjugate of one. NB these are the forcing derivatives
-%   alone, dr/dQ and dr/dQ*: the paper's J_h and J_a are ML - Jh and -Ja, formed in
-%   jac_matvec. Only the momentum rows (u, v, w)
-%   are filled; the inflow rows (station i=1) are zero. Buffer attenuation from
-%   ctx.Bound.bufcf is applied.
+%   alone, dr/dQ and dr/dQ*: the paper's J_h and J_a are ML - Jh and -Ja, formed
+%   in jacobian_apply. Only the momentum rows (u, v, w) are filled; the inflow
+%   rows (station i=1) are zero. Buffer attenuation from ctx.Bound.bufcf applied.
 %
 %   For nvar=5 the convective momentum forcing is weighted by the base density
 %   and keeps the spanwise iu*beta*w_gh coupling:

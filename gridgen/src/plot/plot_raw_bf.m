@@ -51,7 +51,7 @@ switch class
 
         for c = 1:3
             subplot(4,1,1+c);
-            if range(comps{c}(:)) > eps
+            if (max(comps{c}(:)) - min(comps{c}(:))) > eps
                 contourf(Xg, Yg, comps{c}, 40, 'LineColor', 'none');
             else
                 imagesc(x, y, comps{c}); axis xy;   % constant field: flat colour map
@@ -82,7 +82,7 @@ switch class
 
     case 'curvilinear_structured'
         X = BF.X; Y = BF.Y;
-        transposed = range(X(1, :)) < range(X(:, 1));
+        transposed = (max(X(1, :)) - min(X(1, :))) < (max(X(:, 1)) - min(X(:, 1)));
         if transposed
             X = X.'; Y = Y.';
             for c = 1:3;  comps{c} = comps{c}.';  end
@@ -104,7 +104,7 @@ switch class
 
         for c = 1:3
             subplot(4,1,1+c);
-            if range(comps{c}(:)) > eps
+            if (max(comps{c}(:)) - min(comps{c}(:))) > eps
                 contourf(X, Y, comps{c}, 40, 'LineColor', 'none');
             else
                 pcolor(X, Y, comps{c}); shading flat;
@@ -144,8 +144,8 @@ if ~isvector(BF.X) || ~isvector(BF.Y) || numel(BF.X) ~= numel(BF.Y)
     return;
 end
 
-tolX = max(1e-6 * range(BF.X), 1e-12);
-tolY = max(1e-6 * range(BF.Y), 1e-12);
+tolX = max(1e-6 * (max(BF.X) - min(BF.X)), 1e-12);
+tolY = max(1e-6 * (max(BF.Y) - min(BF.Y)), 1e-12);
 [Xu, ~, ix] = uniquetol(BF.X(:), tolX, 'DataScale', 1);
 [Yu, ~, iy] = uniquetol(BF.Y(:), tolY, 'DataScale', 1);
 nx = numel(Xu);

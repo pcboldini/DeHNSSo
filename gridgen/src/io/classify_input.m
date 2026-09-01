@@ -43,8 +43,8 @@ elseif isvector(X) && isvector(Y) && numel(X) == numel(Y)
         class = 'curvilinear_structured';
     else
         n    = numel(X);
-        tolX = max(1e-6 * range(X), 1e-12);
-        tolY = max(1e-6 * range(Y), 1e-12);
+        tolX = max(1e-6 * (max(X) - min(X)), 1e-12);
+        tolY = max(1e-6 * (max(Y) - min(Y)), 1e-12);
         nu_x = numel(uniquetol(X, tolX, 'DataScale', 1));
         nu_y = numel(uniquetol(Y, tolY, 'DataScale', 1));
         ratio = (nu_x * nu_y) / n;
@@ -73,5 +73,5 @@ end
 function tf = y_is_row_constant(Y)
 % Structured Cartesian meshgrid has Y constant along each row (rows index Y).
 row_std = std(Y, 0, 2);
-tf = max(row_std) < 1e-8 * range(Y(:));
+tf = max(row_std) < 1e-8 * (max(Y(:)) - min(Y(:)));
 end

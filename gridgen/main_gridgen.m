@@ -55,8 +55,19 @@ if isfield(params, 'forcing') && ~isempty(params.forcing)
     fprintf('Wall forcing: %d source(s) -> refining mesh\n', numel(forcing));
 end
 
+% Clustering is set through mug (centre), spread (width) and refine (strength).
+if isfield(params, 'sig')
+    error('main_gridgen:legacySig', ...
+          ['params.sig is no longer an input: use params.spread, the half-width ' ...
+           'the refinement reaches, in physical x (sig = 3*spread/half-domain).']);
+end
+if isfield(params, 'ag')
+    error('main_gridgen:legacyAg', ...
+          ['params.ag is no longer an input: use params.refine = 1/ag, how many ' ...
+           'times finer dxi is at the centre than on an equidistant mesh.']);
+end
 % refine says how many times finer dxi is at the centre than on an equidistant
-% mesh, which is the way one usually thinks about it; ag is its reciprocal.
+% mesh.
 if isfield(params, 'refine') && ~isempty(params.refine)
     params.ag = 1 ./ params.refine;
 end

@@ -70,10 +70,11 @@ DeHNSSo/
 │   │   ├── solve_newton.m          — Pseudo-arclength continuation in A0_fund.
 │   │   │                             The only Newton solver: a fixed-amplitude
 │   │   │                             solve does not converge at high amplitude.
-│   │   ├── build_ctx.m             — Shared context: LHS, per-mode LU, BC vectors
-│   │   ├── build_JNL.m             — Analytical Jacobian of the NLT forcing (Jh, Ja)
-│   │   ├── residual_hns.m          — F(q) in real form [real(q_phys); imag(q_phys)]
-│   │   └── jac_matvec.m            — Matrix-free Jacobian-vector product
+│   │   ├── newton_context.m        — Shared context: LHS, per-mode LU, BC vectors
+│   │   ├── nlt_jacobian.m          — Analytical Jacobian of the NLT forcing (Jh, Ja)
+│   │   ├── newton_residual.m       — F(q) in real form [real(q_phys); imag(q_phys)]
+│   │   ├── jacobian_apply.m        — Matrix-free Jacobian-vector product
+│   │   └── mumps_solve.m           — MUMPS back-end: factor / bsolve / destroy
 │   ├── convergence/
 │   │   ├── check_convergence.m     — Convergence criterion, amplitude ramping
 │   │   └── update_modes.m          — Update u/v/w/p, amplitudes, active mode set
@@ -303,9 +304,11 @@ Freestream values are only injected for components where `Opt.bc_top{k} = 'IH_DR
 
 **Block-Thomas** (`'block_thomas'`, compressible only): dual-Schur block-pentadiagonal factorization (Paredes 2024, `src/linsolve/block_thomas/`), partitioned by `Opt.bt_np` (default 2). Factors once per `(omega_j, beta_j)` and caches like the banded path; `Opt.lu_cache='off'` forces a one-shot factor+solve, and `Opt.bt_ooc='on'` streams the factor to disk (out-of-core) for minimal RAM. `Opt.bt_apply` selects whether each diagonal station block is stored as its pivoted LU factors (default) or as its inverse ('inverse', Paredes 2024); the former is three orders more accurate on near-singular station blocks for ~4% more time; both forms are streamed out of core. Errors on the incompressible operator, whose zero-diagonal continuity rows make the unpivoted block factorization silently wrong.
 
+**MUMPS** (`src/newton/mumps_solve.m`, Newton only): factorises the real 2N x 2N Jacobian through one entry point, `mumps_solve('factor'|'bsolve'|'destroy')`. Not an `Opt.lu_mode` back-end: those factorise one mode at a time, whereas the Newton Jacobian couples all modes at once. It climbs the `Opt.newton_mumps_relax` ladder (ICNTL(14)) before falling back to out-of-core (ICNTL(22)), and deletes its own scratch on destroy, since MUMPS closes those files without unlinking them.
+
 **Rerun:** when `Opt.rerun = 'on'`, the factor cache from the previous run is passed back in via `LHS.LU_cache`. If `(omega_j, beta_j)` is unchanged (e.g. an amplitude sweep) the factor is reused at no cost; if `omega_j` changes (frequency sweep) that mode is refactored. This applies to every caching mode (`'full'`, `'auto'`, `'lapack_band'`, `'block_thomas'`); `'seq'` and `'none'` never cache.
 
-**Rerun with `Opt.hr`:** the resonator rows live in `MLA1`, so a cached factor belongs to one admittance. `main` records what the cached `MLA1` carries (`LHS.hr_sig`, `LHS.hr_rows`) and drops `LHS.LU_cache` whenever it differs. The assembly survives regardless: `solve_modes` recovers `MLAMFD = MLA1 + MFD_diff` (invariant under the wall rows), resets any rows a previous resonator wrote, then applies the current one — so any transition reuses the assembly, including back to a rigid wall. `Opt.hr_in_MLA1` keeps Picard from rewriting the rows every iteration. `build_ctx` (Newton) always assembles fresh and so needs no reset.
+**Rerun with `Opt.hr`:** the resonator rows live in `MLA1`, so a cached factor belongs to one admittance. `main` records what the cached `MLA1` carries (`LHS.hr_sig`, `LHS.hr_rows`) and drops `LHS.LU_cache` whenever it differs. The assembly survives regardless: `solve_modes` recovers `MLAMFD = MLA1 + MFD_diff` (invariant under the wall rows), resets any rows a previous resonator wrote, then applies the current one — so any transition reuses the assembly, including back to a rigid wall. `Opt.hr_in_MLA1` keeps Picard from rewriting the rows every iteration. `newton_context` (Newton) always assembles fresh and so needs no reset.
 
 ---
 

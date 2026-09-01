@@ -177,8 +177,8 @@ if ~isvector(BF.X) || ~isvector(BF.Y) || numel(BF.X) ~= numel(BF.Y)
     return;
 end
 
-tolX = max(1e-6 * range(BF.X), 1e-12);
-tolY = max(1e-6 * range(BF.Y), 1e-12);
+tolX = max(1e-6 * (max(BF.X) - min(BF.X)), 1e-12);
+tolY = max(1e-6 * (max(BF.Y) - min(BF.Y)), 1e-12);
 [Xu, ~, ix] = uniquetol(BF.X(:), tolX, 'DataScale', 1);
 [Yu, ~, iy] = uniquetol(BF.Y(:), tolY, 'DataScale', 1);
 nx = numel(Xu);
