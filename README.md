@@ -1,5 +1,14 @@
 # DeHNSSo-v2
 
+[![MATLAB](https://img.shields.io/badge/MATLAB-R2025b-0076A8)](https://www.mathworks.com/products/matlab.html)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-user%20guide-2b6cb0)](docs/user_guide.md)
+[![DeHNSSo-v1 paper](https://img.shields.io/badge/DeHNSSo--v1-10.1016%2Fj.cpc.2024.109250-6f42c1)](https://doi.org/10.1016/j.cpc.2024.109250)
+[![DeHNSSo-v2 paper](https://img.shields.io/badge/DeHNSSo--v2-in%20preparation-lightgrey)](#)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555)](docs/user_guide.md)
+[![MUMPS](https://img.shields.io/badge/MUMPS-5.3.5-4a7c59)](src/external/)
+[![Parallel Computing Toolbox](https://img.shields.io/badge/Parallel%20Computing%20Toolbox-optional-4a7c59)](docs/user_guide.md)
+
 **Delft Harmonic Navier-Stokes Solver** — nonlinear stability analysis of laminar boundary layers over surfaces with complex geometric features.
 
 DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://doi.org/10.1016/j.cpc.2024.109250) by Westerbeek, Hulshoff, Schuttelaars & Kotsonis (2024).
