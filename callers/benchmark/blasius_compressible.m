@@ -1,4 +1,27 @@
-%% DeHNSSo — Compressible Blasius boundary layer (TS waves)
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% DeHNSSo — Compressible Blasius boundary layer (TS waves)
 %  Base flow: DeHNSSo_input_compressible.mat (gridgen + baseflow/caller/caller_CBL.m;
 %  must carry rho, T and thermo metadata Ma, Pr, gamma, S*, mu, dmuT, d2muT2).
 

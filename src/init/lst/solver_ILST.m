@@ -1,5 +1,30 @@
 function [EV,u,v,w,p,y,fn]=solver_ILST(Re,Ur,Wr,dUr,dWr,y_md,omega,beta,N,y_max,y_i)
-%SOLVER_ILST  Solve the Orr-Sommerfeld eigenvalue problem for the inflow mode.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2023 S.H.J. Westerbeek, S. Hulshoff, H. Schuttelaars
+%                          & M. Kotsonis
+%     Modified (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Solve the Orr-Sommerfeld eigenvalue problem for the inflow mode.
 %
 %   [EV, u, v, w, p, y, fn] = solver_ILST(Re, Ur, Wr, dUr, dWr, y_md, omega, beta, N, y_max, y_i)
 %
@@ -11,21 +36,33 @@ function [EV,u,v,w,p,y,fn]=solver_ILST(Re,Ur,Wr,dUr,dWr,y_md,omega,beta,N,y_max,
 %   problem is recast into companion (generalised linear) form and solved for
 %   the full spectrum; the calling routine filters it for the physical mode.
 %
-%   Inputs:
-%     Re       — Reynolds number
-%     Ur,Wr    — streamwise / spanwise base-flow velocity profiles
-%     dUr,dWr  — their wall-normal derivatives
-%     y_md     — base-flow wall-normal grid
-%     omega    — angular frequency
-%     beta     — spanwise wavenumber
-%     N        — number of Chebyshev nodes
-%     y_max    — outer domain height
-%     y_i      — node-clustering height
-%   Outputs:
-%     EV       — eigenvalue spectrum (2*(4*N-6) eigenvalues)
-%     u,v,w,p  — eigenfunctions on the N nodes stored in y
-%     y        — physical wall-normal grid
-%     fn       — Frobenius norm of the operator (eig error ~ eps*fn)
+%     Ur,Wr      streamwise / spanwise base-flow velocity profiles
+%     dUr,dWr    their wall-normal derivatives
+%     u,v,w,p    eigenfunctions on the N nodes stored in y
+
+%% Inputs
+% Name  size            unit   explanation
+% Re                    [-]    Reynolds number
+% Ur    (numel(y_md),1) [-]    streamwise base-flow velocity profile on the base-flow grid y_md
+% Wr    (numel(y_md),1) [-]    spanwise base-flow velocity profile on the base-flow grid y_md
+% dUr   (numel(y_md),1) [-]    wall-normal derivative of Ur
+% dWr   (numel(y_md),1) [-]    wall-normal derivative of Wr
+% y_md                  [-]    base-flow wall-normal grid
+% omega                 [-]    angular frequency
+% beta                  [-]    spanwise wavenumber
+% N                     [-]    number of Chebyshev nodes
+% y_max                 [-]    outer domain height
+% y_i                   [-]    node-clustering height
+
+%% Outputs
+% Name size    unit   explanation
+% EV           [-]    eigenvalue spectrum (2*(4*N-6) eigenvalues)
+% u    (N,4*N) [-]    streamwise eigenfunctions, one column per eigenvalue
+% v    (N,4*N) [-]    wall-normal eigenfunctions, one column per eigenvalue
+% w    (N,4*N) [-]    spanwise eigenfunctions, one column per eigenvalue
+% p    (N,4*N) [-]    pressure eigenfunctions, one column per eigenvalue
+% y            [-]    physical wall-normal grid
+% fn           [-]    Frobenius norm of the operator (eig error ~ eps*fn)
 
 %% Spectral basis functions
 

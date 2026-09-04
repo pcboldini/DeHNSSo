@@ -1,4 +1,34 @@
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
 
+% DOI:
+
+%% Description
+% Generate a compressible boundary-layer base flow.
+%
+%   Solves the self-similar compressible boundary layer for the case set in the
+%   USER INPUTS block and writes baseflow/output/BF_compressible.mat, ready for
+%   gridgen. The shipped settings are the Zanus and Bertolotti compressible
+%   PSE benchmark: Ma = 0.5, Pr = 0.72, adiabatic flat plate at Te = 206 K.
+%
+%   Run this before gridgen/benchmark/blasius_compressible.m.
 clc; clear all; format long
 caller_dir = fileparts(mfilename('fullpath'));
 rootdir    = fullfile(caller_dir, '..', '..');     % refactor repo root

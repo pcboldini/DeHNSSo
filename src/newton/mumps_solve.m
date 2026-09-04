@@ -1,5 +1,28 @@
 function varargout = mumps_solve(op, varargin)
-%MUMPS_SOLVE  MUMPS back-end for the Newton solver (factor / bsolve / destroy).
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% MUMPS back-end for the Newton solver (factor / bsolve / destroy).
 %
 %   id      = mumps_solve('factor',  Jr, Opt, step, lam)
 %   [X, id] = mumps_solve('bsolve',  id, Jr, RHS)
@@ -9,6 +32,16 @@ function varargout = mumps_solve(op, varargin)
 %   JOB=4 analyze+factor, JOB=3 solve, JOB=-2 destroy. The factor is held across
 %   steps, so id/Jr are threaded through the caller rather than captured in a
 %   closure: a closure holding a destroyed id would segfault on the next solve.
+
+%% Inputs
+% Name     size unit   explanation
+% op       char [-]    operation to perform: 'factor', 'bsolve' or 'destroy'
+% varargin cell [-]    arguments forwarded to the selected operation
+
+%% Outputs
+% Name      size unit   explanation
+% varargout cell [-]    values returned by the selected operation
+
 switch lower(op)
     case 'factor';  [varargout{1:nargout}] = mumps_factor(varargin{:});
     case 'bsolve';  [varargout{1:nargout}] = mumps_bsolve(varargin{:});
@@ -38,7 +71,7 @@ if nargin < 4 || isempty(lam);  lam  = NaN; end
 nbad = nnz(~isfinite(nonzeros(Jr)));
 if nbad > 0
     error('mumps_factor:badJacobian', ...
-          ['Jacobian has %d non-finite entries before factorisation — the state ' ...
+          ['Jacobian has %d non-finite entries before factorisation: the state ' ...
            'is nonphysical (likely a cold-start overshoot). Lower Opt.newton_start ' ...
            'or newton_dsmax.'], nbad);
 end
@@ -92,6 +125,27 @@ for attempt = 1:size(sched,1)
             if isempty(getenv('MUMPS_OOC_TMPDIR')); setenv('MUMPS_OOC_TMPDIR', tempdir); end
             ooc_check_space(getenv('MUMPS_OOC_TMPDIR'));
             ooc_track(ooc_pfx, 'push');
+        end
+        % Analysis only, when asked: JOB=1 returns the estimates without
+        % building or writing anything, so the memory a case would need can be
+        % checked in minutes before committing hours and hundreds of GB of
+        % scratch to it. INFOG(16)/(17) are the in-core estimates and
+        % INFOG(19)/(20) the out-of-core ones; the entry counts INFOG(9)/(29)
+        % are only filled by a real factorisation and stay zero here.
+        if isfield(Opt,'newton_analyze_only') && Opt.newton_analyze_only
+            t_fac = tic; id.JOB = 1; id = dmumps(id, Jr); t_fac = toc(t_fac);
+            fprintf(['   [mumps_analyze] STATS nnzJ=%d n=%d t_analyze=%.1f ' ...
+                     'INFOG16=%g INFOG17=%g INFOG19=%g INFOG20=%g ' ...
+                     'INFOG26=%g INFOG27=%g\n'], ...
+                    nnz(Jr), size(Jr,1), t_fac, id.INFOG(16), id.INFOG(17), ...
+                    id.INFOG(19), id.INFOG(20), id.INFOG(26), id.INFOG(27));
+            % Not an error: throwing here would be caught by the retry loop
+            % below, which reads any exception as a crash and starts over with
+            % more relaxation. Close MUMPS and hand back an empty handle, which
+            % the caller treats as "no factor".
+            id.JOB = -2; dmumps(id); id = [];
+            if ooc, ooc_track(ooc_pfx, 'pop'); end
+            return
         end
         t_fac = tic; id.JOB = 4; id = dmumps(id, Jr); t_fac = toc(t_fac);
     catch ME
@@ -148,8 +202,24 @@ end
 error('mumps_factor: failed after %d attempts (last INFOG(1)=%g)', size(sched,1), info1);
 end
 
-function [X, id] = mumps_bsolve(id, Jr, RHS)
-id.JOB = 3; id.RHS = RHS; id = dmumps(id, Jr); X = double(id.SOL);
+function [X, id] = mumps_bsolve(id, Jr, RHS, Opt)
+%MUMPS_BSOLVE  Apply the retained factor to one right-hand side.
+%   The corrector pays this once per iteration while the factorisation is paid
+%   once per step, so the two together are the cost of a continuation step. The
+%   time is recorded when Opt.newton_stats_file is set, in the same file as the
+%   factorisation statistics, so a run reports both halves of that cost.
+t_bs = tic; id.JOB = 3; id.RHS = RHS; id = dmumps(id, Jr); X = double(id.SOL);
+t_bs = toc(t_bs);
+if nargin >= 4
+    sfile = get_o(Opt,'newton_stats_file','');
+    if ~isempty(sfile)
+        fid = fopen(sfile,'a');
+        if fid > 0
+            fprintf(fid,'   [mumps_bsolve] STATS t_solve=%.2f nrhs=%d\n', t_bs, size(RHS,2));
+            fclose(fid);
+        end
+    end
+end
 end
 
 function id = mumps_destroy(id)

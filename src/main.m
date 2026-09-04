@@ -1,5 +1,28 @@
 function [StabRes, StabGrid, LHS] = main(Stab, StabGrid, Opt, LHS)
-%MAIN  DeHNSSo main solver loop.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% DeHNSSo main solver loop.
 %
 %   [StabRes, StabGrid]      = main(Stab, StabGrid, Opt)
 %   [StabRes, StabGrid, LHS] = main(Stab, StabGrid, Opt)       % also return LHS
@@ -14,6 +37,19 @@ function [StabRes, StabGrid, LHS] = main(Stab, StabGrid, Opt, LHS)
 %   and their per-mode factorizations. Pass LHS back in with Opt.rerun='on' to
 %   skip both assembly and factorization (for omega/beta/A0 sweeps on a fixed
 %   base flow).
+
+%% Inputs
+% Name     size         unit   explanation
+% Stab     (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
+% StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
+% Opt      (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% LHS      (1,1) struct [-]    mode-invariant operator blocks and the LU cache
+
+%% Outputs
+% Name     size         unit   explanation
+% StabRes  (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+% StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
+% LHS      (1,1) struct [-]    mode-invariant operator blocks and the LU cache
 
 %% Input validation
 if ~exist('StabGrid','var') || ~isstruct(StabGrid); StabGrid = struct(); end
@@ -190,7 +226,6 @@ elseif is_linear
 else
     %% Nonlinear convergence loop
     % AF-continuation Picard with damping and optional Anderson acceleration
-    % (no Newton takeover: high amplitudes use Opt.solver='newton' instead)
     fprintf('\n--- Convergence loop ---\n');
     iter = 0;
     t_loop = tic;
@@ -198,7 +233,7 @@ else
     AF_stall_check = -1;
     Opt.AF_history = [];
     iters_at_AF1 = 0;          % Picard iters spent at AF=1
-    max_A_prev   = 0;          % previous iter's max_A — for runaway detection
+    max_A_prev   = 0;          % previous iter's max_A, for runaway detection
     stall_msg_printed = false; % only print stall-disabled message once
 
     % Opt.maxit caps the loop and Opt.miniter keeps it running past convergence
@@ -211,6 +246,8 @@ else
     if ~isfield(Opt,'maxit')   || isempty(Opt.maxit);   Opt.maxit   = inf; end
     if ~isfield(Opt,'miniter') || isempty(Opt.miniter); Opt.miniter = 0;   end
     keep_history = isfield(Opt,'iter_history') && strcmpi(Opt.iter_history,'on');
+    xloc_opt = [];
+    if isfield(Opt,'xloc'); xloc_opt = Opt.xloc; end
     if keep_history; StabRes.iter_history = struct('A',{{}},'max_dal',[],'AF',[],'E_tot',[],'E_loc',[]); end
     % Opt.backward_error='on' measures how well each per-mode system was solved,
     % which needs no second run to compare against (see backward_error).
@@ -228,7 +265,7 @@ else
     AA_m      = Opt.anderson;
     AA_Xhist  = [];
     AA_Fhist  = [];
-    AA_AF_ref = [];   % AF at which history was recorded — reset on AF change
+    AA_AF_ref = [];   % AF at which history was recorded, reset on AF change
 
     % Warm start (Stab.IC='LOAD'): seed the nonlinear-term (NLT) forcing from the
     % loaded converged field so the FIRST solve reproduces its saturated amplitude.
@@ -358,7 +395,10 @@ else
             iter, solver_tag, Opt.AF, n_active, max_A, max_dal, toc(t_iter));
 
         if keep_history
-            [E_tot, E_loc] = mode_energy(StabGrid, Bound, Mode, StabRes);
+            % Opt.xloc selects the station of the local energy measure. Left
+            % unset, the local measure is skipped and E_loc is recorded as NaN;
+            % E_tot is unaffected.
+            [E_tot, E_loc] = mode_energy(StabGrid, Bound, Mode, StabRes, xloc_opt);
             StabRes.iter_history.A{end+1}       = StabRes.A;
             StabRes.iter_history.max_dal(end+1) = max_dal;
             StabRes.iter_history.AF(end+1)      = Opt.AF;
@@ -419,7 +459,7 @@ else
         if ~isfinite(max_A) || max_A > 1
             error('main:picardDiverged', ...
                 ['Picard diverged at iteration %d (AF=%.3f): max(A) = %.3e. ' ...
-                 'This is divergence, not a stall — the iteration cannot recover. ' ...
+                 'This is divergence, not a stall: the iteration cannot recover. ' ...
                  'Try Opt.anderson = 5 (often enough near saturation), a lower ' ...
                  'Stab.A0_fund, or Opt.solver = ''newton'' (pseudo-arclength ' ...
                  'continuation) to reach this amplitude.'], iter, Opt.AF, max_A);
@@ -440,12 +480,10 @@ else
         end
 
         if picard_stall_count >= 10
-            % No Newton takeover: the solver is either Picard or Newton
-            % (Opt.solver='newton' = pseudo-arclength continuation), never a
-            % mix. Report the stall once and keep running Picard.
+            % Report the stall once and keep running Picard.
             picard_stall_count = 0;
             if ~stall_msg_printed
-                fprintf(['\n  ** Picard stalled at AF=%.3f — continuing Picard. ' ...
+                fprintf(['\n  ** Picard stalled at AF=%.3f, continuing Picard. ' ...
                          'For high amplitudes use Opt.solver=''newton'' ' ...
                          '(pseudo-arclength continuation) instead. **\n\n'], Opt.AF);
                 stall_msg_printed = true;
@@ -522,7 +560,7 @@ if is_newton
     % Mode); running it again here would double-normalize and re-drop conjugates.
 elseif any(~isfinite(StabRes.q(:)))
     warning('main:postprocess_skipped', ...
-        'Solve diverged (non-finite values in StabRes.q) — skipping postprocess.');
+        'Solve diverged (non-finite values in StabRes.q): skipping postprocess.');
 else
     StabRes = postprocess(StabGrid, Init, Mode, Opt, StabRes);
 end
@@ -555,7 +593,7 @@ end
 
 %% Completion message
 if isfield(Opt,'save_output') && ~isempty(Opt.save_output)
-    fprintf('\n=== DeHNSSo finished — output saved to %s ===\n', Opt.save_output);
+    fprintf('\n=== DeHNSSo finished, output saved to %s ===\n', Opt.save_output);
 else
     fprintf('\n=== DeHNSSo finished (output not saved; set Opt.save_output to save) ===\n');
 end

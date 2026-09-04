@@ -1,5 +1,28 @@
 function StabGrid = main_gridgen(input, params, output)
-%MAIN_GRIDGEN  Build a DeHNSSo-ready StabGrid from a raw base-flow file.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Build a DeHNSSo-ready StabGrid from a raw base-flow file.
 %
 %   StabGrid = main_gridgen(input, params, output)
 %
@@ -26,6 +49,16 @@ function StabGrid = main_gridgen(input, params, output)
 %     .filename   output filename (e.g. 'DeHNSSo_input_hump.mat')
 %
 %   Returns the StabGrid struct and writes it to disk.
+
+%% Inputs
+% Name   size         unit   explanation
+% input  (1,1) struct [-]    base-flow source: folder, filename, format ('mat', 'bin' or 'csv') and an optional structured hint
+% params (1,1) struct [-]    grid-generation parameters
+% output (1,1) struct [-]    where to write the generated grid: folder and filename
+
+%% Outputs
+% Name     size         unit   explanation
+% StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
 
 %% 0. Banner
 fprintf('\n');

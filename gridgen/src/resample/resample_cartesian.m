@@ -1,5 +1,28 @@
 function BF_new = resample_cartesian(BF, params)
-%RESAMPLE_CARTESIAN  Interpolate a structured BF onto a Malik-Chebyshev η × equidistant ξ grid.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Interpolate a structured BF onto a Malik-Chebyshev η × equidistant ξ grid.
 %
 %   BF_new = resample_cartesian(BF, params)
 %
@@ -14,6 +37,15 @@ function BF_new = resample_cartesian(BF, params)
 %   interp_method (default 'makima'); rescale, Uref, lref to non-dimensionalise.
 %
 %   Output: BF_new (X, Y, U, V, W, H, y_i, cluster) plus any Re/lref/Uref/nu.
+
+%% Inputs
+% Name   size         unit   explanation
+% BF     (1,1) struct [-]    base flow on its own grid
+% params (1,1) struct [-]    grid-generation parameters
+
+%% Outputs
+% Name   size         unit   explanation
+% BF_new (1,1) struct [-]    base flow resampled onto the stability grid
 
 %% Canonicalise a flat-scatter input to gridded (ny x nx); no-op if already 2-D
 BF = reshape_scatter(BF);

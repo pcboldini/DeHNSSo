@@ -1,5 +1,28 @@
 function F_real = newton_residual(q_real, ctx)
-%NEWTON_RESIDUAL  Residual F(q) of the nonlinear HNS system, in real arithmetic.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Residual F(q) of the nonlinear HNS system, in real arithmetic.
 %
 %   F_real = newton_residual(q_real, ctx)
 %
@@ -9,6 +32,15 @@ function F_real = newton_residual(q_real, ctx)
 %   posed: the NLT depends on both q_phys and conj(q_phys), so the complex
 %   Jacobian is antilinear, and splitting into real and imaginary parts gives
 %   GMRES the genuinely linear operator it needs.
+
+%% Inputs
+% Name   size         unit   explanation
+% q_real (2N,1)       [-]    state as stacked real and imaginary parts of the modal coefficients
+% ctx    (1,1) struct [-]    Newton context from newton_context: operators, forcing registry and mode bookkeeping
+
+%% Outputs
+% Name   size   unit   explanation
+% F_real (2N,1) [-]    residual as stacked real and imaginary parts
 
 %% Unpack state
 % jc = nf+1-j pairs each physical mode with its conjugate slot; NLT_HNS needs the

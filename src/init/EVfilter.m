@@ -1,5 +1,30 @@
 function [eigenvalue,index] = EVfilter(EV,V,y,omega,beta,delta99,Mach,mode_select)
-%EVFILTER  Pick the physical eigenvalue from the spectrum by its decay rate.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2023 S.H.J. Westerbeek, S. Hulshoff, H. Schuttelaars
+%                          & M. Kotsonis
+%     Modified (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Pick the physical eigenvalue from the spectrum by its decay rate.
 %
 %   [eigenvalue, index] = EVfilter(EV, V, y, omega, beta, delta99, Mach, mode_select)
 %
@@ -10,24 +35,26 @@ function [eigenvalue,index] = EVfilter(EV,V,y,omega,beta,delta99,Mach,mode_selec
 %   wall-normal grid must reach far enough (large y_max) to see the full
 %   decay.
 %
-%   Inputs:
-%     EV          — eigenvalue spectrum (candidate alpha values)
-%     V           — eigenfunctions (columns aligned with EV)
-%     y           — wall-normal grid
-%     omega       — angular frequency
-%     beta        — spanwise wavenumber
-%     delta99     — boundary-layer thickness
-%     Mach        — Mach number (optional, default 0)
-%     mode_select — branch selector (optional): 'auto' (default), 'slow', 'fast'
-%   Outputs:
-%     eigenvalue  — selected physical eigenvalue
-%     index       — its index into the original (unfiltered) spectrum
-%
 %   For Ma>1, where Mack fast (F) and slow (S) modes coexist, mode_select
 %   restricts the branch: 'auto' takes the minimum-error eigenvalue, 'slow'
 %   the slow mode S (phase speed c_r < 1), 'fast' the fast mode F (c_r > 1).
-%
 %   M. Kotsonis, K. Groot & J.Y. Boersma - 2017
+
+%% Inputs
+% Name        size unit   explanation
+% EV               [-]    eigenvalue spectrum (candidate alpha values)
+% V                [-]    eigenfunctions (columns aligned with EV)
+% y                [-]    wall-normal grid
+% omega            [-]    angular frequency
+% beta             [-]    spanwise wavenumber
+% delta99          [-]    boundary-layer thickness
+% Mach             [-]    Mach number (optional, default 0)
+% mode_select      [-]    branch selector (optional): 'auto' (default), 'slow', 'fast'
+
+%% Outputs
+% Name       size unit   explanation
+% eigenvalue      [-]    selected physical eigenvalue
+% index           [-]    its index into the original (unfiltered) spectrum
 
 %% Defaults and parameters
 

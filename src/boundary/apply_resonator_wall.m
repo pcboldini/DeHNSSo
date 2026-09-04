@@ -1,5 +1,28 @@
 function [MLA1, rows] = apply_resonator_wall(MLA1, hr, BF, StabGrid, is_compr)
-%APPLY_RESONATOR_WALL  Helmholtz-resonator reactive wall boundary condition (BC) over a mouth.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Helmholtz-resonator reactive wall boundary condition (BC) over a mouth.
 %
 %   [MLA1, rows] = apply_resonator_wall(MLA1, hr, BF, StabGrid, is_compr)
 %
@@ -12,6 +35,19 @@ function [MLA1, rows] = apply_resonator_wall(MLA1, hr, BF, StabGrid, is_compr)
 %   In the compressible case p' is not a state variable, so
 %   the relation is imposed on the rho' and T' columns. hr.taper smooths v'(x)
 %   at the rims at fixed int Y dx; hr.uslip frees u' over the mouth.
+
+%% Inputs
+% Name     size              unit   explanation
+% MLA1     nvar*ny*nx sparse [-]    mode-invariant operator block, zeroth order in omega and beta
+% hr       (1,1) struct      [-]    resonator specification: admittance magnitude and phase, and the mouth extent
+% BF       (1,1) struct      [-]    base flow on its own grid
+% StabGrid (1,1) struct      [-]    stability grid, coordinate metrics and base-flow fields on it
+% is_compr (1,1) logical     [-]    true for the compressible operator, false for the incompressible one
+
+%% Outputs
+% Name size              unit   explanation
+% MLA1 nvar*ny*nx sparse [-]    mode-invariant operator block, zeroth order in omega and beta
+% rows (1,nrows)         [-]    global row indices replaced by the impedance condition over the mouth
 
 ny    = size(BF.U, 1);
 bsize = (4 + double(is_compr)) * ny;

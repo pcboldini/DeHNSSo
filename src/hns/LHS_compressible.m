@@ -1,5 +1,28 @@
 function [MLAMFD,MLA1,MLA2,MLA3,MLA4,MLA5] = LHS_compressible(BF,Bound,Grid,Init,Stab,StabRes,Opt)
-%LHS_COMPRESSIBLE  Assemble the global sparse left-hand-side (LHS) matrices for
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Assemble the global sparse left-hand-side (LHS) matrices for
 %   the compressible harmonic Navier-Stokes (HNS) system, in curvilinear
 %   coordinates with variables (u,v,w,rho,T) and block size bsize=5*ny.
 %   Rows: 1=x-momentum 2=y-momentum 3=z-momentum 4=continuity 5=energy.
@@ -7,6 +30,25 @@ function [MLAMFD,MLA1,MLA2,MLA3,MLA4,MLA5] = LHS_compressible(BF,Bound,Grid,Init
 %   p'=(T_bar*rho'+rho_bar*T')/(gamma*Ma^2). Outputs MLAMFD, MLA1..MLA5
 %   (see LHS.m for the MLA1..4 convention; MLA5 is the extra beta*d/dxi
 %   cross-viscous block needed by the compressible operator).
+
+%% Inputs
+% Name    size         unit   explanation
+% BF      (1,1) struct [-]    base flow on its own grid
+% Bound   (1,1) struct [-]    boundary conditions and outflow-buffer coefficients
+% Grid    (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
+% Init    (1,1) struct [-]    inflow initialization data
+% Stab    (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
+% StabRes (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+% Opt     (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+
+%% Outputs
+% Name   size              unit   explanation
+% MLAMFD nvar*ny*nx sparse [-]    operator for the mean-flow-distortion mode (omega = 0, beta = 0)
+% MLA1   nvar*ny*nx sparse [-]    mode-invariant operator block, zeroth order in omega and beta
+% MLA2   nvar*ny*nx sparse [-]    mode-invariant operator block, first order in omega
+% MLA3   nvar*ny*nx sparse [-]    mode-invariant operator block, first order in beta
+% MLA4   nvar*ny*nx sparse [-]    mode-invariant operator block, second order in beta
+% MLA5   nvar*ny*nx sparse [-]    mode-invariant operator block, mixed omega-beta term
 
 nx    = Grid.nx;
 ny    = Grid.ny;

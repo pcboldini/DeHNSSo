@@ -1,5 +1,28 @@
 function [MLAMFD,MLA1,MLA2,MLA3,MLA4] = LHS(BF,Bound,Grid,Init,Stab,StabRes,Opt)
-%LHS  Assemble the global sparse LHS matrices for the HNS system.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Assemble the global sparse LHS matrices for the HNS system.
 %
 %   [MLAMFD, MLA1, MLA2, MLA3, MLA4] = LHS(BF, Bound, Grid, Init, Stab, StabRes, Opt)
 %
@@ -9,17 +32,35 @@ function [MLAMFD,MLA1,MLA2,MLA3,MLA4] = LHS(BF,Bound,Grid,Init,Stab,StabRes,Opt)
 %   arrays (O(n) cost).
 %
 %   Parallel assembly controlled by Opt.parfor:
-%     true  — parfor over stations i=2:nx (requires Parallel Computing Toolbox)
-%     false — standard for loop with progress reporting
+%     true    parfor over stations i=2:nx (requires Parallel Computing Toolbox)
+%     false   standard for loop with progress reporting
 %
 %   Outputs:
-%     MLAMFD  [N x N] sparse — LHS for the mean-flow-distortion (omega=0, beta=0)
-%     MLA1    [N x N] sparse — base LHS (common to all modes)
-%     MLA2    [N x N] sparse — omega-dependent part  (ML = MLA1 + omega*MLA2)
-%     MLA3    [N x N] sparse — beta-dependent part   (ML = MLA1 + ... + beta*MLA3)
-%     MLA4    [N x N] sparse — beta^2-dependent part (ML = MLA1 + ... + beta^2*MLA4)
+%     MLAMFD  [N x N] sparse: LHS for the mean-flow-distortion (omega=0, beta=0)
+%     MLA1    [N x N] sparse: base LHS (common to all modes)
+%     MLA2    [N x N] sparse: omega-dependent part  (ML = MLA1 + omega*MLA2)
+%     MLA3    [N x N] sparse: beta-dependent part   (ML = MLA1 + ... + beta*MLA3)
+%     MLA4    [N x N] sparse: beta^2-dependent part (ML = MLA1 + ... + beta^2*MLA4)
 %   where N = 4 * ny * nx.
 %   For 2D cases (N=0, all beta=0), MLA3 and MLA4 are empty sparse matrices.
+
+%% Inputs
+% Name    size         unit   explanation
+% BF      (1,1) struct [-]    base flow on its own grid
+% Bound   (1,1) struct [-]    boundary conditions and outflow-buffer coefficients
+% Grid    (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
+% Init    (1,1) struct [-]    inflow initialization data
+% Stab    (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
+% StabRes (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+% Opt     (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+
+%% Outputs
+% Name   size              unit   explanation
+% MLAMFD nvar*ny*nx sparse [-]    operator for the mean-flow-distortion mode (omega = 0, beta = 0)
+% MLA1   nvar*ny*nx sparse [-]    mode-invariant operator block, zeroth order in omega and beta
+% MLA2   nvar*ny*nx sparse [-]    mode-invariant operator block, first order in omega
+% MLA3   nvar*ny*nx sparse [-]    mode-invariant operator block, first order in beta
+% MLA4   nvar*ny*nx sparse [-]    mode-invariant operator block, second order in beta
 
 nx    = Grid.nx;
 ny    = Grid.ny;
@@ -83,7 +124,7 @@ else
     D1f = D1;  D2f = D2;  If = I;  Zf = Z;
 end
 
-%% Station i=1: inflow — identity block (no PDE, just stores IC)
+%% Station i=1: inflow: identity block (no PDE, just stores IC)
 [ii,jj,ss] = find(speye(bsize));
 cell_i1MFD{1} = reshape(ii,[],1);  cell_j1MFD{1} = reshape(jj,[],1);  cell_s1MFD{1} = reshape(ss,[],1);
 cell_i1{1}    = reshape(ii,[],1);  cell_j1{1}    = reshape(jj,[],1);  cell_s1{1}    = reshape(ss,[],1);

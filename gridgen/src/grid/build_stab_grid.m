@@ -1,5 +1,28 @@
 function Grid = build_stab_grid(BF, Grid)
-%BUILD_STAB_GRID  Build the DeHNSSo StabGrid struct from a resampled BF.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Build the DeHNSSo StabGrid struct from a resampled BF.
 %
 %   Cartesian (default): BF.X [1 x nx], BF.Y [ny x 1], BF.U/V/W [ny x nx], with
 %   optional Malik parameters BF.H and BF.y_i estimated from the data if absent.
@@ -12,6 +35,15 @@ function Grid = build_stab_grid(BF, Grid)
 %   A compressible BF is detected from BF.rho and BF.T: both are copied to Grid
 %   and Sutherland's law fills Grid.mu, Grid.dmuT, Grid.d2muT2 for the energy
 %   equation and LHS_compressible. BF.Ma, BF.Pr, BF.gamma and BF.Sstar pass through.
+
+%% Inputs
+% Name size         unit   explanation
+% BF   (1,1) struct [-]    base flow on its own grid
+% Grid (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
+
+%% Outputs
+% Name size         unit   explanation
+% Grid (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
 
 curvilinear = isfield(BF, 'mesh_type') && strcmp(BF.mesh_type, 'curvilinear');
 

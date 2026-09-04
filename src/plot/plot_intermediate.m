@@ -1,5 +1,28 @@
 function plot_intermediate(StabGrid, StabRes, Mode, Stab, Opt)
-%PLOT_INTERMEDIATE  Plot amplitude evolution during the convergence loop.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Plot amplitude evolution during the convergence loop.
 %
 %   plot_intermediate(StabGrid, StabRes, Mode, Stab, Opt)
 %
@@ -7,12 +30,17 @@ function plot_intermediate(StabGrid, StabRes, Mode, Stab, Opt)
 %   amplitude against R = sqrt(Re_x), together with the buffer location, so the
 %   convergence of the current iteration can be followed at a glance.
 %
-%   Inputs:
-%     StabGrid  — grid structure (xi1D, nx)
-%     StabRes   — stability results (u, A)
-%     Mode      — mode structure (nf)
-%     Stab      — stability data (Mvec, Nvec for legend labels)
-%     Opt       — options (k1, AF, xb)
+
+%% Inputs
+% Name     size unit   explanation
+% StabGrid      [-]    grid structure (xi1D, nx)
+% StabRes       [-]    stability results (u, A)
+% Mode          [-]    mode structure (nf)
+% Stab          [-]    stability data (Mvec, Nvec for legend labels)
+% Opt           [-]    options (k1, AF, xb)
+
+%% Outputs
+% None.
 
 %% Target figure 2 (reuse if it already exists)
 if isempty(findobj('Type','figure','Number',2))

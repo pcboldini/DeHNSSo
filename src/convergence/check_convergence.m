@@ -1,5 +1,28 @@
 function [Opt, Stab, StabRes] = check_convergence(StabGrid, Bound, Mode, Opt, Stab, StabRes)
-%CHECK_CONVERGENCE  Evaluate convergence, ramp amplitude, extrapolate forcing.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Evaluate convergence, ramp amplitude, extrapolate forcing.
 %
 %   [Opt, Stab, StabRes] = check_convergence(StabGrid, Bound, Mode, Opt, Stab, StabRes)
 %
@@ -8,13 +31,21 @@ function [Opt, Stab, StabRes] = check_convergence(StabGrid, Bound, Mode, Opt, St
 %   factor Opt.AF towards one. The nonlinear forcing is extrapolated in A^2
 %   from the last three amplitude levels to accelerate convergence.
 %
-%   Inputs:
-%     StabGrid  — grid structure (nx, D_xi, ...)
-%     Bound     — boundary/buffer structure (ibuf sets convergence window)
-%     Mode      — mode structure (RunJ: active modes)
-%     Opt       — options and iteration state (AF, dal, k1, ...)
-%     Stab      — stability data (forcing field f, extrapolation window flist)
-%     StabRes   — stability results (amplitudes A, Aold)
+
+%% Inputs
+% Name     size unit   explanation
+% StabGrid      [-]    grid structure (nx, D_xi, ...)
+% Bound         [-]    boundary/buffer structure (ibuf sets convergence window)
+% Mode          [-]    mode structure (RunJ: active modes)
+% Opt           [-]    options and iteration state (AF, dal, k1, ...)
+% Stab          [-]    stability data (forcing field f, extrapolation window flist)
+% StabRes       [-]    stability results (amplitudes A, Aold)
+
+%% Outputs
+% Name    size unit   explanation
+% Opt          [-]    options and iteration state (AF, dal, k1, ...)
+% Stab         [-]    stability data (forcing field f, extrapolation window flist)
+% StabRes      [-]    stability results (amplitudes A, Aold)
 
 %% Convergence measure
 ib = min(Bound.ibuf, StabGrid.nx);  % when buffering is off, ibuf = nx+1 (sentinel for "no limit"); clamp to nx

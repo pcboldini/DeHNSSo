@@ -1,5 +1,30 @@
 function DD = deriv2_uneven(x, y, order)
-%DERIV2_UNEVEN  Second derivative on a non-uniform grid (order 2, 4, or 6).
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2023 S.H.J. Westerbeek, S. Hulshoff, H. Schuttelaars
+%                          & M. Kotsonis
+%     Modified (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Second derivative on a non-uniform grid (order 2, 4, or 6).
 %
 %   DD = deriv2_uneven(x, y, order)
 %
@@ -9,6 +34,16 @@ function DD = deriv2_uneven(x, y, order)
 %
 %   x holds the coordinates and y the values, either a column vector or a matrix;
 %   order is 2, 4 or 6 (default 2). DD is d2y/dx2, the same size as y.
+
+%% Inputs
+% Name  size  unit   explanation
+% x     (n,1) [-]    coordinate, need not be uniformly spaced
+% y     (n,m) [-]    data to differentiate, column by column
+% order (1,1) [-]    finite-difference order: 2, 4 or 6
+
+%% Outputs
+% Name size  unit   explanation
+% DD   (n,m) [-]    second derivative of y with respect to x, one-sided at the boundaries
 
 %% Default order
 if nargin < 3

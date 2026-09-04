@@ -1,5 +1,28 @@
 function B = bc_rows(ny, is_compr)
-%BC_ROWS  Row indices, within one station block, that carry the boundary conditions.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Row indices, within one station block, that carry the boundary conditions.
 %
 %   B = bc_rows(ny, is_compr)
 %
@@ -23,6 +46,15 @@ function B = bc_rows(ny, is_compr)
 %     freestream  u, w, rho, T   (v is left free: it carries the displacement)
 %     wall        u, v, w, T     (rho is left free: it follows from the equations)
 %   Incompressibly both are (u,v,w) and p is free at the freestream.
+
+%% Inputs
+% Name     size          unit   explanation
+% ny       (1,1)         [-]    number of wall-normal points
+% is_compr (1,1) logical [-]    true for the compressible operator, false for the incompressible one
+
+%% Outputs
+% Name size         unit   explanation
+% B    (1,1) struct [-]    row indices within one station block for the top and wall conditions, with their variable names
 
 if is_compr
     B.top        = [1, 2*ny+1, 3*ny+1, 4*ny+1];   % u, w, rho, T

@@ -1,5 +1,28 @@
 function [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha2)
-%SOLVER_CLST  Assemble and solve the compressible LST (linear stability theory) eigenvalue problem.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Assemble and solve the compressible LST (linear stability theory) eigenvalue problem.
 %
 %   [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha2)
 %
@@ -10,16 +33,22 @@ function [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha
 %   equation of state (EOS) and Sutherland's viscosity law. The caller
 %   filters Eval to find the physical mode (see EVfilter).
 %
-%   Inputs:
-%     StabGrid    — grid structure (U, W, rho, T and y-derivatives, D-metrics,
 %                   Re, Ma, Pr, gamma, Sstar)
-%     i           — streamwise station
-%     omega, beta — angular frequency, spanwise wavenumber
-%     bc_top      — freestream BC: 'H_DR' (default) or 'H_NM'
-%     drop_alpha2 — true zeroes CCxx (old linear GEP, paper comparison)
-%   Outputs:
-%     Eval        — eigenvalue spectrum (finite alpha only)
-%     Evec        — eigenvectors [5*ny x n_eig], ordered [rho,u,v,w,T] per node
+%     omega, beta   angular frequency, spanwise wavenumber
+
+%% Inputs
+% Name        size  unit   explanation
+% StabGrid          [-]    grid structure (U, W, rho, T and y-derivatives, D-metrics,
+% i                 [-]    streamwise station
+% omega       (1,1) [-]    angular frequency of the mode
+% beta        (1,1) [-]    spanwise wavenumber of the mode
+% bc_top            [-]    freestream BC: 'H_DR' (default) or 'H_NM'
+% drop_alpha2       [-]    true zeroes CCxx (old linear GEP, paper comparison)
+
+%% Outputs
+% Name size unit   explanation
+% Eval      [-]    eigenvalue spectrum (finite alpha only)
+% Evec      [-]    eigenvectors [5*ny x n_eig], ordered [rho,u,v,w,T] per node
 
 if ~exist('bc_top','var') || isempty(bc_top); bc_top = 'H_DR'; end
 if ~exist('drop_alpha2','var') || isempty(drop_alpha2); drop_alpha2 = false; end

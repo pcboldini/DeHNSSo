@@ -1,5 +1,28 @@
 function plot_raw_bf(BF, class)
-%PLOT_RAW_BF  Visualise the raw (pre-resample) base-flow mesh and components.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Visualise the raw (pre-resample) base-flow mesh and components.
 %
 %   plot_raw_bf(BF, class)
 %
@@ -7,6 +30,14 @@ function plot_raw_bf(BF, class)
 %   Handles all three input classes: 'cartesian' via meshgrid and contourf,
 %   'curvilinear_structured' by contouring the 2-D X, Y directly, and
 %   'unstructured' as a coloured scatter per component.
+
+%% Inputs
+% Name  size         unit   explanation
+% BF    (1,1) struct [-]    base flow on its own grid
+% class char         [-]    input layout from classify_input, selecting how the raw base flow is drawn
+
+%% Outputs
+% None.
 
 U = BF.U; V = BF.V; W = BF.W;
 comps = {U, V, W};

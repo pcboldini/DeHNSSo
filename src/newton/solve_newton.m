@@ -1,5 +1,28 @@
 function [StabRes, info] = solve_newton(Stab, StabGrid, Opt)
-%SOLVE_NEWTON  Pseudo-arclength continuation in the inflow amplitude A0_fund.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Pseudo-arclength continuation in the inflow amplitude A0_fund.
 %
 %   [StabRes, info] = solve_newton(Stab, StabGrid, Opt)
 %
@@ -20,6 +43,17 @@ function [StabRes, info] = solve_newton(Stab, StabGrid, Opt)
 %   newton_seedfile, newton_ckfile, newton_resume ('off').
 %
 %   See also NEWTON_CONTEXT, NLT_JACOBIAN, NEWTON_RESIDUAL.
+
+%% Inputs
+% Name     size         unit   explanation
+% Stab     (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
+% StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
+% Opt      (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+
+%% Outputs
+% Name    size         unit   explanation
+% StabRes (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+% info    (1,1) struct [-]    continuation report: status, number of factorizations, step count and the branch trajectory
 
 %% Options and continuation parameters
 t_all = tic; cum = 0;
@@ -160,7 +194,7 @@ evalF = @(q,lam) newton_residual(q, ctx0) + (lam - lam0)*Flam;
             fprintf('   nat it%d lam=%.5e ||F||=%.3e\n', it_n, lam, nF_n);
             if nF_n < tol, break; end
             Jr_n = Jreal(q_out); id_n = mumps_solve('factor', Jr_n, Opt, 0, lam);
-            [dq_n, id_n] = mumps_solve('bsolve', id_n, Jr_n, -F_n);
+            [dq_n, id_n] = mumps_solve('bsolve', id_n, Jr_n, -F_n, Opt);
             id_n = mumps_solve('destroy', id_n);
             q_out = q_out + dq_n;
         end
@@ -209,7 +243,7 @@ if do_resume && ~isempty(ckfile) && exist(ckfile,'file') == 2
     fprintf('   [factorising: resume] ... '); tfac = tic;
     Jr = Jreal(qc); id = mumps_solve('factor', Jr, Opt, size(traj,1), lc); nfac_total = nfac_total + 1; age = 0;
     fprintf('done in %.1f min\n', toc(tfac)/60);
-    [w, id] = mumps_solve('bsolve', id, Jr, phi);
+    [w, id] = mumps_solve('bsolve', id, Jr, phi, Opt);
     [qs, ls] = arcscale(qc, lc, is_rel);
     w = w*ls/qs;                       % dq/dlam -> d(q/qs)/d(lam/ls)
     % Next tangent, the paper's [-z2', 1]' normalised, signed so lambda increases.
@@ -269,8 +303,8 @@ for step = (size(traj,1)+1):maxstep
             Jr = Jreal(q); id = mumps_solve('factor', Jr, Opt, step, l);
             nfac_step = nfac_step + 1; nfac_total = nfac_total + 1; age = 0;
             fprintf('done in %.1f min\n', toc(tfac)/60);
-            [a, id] = mumps_solve('bsolve', id, Jr, -F);  a = a(:);
-            [b, id] = mumps_solve('bsolve', id, Jr, phi); b = b(:);
+            [a, id] = mumps_solve('bsolve', id, Jr, -F, Opt);  a = a(:);
+            [b, id] = mumps_solve('bsolve', id, Jr, phi, Opt); b = b(:);
             dl = (-Nc - tq(:).'*a/qs)/(tq(:).'*b/qs + tl/ls); dl = dl(1);
             dq = a + dl*b; q = q(:) + dq(:); l = l + dl;
         end
@@ -293,7 +327,7 @@ for step = (size(traj,1)+1):maxstep
     end
     % b is the paper's z2 (up to the sign in phi), the solve against the parameter
     % derivative. It is fixed within the corrector, so it is taken once per step.
-    [b, id] = mumps_solve('bsolve', id, Jr, phi); b = b(:);
+    [b, id] = mumps_solve('bsolve', id, Jr, phi, Opt); b = b(:);
 
     % Corrector, Eq. (newton_two_solves) of the paper: Nc is the constraint S, a is
     % z1 and b is z2, and each iteration combines the two so the step satisfies S=0.
@@ -302,7 +336,7 @@ for step = (size(traj,1)+1):maxstep
         Nc  = tq(:).'*((q - qc)/qs) + tl*((l - lc)/ls) - ds;
         res = sqrt(F'*F + Nc^2);
         if res < arctol, conv = true; break; end
-        [a, id] = mumps_solve('bsolve', id, Jr, -F); a = a(:);
+        [a, id] = mumps_solve('bsolve', id, Jr, -F, Opt); a = a(:);
         dl = (-Nc - tq(:).'*a/qs)/(tq(:).'*b/qs + tl/ls); dl = dl(1);
         dq = a + dl*b; q = q(:) + dq(:); l = l + dl;
     end
@@ -314,13 +348,13 @@ for step = (size(traj,1)+1):maxstep
         Jr = Jreal(q); id = mumps_solve('factor', Jr, Opt, step, l);
         nfac_step = nfac_step + 1; nfac_total = nfac_total + 1; age = 0;
         fprintf('done in %.1f min\n', toc(tfac)/60);
-        [b, id] = mumps_solve('bsolve', id, Jr, phi); b = b(:);
+        [b, id] = mumps_solve('bsolve', id, Jr, phi, Opt); b = b(:);
         for it = 1:40
             q = q(:); F = evalF(q, l); F = F(:);
             Nc  = tq(:).'*((q - qc)/qs) + tl*((l - lc)/ls) - ds;
             res = sqrt(F'*F + Nc^2);
             if res < arctol, conv = true; break; end
-            [a, id] = mumps_solve('bsolve', id, Jr, -F); a = a(:);
+            [a, id] = mumps_solve('bsolve', id, Jr, -F, Opt); a = a(:);
             dl = (-Nc - tq(:).'*a/qs)/(tq(:).'*b/qs + tl/ls); dl = dl(1);
             dq = a + dl*b; q = q(:) + dq(:); l = l + dl;
         end
@@ -364,7 +398,7 @@ for step = (size(traj,1)+1):maxstep
                 for it_l = 1:reuse_maxit
                     F_l = evalF(q_try, A_target); F_l = F_l(:);
                     if norm(F_l) < arctol, land_ok = true; break; end
-                    [dq_l, id] = mumps_solve('bsolve', id, Jr, -F_l);
+                    [dq_l, id] = mumps_solve('bsolve', id, Jr, -F_l, Opt);
                     q_try = q_try + dq_l(:);
                 end
                 if land_ok
@@ -378,7 +412,7 @@ for step = (size(traj,1)+1):maxstep
             end
             l = A_target;
             % StabRes is unpacked from qc (the last ACCEPTED step) and
-            % info.lambda from lc, not from q/l — so the landed state must be
+            % info.lambda from lc, not from q/l, so the landed state must be
             % promoted here or it is computed and then silently discarded.
             qc = q; lc = l;
             amp = norm(q(1:N) + 1i*q(N+1:twoN));

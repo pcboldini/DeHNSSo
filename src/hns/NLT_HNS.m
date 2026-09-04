@@ -1,4 +1,49 @@
 function [ f ] = NLT_HNS(Grid,RunJ,StabRes,D1,HB,use_parfor)
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Nonlinear forcing of the harmonic Navier-Stokes system.
+%
+%   f = NLT_HNS(Grid, RunJ, StabRes, D1, HB, use_parfor)
+%
+%   Evaluates the quadratic mode-to-mode interactions that force each harmonic.
+%   For every active mode j, the harmonic-balancing registry HB(:,:,j) lists the
+%   pairs of modes whose product feeds it; those contributions are summed into
+%   row j of f. Wall-normal derivatives of the shape functions are formed with
+%   D1, and the streamwise ones from the stored fields.
+%% Inputs
+% Name       size         unit   explanation
+% Grid       (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
+% RunJ       (1,nactive)  [-]    mode counters currently active in the continuation
+% StabRes    (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+% D1         (ny,ny)      [-]    wall-normal first-derivative differentiation matrix
+% HB         (nf,nf,nf)   [-]    harmonic-balancing registry; HB(:,:,j) marks the mode pairs whose interaction forces mode j
+% use_parfor (1,1)        [-]    evaluate the mode loop with parfor when true
+
+%% Outputs
+% Name size            unit   explanation
+% f    (nf,nvar*ny*nx) [-]    nonlinear forcing of every mode, one row per mode counter
+
 if nargin < 6 || isempty(use_parfor); use_parfor = false; end
 %NLT_HNS  Nonlinear-term (NLT) forcing for the harmonic Navier-Stokes (HNS) system.
 %

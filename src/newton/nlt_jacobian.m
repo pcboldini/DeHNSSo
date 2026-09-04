@@ -1,5 +1,28 @@
 function [Jh, Ja] = nlt_jacobian(q_complex, ctx)
-%NLT_JACOBIAN  Analytical Jacobian of NLT_HNS with respect to q (2D case only).
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Analytical Jacobian of NLT_HNS with respect to q (2D case only).
 %
 %   [Jh, Ja] = nlt_jacobian(q_complex, ctx)
 %
@@ -27,6 +50,16 @@ function [Jh, Ja] = nlt_jacobian(q_complex, ctx)
 %   ctx fields used: nphys, nf, ny, nx, bsize, phys_modes, HB, dxi, D1, xix,
 %   etax, xiy, etay, Bound.bufcf. Optionally cached on first call: ctx.Dx_op,
 %   ctx.Dy_op, the one-mode physical derivative operators.
+
+%% Inputs
+% Name      size            unit   explanation
+% q_complex (nphys*bsize,1) [-]    state of the physical modes as complex coefficients
+% ctx       (1,1) struct    [-]    Newton context from newton_context: operators, forcing registry and mode bookkeeping
+
+%% Outputs
+% Name size                   unit   explanation
+% Jh   (nphys*bsize)^2 sparse [-]    Wirtinger derivative of the nonlinear forcing with respect to q
+% Ja   (nphys*bsize)^2 sparse [-]    Wirtinger derivative of the nonlinear forcing with respect to conj(q)
 
 %% Setup: dimensions and mode indexing
 nphys = ctx.nphys;
@@ -944,36 +977,4 @@ Dyy_op = dg(G.xiy.^2)*Xixi + dg(2*G.xiy.*G.etay)*Xieta + dg(G.etay.^2)*Etaeta ..
        + dg(G.xiyy)*Xi + dg(G.etayy)*Eta;
 Dxy_op = dg(G.xix.*G.xiy)*Xixi + dg(G.xix.*G.etay + G.xiy.*G.etax)*Xieta ...
        + dg(G.etax.*G.etay)*Etaeta + dg(G.xixy)*Xi + dg(G.etaxy)*Eta;
-end
-
-function D = fd1d4o_matrix(nx, d)
-%FD1D4O_MATRIX  Sparse matrix form of FD1d4o (row-wise 4th-order finite
-%   difference, FD).
-% Note: FD1d4o flips the sign of the central coefficients (decreasing x).
-D = sparse(nx, nx);
-% Interior: central 4th order
-for i = 3:nx-2
-    D(i, i-2) = -1/12/d;
-    D(i, i-1) =  2/3 /d;
-    D(i, i+1) = -2/3 /d;
-    D(i, i+2) =  1/12/d;
-end
-% Columns 1..2: backward (the "first two" of the flipped grid)
-%   DD(1:2) = (-25/12*D(1:2) + 4*D(2:3) - 3*D(3:4) + 4/3*D(4:5) - 1/4*D(5:6)) / (-d)
-for i = 1:2
-    D(i, i  ) = (-25/12) / (-d);
-    D(i, i+1) = ( 4    ) / (-d);
-    D(i, i+2) = (-3    ) / (-d);
-    D(i, i+3) = ( 4/3  ) / (-d);
-    D(i, i+4) = (-1/4  ) / (-d);
-end
-% Columns end-1..end: forward
-%   DD(end-1:end) = (-25/12*D(end-1:end) + 4*D(end-2:end-1) ... ) / d
-for i = nx-1:nx
-    D(i, i  ) = (-25/12) / d;
-    D(i, i-1) = ( 4    ) / d;
-    D(i, i-2) = (-3    ) / d;
-    D(i, i-3) = ( 4/3  ) / d;
-    D(i, i-4) = (-1/4  ) / d;
-end
 end

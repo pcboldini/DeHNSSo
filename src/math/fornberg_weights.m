@@ -1,5 +1,28 @@
 function c = fornberg_weights(z, x, m)
-%FORNBERG_WEIGHTS  Finite-difference weights on non-uniform grids.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Finite-difference weights on non-uniform grids.
 %
 %   c = fornberg_weights(z, x, m)
 %
@@ -10,6 +33,16 @@ function c = fornberg_weights(z, x, m)
 %
 %   Implements B. Fornberg, "Generation of finite difference formulas on
 %   arbitrarily spaced grids", Math. Comp. 51 (1988) 699-706.
+
+%% Inputs
+% Name size  unit   explanation
+% z    (1,1) [-]    point at which the derivatives are approximated
+% x    (n,1) [-]    stencil points, need not be uniformly spaced
+% m    (1,1) [-]    highest derivative order for which weights are returned
+
+%% Outputs
+% Name size    unit   explanation
+% c    (n,m+1) [-]    weights: f^(k)(z) is approximated by sum_j c(j,k+1)*f(x(j))
 
 %% Initialise
 x = x(:);

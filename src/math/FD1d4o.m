@@ -1,5 +1,29 @@
 function [ DD ] = FD1d4o( D,d )
-%FD1D4O  Fourth-order first derivative on a uniform grid.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2023 S.H.J. Westerbeek, S. Hulshoff, H. Schuttelaars
+%                          & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Fourth-order first derivative on a uniform grid.
 %
 %   DD = FD1d4o(D, d)
 %
@@ -9,11 +33,15 @@ function [ DD ] = FD1d4o( D,d )
 %   five-point stencils handle the two boundary columns on each side. At
 %   least six columns are needed for these stencils to fit.
 %
-%   Inputs:
-%     D  — field sampled on a uniform grid (derivative taken along rows)
-%     d  — grid spacing
-%   Outputs:
-%     DD — first derivative, same size as D
+
+%% Inputs
+% Name size unit   explanation
+% D         [-]    field sampled on a uniform grid (derivative taken along rows)
+% d         [-]    grid spacing
+
+%% Outputs
+% Name size unit   explanation
+% DD        [-]    first derivative, same size as D
 
 %% Check enough points for the stencil
 if length(D(1,:)) < 6

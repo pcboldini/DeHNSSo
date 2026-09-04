@@ -1,11 +1,43 @@
 function [BF] = load_bf(input)
-%LOAD_BF  Load a base-flow struct from .mat, .bin, or .csv.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Load a base-flow struct from .mat, .bin, or .csv.
 %
 %   BF = load_bf(input) reads the BF data specified by input.folder and
 %   input.filename (format controlled by input.format). Returns a struct
 %   with fields X, Y, U, V, W and any other scalars in the source file
 %   (Re, lref, Uref, nu when present).
 % An explicit filename wins; otherwise take the first file of the right format.
+
+%% Inputs
+% Name  size         unit   explanation
+% input (1,1) struct [-]    base-flow source: folder, filename and format
+
+%% Outputs
+% Name size         unit   explanation
+% BF   (1,1) struct [-]    base flow on its own grid
+
 if isfield(input, 'filename') && ~isempty(input.filename)
     filepath = fullfile(input.folder, input.filename);
 else

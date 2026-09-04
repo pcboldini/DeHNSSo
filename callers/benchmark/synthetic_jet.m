@@ -1,4 +1,27 @@
-%% DeHNSSo — Synthetic jet actuator on a Blasius TS wave (benchmark)
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% DeHNSSo — Synthetic jet actuator on a Blasius TS wave (benchmark)
 %  Reference caller for the wall-actuator workflow. A linear TS wave (M=1) in a
 %  Blasius BL is actuated by a wall-mounted synthetic jet: a wall-normal velocity
 %  forcing v'|_wall over the orifice, at the TS frequency with prescribed

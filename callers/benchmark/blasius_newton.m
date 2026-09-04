@@ -1,4 +1,27 @@
-%% DeHNSSo — Blasius K-type (Scholten) via Newton pseudo-arclength continuation
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% DeHNSSo — Blasius K-type (Scholten) via Newton pseudo-arclength continuation
 %  Continuation in the inflow amplitude from A0_fund = 2.40e-3 to 5.657e-3, i.e.
 %  u_rms = 0.004, on the FD4 ny=60 nx=1050 grid (R = 400-1200). A direct solve at
 %  u_rms = 0.004 does not converge from a cold start, which is why this is a
@@ -36,7 +59,7 @@ addpath(genpath(fullfile(rootdir, 'src')))
 addpath(genpath(fullfile(rootdir, 'gridgen', 'src')))   % deriv2_uneven etc. used by init()
 
 input.folder = fullfile(rootdir, 'input');
-gridname     = 'grid_blasius_fd_ny60_ext.mat';   % FD4 ny=60, nx=1050, R=400-1200
+gridname     = 'grid_blasius_fd_ny60_ext.mat';   % FD4 ny=60, nx=1050, R=400-1200 (gridgen/benchmark/blasius_newton.m)
 G = load(fullfile(input.folder, gridname)); StabGrid = G.StabGrid;
 
 %% Spectral content

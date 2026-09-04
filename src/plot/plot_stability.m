@@ -1,7 +1,39 @@
 function plot_stability(StabGrid, StabRes, Opt)
-%PLOT_STABILITY  Plot N-factor, growth rates, wavenumber, and eigenfunctions.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Plot N-factor, growth rates, wavenumber, and eigenfunctions.
 %
 %   plot_stability(StabGrid, StabRes, Opt)
+
+%% Inputs
+% Name     size         unit   explanation
+% StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
+% StabRes  (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+% Opt      (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+
+%% Outputs
+% None.
 
 x  = StabGrid.xun;
 nx = StabGrid.nx;
@@ -132,7 +164,7 @@ if ~isempty(j_fund)
         legend('Interpreter', 'latex', 'Location', 'best')
         grid on; box on
     end
-    sgtitle(sprintf('Eigenfunctions — mode (1,0), omega = %.4g', omega_vec(j_fund)), ...
+    sgtitle(sprintf('Eigenfunctions: mode (1,0), omega = %.4g', omega_vec(j_fund)), ...
         'FontSize', 13)
 end
 

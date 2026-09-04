@@ -1,5 +1,28 @@
 function [prof, alpha0, out] = solver_CPSE(omega, beta, StabGrid, Opt)
-%SOLVER_CPSE  Compressible linear PSE (parabolized stability equations) inflow condition (Chang & Malik 1993).
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Compressible linear PSE (parabolized stability equations) inflow condition (Chang & Malik 1993).
 %
 %   [prof, alpha0, out] = solver_CPSE(omega, beta, StabGrid, Opt)
 %
@@ -12,18 +35,21 @@ function [prof, alpha0, out] = solver_CPSE(omega, beta, StabGrid, Opt)
 %   ideal-gas equation of state). The Chang & Malik normalization supplies
 %   the auxiliary closure for alpha.
 %
-%   Inputs:
-%     omega     — angular frequency of the mode
-%     beta      — spanwise wavenumber of the mode
-%     StabGrid  — grid/base-flow struct (U, W, rho, T, y, dzdy, d2zdy2,
 %                 Re, Ma, Pr, gamma, Sstar)
-%     Opt       — options (pse_Rstart, pse_npre, pse_nx, pse_maxit, pse_tol,
 %                 pse_imag_max, pse_alpha0, mode_select, bc_top)
-%
-%   Outputs:
-%     prof      — inflow shape at R0, normalised by max|u| (u,v,w,rho,T,p)
-%     alpha0    — complex streamwise wavenumber at R0
-%     out       — march history (Rv, alpha, phi)
+
+%% Inputs
+% Name     size unit   explanation
+% omega         [-]    angular frequency of the mode
+% beta          [-]    spanwise wavenumber of the mode
+% StabGrid      [-]    grid/base-flow struct (U, W, rho, T, y, dzdy, d2zdy2,
+% Opt           [-]    options (pse_Rstart, pse_npre, pse_nx, pse_maxit, pse_tol,
+
+%% Outputs
+% Name   size unit   explanation
+% prof        [-]    inflow shape at R0, normalised by max|u| (u,v,w,rho,T,p)
+% alpha0      [-]    complex streamwise wavenumber at R0
+% out         [-]    march history (Rv, alpha, phi)
 
 %% Options and defaults
 if nargin < 4; Opt = struct(); end

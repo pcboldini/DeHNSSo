@@ -1,5 +1,28 @@
 function [Bound]=setup_boundary(Grid,Opt,Stab)
-%SETUP_BOUNDARY  Set up the outflow buffer zone and inhomogeneous boundary conditions (BCs).
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Set up the outflow buffer zone and inhomogeneous boundary conditions (BCs).
 %
 %   Bound = setup_boundary(Grid, Opt, Stab)
 %
@@ -13,6 +36,16 @@ function [Bound]=setup_boundary(Grid,Opt,Stab)
 %   Output: Bound struct with fields bufc, bufp, bufs, bufsp, bufcf, ibuf,
 %           ibuff, stepi, bcw and bct (n_bc x nx x nf, n_bc = 3 | 4), and hr
 %           when Opt.hr is set.
+
+%% Inputs
+% Name size         unit   explanation
+% Grid (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
+% Opt  (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Stab (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
+
+%% Outputs
+% Name  size         unit   explanation
+% Bound (1,1) struct [-]    boundary conditions and outflow-buffer coefficients
 
 %% Buffer
 

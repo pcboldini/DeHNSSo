@@ -1,5 +1,28 @@
 function [Stab, info] = add_wall_forcing(Stab, StabGrid, Opt, spec)
-%ADD_WALL_FORCING  Apply a wall forcing defined in gridgen (or overridden here).
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Apply a wall forcing defined in gridgen (or overridden here).
 %
 %   [Stab, info] = add_wall_forcing(Stab, StabGrid, Opt, spec)
 %
@@ -17,9 +40,9 @@ function [Stab, info] = add_wall_forcing(Stab, StabGrid, Opt, spec)
 %     comp   velocity component 1 u / 2 v / 3 w (default 2)
 %     mode   [m n] mode the forcing drives (default [1 0], fundamental)
 %   Where the profile comes from (checked in this order):
-%     1. spec.x + spec.v      — a distribution given here (override)
-%     2. spec.xc + spec.w     — a raised-cosine actuator built here (override)
-%     3. StabGrid.forcing     — the profile gridgen stored (default, recommended)
+%     1. spec.x + spec.v        a distribution given here (override)
+%     2. spec.xc + spec.w       a raised-cosine actuator built here (override)
+%     3. StabGrid.forcing       the profile gridgen stored (default, recommended)
 %   spec.which picks one if gridgen stored several (params.forcing a cell array).
 %
 %   The conjugate mode is added automatically for nonlinear runs (Opt.linear
@@ -28,6 +51,18 @@ function [Stab, info] = add_wall_forcing(Stab, StabGrid, Opt, spec)
 %
 %   Example (profile from gridgen):
 %     Stab = add_wall_forcing(Stab, StabGrid, Opt, struct('A', 2e-4));
+
+%% Inputs
+% Name     size         unit   explanation
+% Stab     (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
+% StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
+% Opt      (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% spec     (1,1) struct [-]    forcing specification: amplitude A, and optionally phase, velocity component and mode
+
+%% Outputs
+% Name size         unit   explanation
+% Stab (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
+% info (1,1) struct [-]    what was applied: amplitude, phase, component, mode and the affected stations
 
 x  = StabGrid.xun(1, :);
 nx = numel(x);
@@ -48,7 +83,7 @@ elseif isfield(StabGrid, 'forcing') && ~isempty(StabGrid.forcing)
     F = StabGrid.forcing;
     if numel(F) > 1                              % grid stores several forcings
         assert(isfield(spec,'which') && ~isempty(spec.which), ...
-            'add_wall_forcing: grid has %d forcings — pass spec.which to pick one.', numel(F));
+            'add_wall_forcing: grid has %d forcings: pass spec.which to pick one.', numel(F));
         F = F(spec.which);
     end
     vprof = interp1(F.x, F.v, x, 'pchip', 0);   % F.x is already the grid, so this interp is a no-op

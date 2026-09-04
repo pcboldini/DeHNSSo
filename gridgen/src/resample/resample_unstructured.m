@@ -1,5 +1,28 @@
 function [BF_new] = resample_unstructured(BF, params)
-%RESAMPLE_UNSTRUCTURED  Build a HNS-ready body-fitted grid from unstructured scatter.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Build a HNS-ready body-fitted grid from unstructured scatter.
 %
 %   For BF data arriving as a flat point cloud (OpenFOAM CSV, M3J midPlane.csv).
 %   No grid structure is assumed: the wall is found from the boundary polygon
@@ -13,6 +36,15 @@ function [BF_new] = resample_unstructured(BF, params)
 %   BF holds flat column vectors X, Y, U, V, W; params as in gridgen/benchmark/.
 %   Output: BF_new with [n_eta x n_xi] arrays plus xi1D, eta1D, H, y_i and
 %   mesh_type='curvilinear'.
+
+%% Inputs
+% Name   size         unit   explanation
+% BF     (1,1) struct [-]    base flow on its own grid
+% params (1,1) struct [-]    grid-generation parameters
+
+%% Outputs
+% Name   size         unit   explanation
+% BF_new (1,1) struct [-]    base flow resampled onto the stability grid
 
 %% =====================================================================
 %  0. Parse parameters

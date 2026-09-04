@@ -1,5 +1,29 @@
 function [Nmat, Mmat, Modevec,Mvec, Nvec] = Mint(M,N)
-%MINT  Set up the mode-interaction indexing for harmonic balancing.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2023 S.H.J. Westerbeek, S. Hulshoff, H. Schuttelaars
+%                          & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Set up the mode-interaction indexing for harmonic balancing.
 %
 %   [Nmat, Mmat, Modevec, Mvec, Nvec] = Mint(M, N)
 %
@@ -9,15 +33,19 @@ function [Nmat, Mmat, Modevec,Mvec, Nvec] = Mint(M,N)
 %   (Mvec(i)+Mvec(j), Nvec(i)+Nvec(j)); Mmat and Nmat store those sums for
 %   every pair.
 %
-%   Inputs:
-%     M        — modal truncation in t
-%     N        — modal truncation in z
-%   Outputs:
-%     Nmat     — n-part of the mode affected by each interaction
-%     Mmat     — m-part of the mode affected by each interaction
-%     Modevec  — [m; n] for every mode counter l
-%     Mvec     — m of every mode counter l
-%     Nvec     — n of every mode counter l
+
+%% Inputs
+% Name size unit   explanation
+% M         [-]    modal truncation in t
+% N         [-]    modal truncation in z
+
+%% Outputs
+% Name    size unit   explanation
+% Nmat         [-]    n-part of the mode affected by each interaction
+% Mmat         [-]    m-part of the mode affected by each interaction
+% Modevec      [-]    [m; n] for every mode counter l
+% Mvec         [-]    m of every mode counter l
+% Nvec         [-]    n of every mode counter l
 
 %% Mode counters
 L = (2*N+1)*(2*M+1);

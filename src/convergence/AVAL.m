@@ -1,5 +1,28 @@
 function [Opt,StabRes] = AVAL(Grid,Opt,Mode,StabRes)
-%AVAL  Check the peak disturbance amplitude and damp the inflow if it is too large.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Check the peak disturbance amplitude and damp the inflow if it is too large.
 %
 %   [Opt, StabRes] = AVAL(Grid, Opt, Mode, StabRes)
 %
@@ -7,6 +30,18 @@ function [Opt,StabRes] = AVAL(Grid,Opt,Mode,StabRes)
 %   Opt.AVAL. If that peak exceeds the ceiling Opt.AMAX, the amplitude factor
 %   Opt.AF is rescaled so the peak comes back down to Opt.AMAX, and the whole
 %   solution vector is scaled by the new Opt.AF.
+
+%% Inputs
+% Name    size         unit   explanation
+% Grid    (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
+% Opt     (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Mode    (1,1) struct [-]    mode bookkeeping: nf, active set RunJ and the interaction tables
+% StabRes (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+
+%% Outputs
+% Name    size         unit   explanation
+% Opt     (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% StabRes (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
 
 %% Reshape the solution vector into the field array phi
     ny_   = Grid.ny;

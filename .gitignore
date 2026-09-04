@@ -22,7 +22,8 @@ baseflow/output/*
 !baseflow/output/benchmark/
 # large CSV base flows kept gzipped (auto-unpacked by the caller)
 baseflow/output/benchmark/*.csv
-gridgen/output/
+gridgen/output/*
+!gridgen/output/.gitkeep
 
 # Figures
 *.fig
@@ -41,3 +42,6 @@ CHANGELOG.md
 
 # Tests / validation scripts (dev-only, not shipped)
 tests/
+
+# Resonator base-flow caller (local only, not shipped)
+baseflow/caller/caller_CBL_resonator.m

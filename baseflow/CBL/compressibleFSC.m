@@ -1,5 +1,28 @@
 function [sol, BL] = compressibleFSC(BL)
-%COMPRESSIBLEFSC  Compressible Falkner-Skan-Cooke boundary layer solver.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Compressible Falkner-Skan-Cooke boundary layer solver.
 %
 %   [sol, BL] = compressibleFSC(BL)
 %
@@ -36,11 +59,17 @@ function [sol, BL] = compressibleFSC(BL)
 %     eta_inf  — outer boundary for similarity variable (default 20)
 %     npts     — number of BVP collocation points (default 401)
 %
-%   Output:
-%     sol      — bvp5c solution structure
-%     BL       — input struct augmented with solution profiles:
 %       .eta, .f, .fp, .fpp, .g, .gp, .theta, .thetap
 %       .rho, .mu, .muT, .V   (derived quantities)
+
+%% Inputs
+% Name size unit   explanation
+% BL        [-]    input struct augmented with solution profiles:
+
+%% Outputs
+% Name size unit   explanation
+% sol       [-]    bvp5c solution structure
+% BL        [-]    input struct augmented with solution profiles:
 
 %% Defaults
 if ~isfield(BL,'Pr');      BL.Pr = 0.72; end

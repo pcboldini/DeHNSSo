@@ -37,6 +37,7 @@
     - [Building the `lapack_band` MEX (one-time setup per machine)](#building-the-lapackband-mex-one-time-setup-per-machine)
     - [Parallel acceleration](#parallel-acceleration)
     - [Output control](#output-control)
+    - [Iteration history](#iteration-history)
 - [9. Running and reruns](#9-running-and-reruns)
 - [10. Output](#10-output)
     - [Saving results to disk](#saving-results-to-disk)
@@ -133,6 +134,8 @@ Every `Stab` and `Opt` field the guide documents, grouped by what it controls. "
 |---|---|---|---|
 | `Opt.rerun` | `on` reuses the assembled operator from a previous run | `'off'` | [Running and reruns](#9-running-and-reruns) |
 | `Opt.plot` | `on` / `off` run-time figures | `'on'` | [Output control](#output-control) |
+| `Opt.iter_history` | `on` records amplitudes, residual and energy each iteration | `'off'` | [Iteration history](#iteration-history) |
+| `Opt.xloc` | station for the local energy measure; unset skips it | `[]` | [Iteration history](#iteration-history) |
 | `Opt.save_output` | results file written after post-processing | `[]` | [Saving results to disk](#saving-results-to-disk) |
 | `Opt.save_checkpoint` | pre-post-process state, the file `Stab.IC='LOAD'` consumes | `[]` | [Restarting](#restarting-from-a-previous-solution-stabic--load) |
 ---
@@ -873,6 +876,27 @@ Opt.parfor = 'off';  % 'on'  parfor over LHS stations, mode solves, and the NLT 
 Opt.plot = 'on';   % 'on'  show amplitude and convergence plots during iteration (default)
 Opt.plot = 'off';  % 'off' suppress all intermediate plots (recommended for batch runs)
 ```
+
+### Iteration history
+
+`Opt.iter_history = 'on'` records, for every iteration, the modal amplitudes, the
+convergence measure `max_dal`, the amplitude factor, and the mode-summed
+perturbation kinetic energy of Eq. (24) of DeHNSSo-v1. The record is returned in
+`StabRes.iter_history`.
+
+```matlab
+Opt.iter_history = 'on';   % record the per-iteration history ('off' by default)
+Opt.xloc         = 1700;   % station for the local energy measure
+```
+
+Two energies are stored. `E_tot` integrates over the buffer-free domain and is
+always available. `E_loc` is the same quantity at a single station, and it is
+computed only if you name one through `Opt.xloc`; left unset, `E_loc` is `NaN`.
+There is no default station, because a fixed one cannot suit every domain: the
+swept-wing benchmark spans x = 219 to 1360, so a station at 1700 would lie
+outside it. A station you do name must lie inside the buffer-free range, and the
+run stops if it does not, rather than reporting the energy somewhere else. The
+value is interpolated to `Opt.xloc` rather than snapped to the nearest node.
 
 ---
 

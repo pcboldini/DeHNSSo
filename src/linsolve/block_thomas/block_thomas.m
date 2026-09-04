@@ -1,5 +1,28 @@
 function varargout = block_thomas(op, varargin)
-%BLOCK_THOMAS  Dual-Schur block-pentadiagonal Thomas solver (Paredes et al. 2024).
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Dual-Schur block-pentadiagonal Thomas solver (Paredes et al. 2024).
 %   Direct solver for the station-major block-pentadiagonal HNS operator ML,
 %   block size b = Nq*Ny. The domain is split into np partitions separated by
 %   two-station interfaces; each is factored by an unpivoted block-Thomas
@@ -25,6 +48,15 @@ function varargout = block_thomas(op, varargin)
 %   With OOCDIR the factor is streamed to disk, so only a few blocks are ever in
 %   RAM and resolutions too large to factor in core stay reachable. rhs may have
 %   several columns. The registry lets main() clean up streamed files on exit.
+
+%% Inputs
+% Name     size unit   explanation
+% op       char [-]    operation to perform: 'solve', 'factor', 'apply' or 'free'
+% varargin cell [-]    arguments forwarded to the selected operation
+
+%% Outputs
+% Name      size unit   explanation
+% varargout cell [-]    values returned by the selected operation
 
 switch lower(op)
     case 'solve';  [varargout{1:nargout}] = bt_solve(varargin{:});

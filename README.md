@@ -4,9 +4,19 @@
 
 DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://doi.org/10.1016/j.cpc.2024.109250) by Westerbeek, Hulshoff, Schuttelaars & Kotsonis (2024).
 
-> **Paper in preparation.** For questions about the method or implementation, contact **Pietro Carlo Boldini** — P.C.Boldini@tudelft.nl
+> **First draft (September 2026), paper in preparation.** For questions about the method or implementation, contact **Pietro Carlo Boldini** — P.C.Boldini@tudelft.nl
 
-**Last updated:** August 2026
+**Last updated:** 4 September 2026
+
+---
+
+## Recent updates (September 2026)
+
+- **Inflow seeding rewritten** — `inflow.m` is one `switch` over `Stab.IC` with small per-mode helpers
+- **Source restyled** — short description blocks and lean comments across `src/`, `gridgen/`, `baseflow/` and the callers
+- **MUMPS diagnostics** — `Opt.newton_analyze_only` (analysis only) and back-solve timing in `Opt.newton_stats_file`
+- **`Opt.xloc`** — station of the local energy measure; `Opt.iter_history` documented
+- **Resonator benchmark** — Gaussian-clustered grid at the neck, Ma=0.061 base flow included
 
 ## Recent updates (August 2026)
 
@@ -44,6 +54,34 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://doi.org
 - **Crossflow instability** — full M3J swept curved-wall case end-to-end
 - **Non-uniform streamwise grids** — per-station Fornberg weights and sparse `D_xi`
 - **Repository restructured** — `input/` + `literature/` split; per-case scripts under `*/benchmark/`
+
+## Contents
+
+- [Recent updates (September 2026)](#recent-updates-september-2026)
+- [Recent updates (August 2026)](#recent-updates-august-2026)
+- [Recent updates (June 2026)](#recent-updates-june-2026)
+- [Recent updates (May 2026)](#recent-updates-may-2026)
+- [Recent updates (April 2026)](#recent-updates-april-2026)
+- [New features in DeHNSSo-v2](#new-features-in-dehnsso-v2)
+    - [Geometry and mesh](#geometry-and-mesh)
+    - [Boundary conditions](#boundary-conditions)
+    - [Inflow](#inflow)
+    - [Spectral content](#spectral-content)
+    - [Solver modes](#solver-modes)
+    - [Compressible mode](#compressible-mode)
+    - [Computational efficiency](#computational-efficiency)
+    - [Code quality](#code-quality)
+- [Directory structure](#directory-structure)
+- [Workflow](#workflow)
+    - [1. Generate base flow](#1-generate-base-flow)
+    - [2. Build stability grid](#2-build-stability-grid)
+    - [3. Run stability analysis](#3-run-stability-analysis)
+- [Key solver options](#key-solver-options)
+- [Performance](#performance)
+- [Documentation](#documentation)
+- [Roadmap](#roadmap)
+- [References](#references)
+- [License](#license)
 
 ## New features in DeHNSSo-v2
 
@@ -126,7 +164,7 @@ DeHNSSo/
 │   ├── benchmark/               — Per-case scripts: blasius.m, blasius_compressible.m, sweptwing_flat.m, ...
 │   └── src/                     — Mesh, metric tensors, resampling (ρ/T pass-through), elliptic smoother
 ├── baseflow/                    — Boundary-layer solvers
-│   ├── caller/                  — Entry points: caller_IBL.m, caller_CBL.m, caller_CBL_resonator.m
+│   ├── caller/                  — Entry points: caller_IBL.m, caller_CBL.m
 │   ├── IBL/                     — Incompressible BL (Blasius, Falkner-Skan-Cooke)
 │   ├── CBL/                     — Compressible BL (compressible FSC + Sutherland)
 │   └── output/                  — Generated base flows (bf_blasius.mat, BF_compressible.mat, ...)
@@ -179,7 +217,8 @@ flowchart TD
 cd baseflow/caller/
 caller_IBL             % incompressible (Blasius, FSC) → baseflow/output/bf_blasius.mat
 caller_CBL             % compressible (FSC + Sutherland) → baseflow/output/BF_compressible.mat
-caller_CBL_resonator   % compressible Ma=0.061 (Michelis, fine) → baseflow/output/BF_compressible_M006_fine.mat
+%   for blasius_newton: edit caller_IBL (domain to R = 1200, see gridgen/benchmark/blasius_newton.m) → bf_blasius_newton.mat
+% compressible Ma=0.061 (Michelis, fine): base flow supplied as baseflow/output/benchmark/BF_compressible_M006_fine.mat
 ```
 
 Or provide base-flow data from an external CFD solver (OpenFOAM, DNS, COMSOL, ...).
@@ -192,6 +231,7 @@ The `gridgen/` pipeline builds the stability grid (Malik-Chebyshev wall-normal, 
 cd gridgen/benchmark/
 blasius                 % Cartesian Blasius BL (.mat)
 blasius_compressible    % Cartesian compressible FSC BL (.mat) — passes ρ/T/μ through
+blasius_newton          % Cartesian Blasius BL resampled to the 1050 x 60 FD grid of the Newton benchmark
 blasius_csv             % Cartesian Blasius BL from OpenFOAM CSV (flat-lattice scatter)
 synthetic_jet           % Cartesian Blasius BL, mesh clustered at the jet orifice
 resonator               % compressible Blasius BL, mesh clustered at the resonator neck
@@ -259,34 +299,56 @@ See [docs/user_guide.md](docs/user_guide.md) for a full parameter reference.
 
 ## Performance
 
-Blasius BL test case (nx=800, ny=40, M=1, sequential):
+Blasius TS nonlinear (M=5, nx=800, ny=40, parallel execution disabled):
 
-| Metric | DeHNSSo-v1 | DeHNSSo-v2 |
+| Metric | DeHNSSo-v1 | DeHNSSo-v2 | ratio |
+|---|---|---|---|
+| LHS assembly | 8.84 s | 2.20 s | **4.0x** |
+| Solve per mode, first | 5.54 s | 3.60 s | 1.5x |
+| Solve per mode, repeat | 5.04 s | 0.10 s | **50x** |
+| Total, nonlinear | 753 s | 39.9 s | **18.9x** |
+| Operator storage | — | 112 MB | — |
+| Cached LU factors | — | 6.24 GB | — |
+
+Repeat solves are where the gain sits: the per-mode LU factor is computed once and reused for the
+rest of the iteration, so the nonlinear loop stops paying for factorization.
+
+SweptWing CFI nonlinear (M=0, N=5, six modes, nx=1200, ny=40, `lu_mode='auto'`, single-thread),
+matching the DeHNSSo-v1 heritage caller (`xb=85`, `nltbufxb=80`, `A0=3.5e-3`, lambda=7.5 mm):
+
+| Metric | DeHNSSo-v1 (Westerbeek 2024, Table A.1) | DeHNSSo-v2 (Apple M1 Pro, 32 GB) |
 |---|---|---|
-| Total time | 194.7 s | 25.2 s (**7.7x faster**) |
-| LHS stored memory | 224.4 MB | 115.4 MB (**49% less**) |
-| Non-LHS memory | 54.4 MB | 10.6 MB (**5.1x less**) |
+| Total time | 4644 s (1.29 h) | 247 s (**18.8x faster**) |
+| Iterations | — | 67 Picard |
+| Operator storage | — | 185 MB |
 
-For the nonlinear case (M=5): DeHNSSo-v1 785.8 s -> DeHNSSo-v2 88.5 s (**8.8x faster**).
+The back-end matters more than anything else on this case, and not in the obvious direction:
 
-SweptWing CFI nonlinear (M=0, N=5, 6 modes, nx=1200, ny=40, single-thread):
-
-| Metric | DeHNSSo-v1 (Westerbeek 2024 Table A.1, 8-core / 32 GB) | DeHNSSo-v2 (Apple Silicon, 32 GB) |
+| `lu_mode` | total | solution `max(A)` |
 |---|---|---|
-| Total time | 4644 s (1.29 h) | 303 s (**~15x faster**) |
-| Iterations | — | 65 Picard |
-| Peak memory | — | 15.1 GB |
+| `auto` | 247 s | 0.3596 |
+| `lapack_band` | 535 s | 0.3622 |
+| `full` | 869 s | 0.3596 |
 
-Compressible TS at Ma=0.5 (M=1, nx=800, ny=81, single thread on an Apple M1 Pro, 32 GB):
+`full` keeps every factor resident, 16.3 GB of them, which on a 32 GB machine costs more in memory
+pressure than it saves in refactorisation. `auto` bounds the cache and wins by 3.5x for an identical
+solution. Prefer `full` only when the factors comfortably fit.
+
+Compressible TS at Ma=0.5, linear (M=1, nx=800, ny=81, single thread on an Apple M1 Pro, 32 GB):
 
 | Metric | `seq` (sparse LU) | `lapack_band` (MEX) | ratio |
 |---|---|---|---|
-| LHS assembly | 28 s | 27 s | — |
-| Factorize + solve | 276 s | 81 s | **3.4×** |
-| Total wall | 306 s | 108 s | **2.8×** |
-| Peak memory | 17.5 GB | 8.7 GB | 0.50× |
+| Total wall | 337 s | 129 s | **2.6x** |
+| Operator storage | 186 MB | 186 MB | — |
+| Banded factor | — | 19.7 GB | — |
 
-The `block_thomas` back-end trades speed for memory: run out-of-core (`Opt.bt_ooc = 'on'`) it keeps the least resident memory (~3 GB, factor streamed to disk) but runs slower than banded — the memory-feasible path when even the banded factor exceeds RAM.
+Memory is reported as the operator and factor sizes, which are fixed by the discretization and
+reproduce to the byte, rather than as peak resident memory, which on macOS depends on how the
+allocator and compressor behave during the run.
+
+The `block_thomas` back-end trades speed for memory: run out-of-core (`Opt.bt_ooc = 'on'`) it holds
+the least in core, streaming the factor to disk, but runs slower than banded — the memory-feasible
+path when even the banded factor exceeds RAM.
 
 ## Documentation
 
@@ -308,4 +370,10 @@ Contact P.C.Boldini@tudelft.nl if interested in contributing.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+GNU General Public License v3 — see [LICENSE](LICENSE).
+
+DeHNSSo-v2 contains files from DeHNSSo-v1 (Copyright (C) 2023 S.H.J. Westerbeek,
+S. Hulshoff, H. Schuttelaars and M. Kotsonis), which are GPLv3-licensed and carry
+their own headers, and the differentiation-matrix suite of J.A.C. Weideman and
+S.C. Reddy, included with their written permission. DeHNSSo-v2 is therefore
+released under GPLv3.

@@ -1,5 +1,28 @@
 function Grid = compute_bf_derivatives(Grid)
-%COMPUTE_BF_DERIVATIVES  First (and second) physical derivatives of base-flow fields.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% First (and second) physical derivatives of base-flow fields.
 %
 %   Differentiates U, V, W (and rho, T when present) into Grid.dxU, Grid.dyU,
 %   ..., the physical-space derivatives the HNS assembly expects rather than the
@@ -15,6 +38,14 @@ function Grid = compute_bf_derivatives(Grid)
 %   at the wall and freestream. The dense Chebyshev boundary rows are needed by
 %   the stability operator, but they ring on interpolated CFD base flows and
 %   inflate the wall shear by O(N²). ∂/∂ξ uses deriv1_uneven on Grid.xi1D.
+
+%% Inputs
+% Name size         unit   explanation
+% Grid (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
+
+%% Outputs
+% Name size         unit   explanation
+% Grid (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
 
 % ---- Boundary-safe D1 for base-flow differentiation -----------------------
 % Replace only the two boundary rows of Grid.D1 by one-sided Fornberg stencils.

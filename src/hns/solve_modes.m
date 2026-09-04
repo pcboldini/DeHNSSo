@@ -1,17 +1,68 @@
 function [StabRes, Opt, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff] = solve_modes(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRes, MLA1, MLA2, MLA3, MLA4, MLA5, MFD_diff)
-%SOLVE_MODES  Solve the harmonic Navier-Stokes (HNS) system for all active modes.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Solve the harmonic Navier-Stokes (HNS) system for all active modes.
 %
 %   Opt.lu_mode selects the linear-solver back-end (LU = LU factorization):
-%     'lapack_band'  — banded LU (compiled MEX routine), factor cached per mode (compressible)
-%     'block_thomas' — dual-Schur block-Thomas (Paredes 2024), compressible only
-%     'full'         — cache every LU factor (fastest reuse, most memory)
-%     'auto'         — least-recently-used (LRU) cache bounded by Opt.lu_max_cache
-%     'seq'          — one factor at a time, discard after solve (low memory)
-%     'none'         — backslash each solve (no caching)
+%     'lapack_band'    banded LU (compiled MEX routine), factor cached per mode (compressible)
+%     'block_thomas'   dual-Schur block-Thomas (Paredes 2024), compressible only
+%     'full'           cache every LU factor (fastest reuse, most memory)
+%     'auto'           least-recently-used (LRU) cache bounded by Opt.lu_max_cache
+%     'seq'            one factor at a time, discard after solve (low memory)
+%     'none'           backslash each solve (no caching)
 %   Opt.lu_cache='off' forces the cached back-ends to one-shot factor+solve.
 %   Opt.parfor='on' distributes the mode solves (auto-set in init).
 %   Opt.bt_apply selects how block_thomas applies the diagonal station block:
 %     'lu' (default) stores its pivoted LU factors, 'inverse' stores G^-1.
+
+%% Inputs
+% Name     size              unit   explanation
+% BF       (1,1) struct      [-]    base flow on its own grid
+% Bound    (1,1) struct      [-]    boundary conditions and outflow-buffer coefficients
+% StabGrid (1,1) struct      [-]    stability grid, coordinate metrics and base-flow fields on it
+% Init     (1,1) struct      [-]    inflow initialization data
+% Mode     (1,1) struct      [-]    mode bookkeeping: nf, active set RunJ and the interaction tables
+% Opt      (1,1) struct      [-]    solver options; see the option index in docs/user_guide.md
+% Stab     (1,1) struct      [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
+% StabRes  (1,1) struct      [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+% MLA1     nvar*ny*nx sparse [-]    mode-invariant operator block, zeroth order in omega and beta
+% MLA2     nvar*ny*nx sparse [-]    mode-invariant operator block, first order in omega
+% MLA3     nvar*ny*nx sparse [-]    mode-invariant operator block, first order in beta
+% MLA4     nvar*ny*nx sparse [-]    mode-invariant operator block, second order in beta
+% MLA5     nvar*ny*nx sparse [-]    mode-invariant operator block, mixed omega-beta term
+% MFD_diff nvar*ny*nx sparse [-]    difference operator for the mean-flow-distortion block
+
+%% Outputs
+% Name     size              unit   explanation
+% StabRes  (1,1) struct      [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+% Opt      (1,1) struct      [-]    solver options; see the option index in docs/user_guide.md
+% MLA1     nvar*ny*nx sparse [-]    mode-invariant operator block, zeroth order in omega and beta
+% MLA2     nvar*ny*nx sparse [-]    mode-invariant operator block, first order in omega
+% MLA3     nvar*ny*nx sparse [-]    mode-invariant operator block, first order in beta
+% MLA4     nvar*ny*nx sparse [-]    mode-invariant operator block, second order in beta
+% MLA5     nvar*ny*nx sparse [-]    mode-invariant operator block, mixed omega-beta term
+% MFD_diff nvar*ny*nx sparse [-]    difference operator for the mean-flow-distortion block
 
 if ~isfield(Opt, 'lu_mode'); Opt.lu_mode = 'auto'; end
 if ~isfield(Opt, 'parfor');  Opt.parfor  = 'off';  end
@@ -34,7 +85,7 @@ phys_modes = Mode.RunJ(Mode.RunJ >= round(Mode.nf/2));
 %% Phase 1: Build LHS matrices (once per run)
 needs_beta = any(StabRes.betavec ~= 0);
 if Opt.mmry == 1 && needs_beta && (isempty(MLA3) || isempty(MLA4))
-    fprintf(' MLA3/MLA4 missing for 3D run — rebuilding LHS.\n');
+    fprintf(' MLA3/MLA4 missing for 3D run, rebuilding LHS.\n');
     Opt.mmry = 0;
 end
 is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible, 'on');
@@ -104,7 +155,7 @@ Nvec   = Stab.Nvec;
 
 if strcmpi(Opt.lu_mode, 'seq')
     % Sequential mode: factorize one matrix, solve all modes that use it,
-    % discard.  Only one LU in memory at a time — minimal memory footprint.
+    % discard.  Only one LU in memory at a time: minimal memory footprint.
     unique_keys = {};
     mode_groups = {};
     for k = 1:nphys
@@ -403,7 +454,7 @@ else
     % Cache-based modes: 'full', 'auto', 'none'
     if ~isfield(Opt, 'LU_cache'); Opt.LU_cache = struct(); end
 
-    % Keys needed by the solve loop this iteration — 'auto' eviction must not
+    % Keys needed by the solve loop this iteration: 'auto' eviction must not
     % remove any of these (otherwise the solve below reads a missing entry).
     needed_keys = cell(1, nphys);
     for k = 1:nphys
@@ -449,7 +500,7 @@ else
                             Opt.lu_order_label(evict_idx) = [];
                             fprintf(' LU (%d,%d) [replacing %s, %d cached] ...', Stab.Mvec(j), Stab.Nvec(j), old_mode, Opt.lu_max_cache);
                         else
-                            % Cache saturated with needed keys — must grow to avoid
+                            % Cache saturated with needed keys: must grow to avoid
                             % thrash. lu_max_cache is a soft limit in this case.
                             if ~isfield(Opt,'lu_grew_warned') || ~Opt.lu_grew_warned
                                 warning(['LU cache grown from lu_max_cache=%d to %d ' ...

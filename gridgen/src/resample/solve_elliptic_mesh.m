@@ -1,6 +1,29 @@
 function [X_out, Y_out] = solve_elliptic_mesh(X_init, Y_init, ...
     X_wall, Y_wall, nx_w, ny_w, eta_cheb, H, opts)
-%SOLVE_ELLIPTIC_MESH  Smooth a structured mesh via elliptic (Poisson) PDE.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Smooth a structured mesh via elliptic (Poisson) PDE.
 %
 %   Takes an algebraic (ray-shot) mesh as the initial guess, iterates the Poisson
 %   equations on a uniform computational grid with point-by-point SOR, then
@@ -13,6 +36,23 @@ function [X_out, Y_out] = solve_elliptic_mesh(X_init, Y_init, ...
 %   opts: max_iter (5000), tol (1e-6), omega SOR factor (1.7), n_uniform eta
 %   points for the solve (201), P_strength source strength (0 = Laplace),
 %   P_decay source decay (5).
+
+%% Inputs
+% Name     size         unit   explanation
+% X_init   (n_eta,n_xi) [-]    algebraic ray-shot mesh, x coordinate, used as the initial guess
+% Y_init   (n_eta,n_xi) [-]    algebraic ray-shot mesh, y coordinate, used as the initial guess
+% X_wall   (1,n_xi)     [-]    wall x coordinate
+% Y_wall   (1,n_xi)     [-]    wall y coordinate
+% nx_w     (1,n_xi)     [-]    outward wall normal, x component
+% ny_w     (1,n_xi)     [-]    outward wall normal, y component
+% eta_cheb (n_eta,1)    [-]    Malik-Chebyshev wall-normal nodes, descending
+% H        (1,1)        [-]    domain height
+% opts     (1,1) struct [-]    solver settings: max_iter, tol, SOR factor omega, n_uniform, P_strength and P_decay
+
+%% Outputs
+% Name  size         unit   explanation
+% X_out (n_eta,n_xi) [-]    smoothed mesh, x coordinate, on the Malik-Chebyshev nodes
+% Y_out (n_eta,n_xi) [-]    smoothed mesh, y coordinate, on the Malik-Chebyshev nodes
 
 %% Parse options
 max_iter   = 5000;

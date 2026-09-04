@@ -1,5 +1,28 @@
 function [prof, alpha0, out] = solver_IPSE(omega, beta, StabGrid, Opt)
-%SOLVER_IPSE  Incompressible linear PSE (parabolized stability equations) inflow condition (de Groot & Kotsonis).
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Incompressible linear PSE (parabolized stability equations) inflow condition (de Groot & Kotsonis).
 %
 %   [prof, alpha0, out] = solver_IPSE(omega, beta, StabGrid, Opt)
 %
@@ -9,16 +32,19 @@ function [prof, alpha0, out] = solver_IPSE(omega, beta, StabGrid, Opt)
 %   seeds an incompressible PSE march (local function solver_PSE, below)
 %   up to R0, normalized by max|u|.
 %
-%   Inputs:
-%     omega     — angular frequency of the mode
-%     beta      — spanwise wavenumber of the mode
-%     StabGrid  — grid/base-flow struct (U, W, y, dzdy, Re, ny; H, y_i opt.)
-%     Opt       — options (pse_Rstart, pse_npre, pse_ymax, pse_yi)
-%
-%   Outputs:
-%     prof      — inflow shape at R0, normalised by max|u| (u,v,w,p)
-%     alpha0    — complex streamwise wavenumber at R0
-%     out       — march history (Rv, alpha)
+
+%% Inputs
+% Name     size unit   explanation
+% omega         [-]    angular frequency of the mode
+% beta          [-]    spanwise wavenumber of the mode
+% StabGrid      [-]    grid/base-flow struct (U, W, y, dzdy, Re, ny; H, y_i opt.)
+% Opt           [-]    options (pse_Rstart, pse_npre, pse_ymax, pse_yi)
+
+%% Outputs
+% Name   size unit   explanation
+% prof        [-]    inflow shape at R0, normalised by max|u| (u,v,w,p)
+% alpha0      [-]    complex streamwise wavenumber at R0
+% out         [-]    march history (Rv, alpha)
 
 %% Options and defaults
 if nargin < 4; Opt = struct(); end
@@ -111,20 +137,20 @@ function [alpha,u,v,w,p,y] = solver_PSE(Re,Ur,Vr,Wr,dxUr,dxVr,dxWr,dyUr,dyVr,dyW
 %   the auxiliary normalisation condition.
 %
 %   Inputs:
-%     Re              — Reynolds number
-%     Ur,Vr,Wr        — base-flow velocity components (ny x nx)
-%     dxUr,dxVr,dxWr  — their streamwise derivatives
-%     dyUr,dyVr,dyWr  — their wall-normal derivatives
-%     x_md,y_md       — base-flow streamwise / wall-normal grids
-%     omega           — angular frequency
-%     beta            — spanwise wavenumber
-%     N               — number of Chebyshev nodes
-%     y_max           — outer domain height
-%     y_i             — node-clustering height
+%     Re                Reynolds number
+%     Ur,Vr,Wr          base-flow velocity components (ny x nx)
+%     dxUr,dxVr,dxWr    their streamwise derivatives
+%     dyUr,dyVr,dyWr    their wall-normal derivatives
+%     x_md,y_md         base-flow streamwise / wall-normal grids
+%     omega             angular frequency
+%     beta              spanwise wavenumber
+%     N                 number of Chebyshev nodes
+%     y_max             outer domain height
+%     y_i               node-clustering height
 %   Outputs:
-%     alpha           — complex streamwise wavenumber alpha(x), based on max|u|
-%     u,v,w,p         — complex shape functions, normalised by local max|u|
-%     y               — physical wall-normal grid
+%     alpha             complex streamwise wavenumber alpha(x), based on max|u|
+%     u,v,w,p           complex shape functions, normalised by local max|u|
+%     y                 physical wall-normal grid
 %
 %   Written by Koen de Groot and Marios Kotsonis
 

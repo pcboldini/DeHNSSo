@@ -1,13 +1,51 @@
 function [Grid,Init,Mode,Opt,Stab,StabRes] = init(Grid,Opt,Stab)
-%INIT  Initialise DeHNSSo: set defaults, build operators, allocate arrays.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Initialise DeHNSSo: set defaults, build operators, allocate arrays.
 %
 %   [Grid, Init, Mode, Opt, Stab, StabRes] = init(Grid, Opt, Stab)
 %
-%   Sets default values for all unspecified fields in Grid, Opt, and Stab.
-%   Builds Chebyshev differentiation operators (D1, D2) with Malik mapping,
-%   sets up mode interaction matrices (HB), and pre-allocates solution arrays.
+%   Sets defaults for Grid, Opt and Stab, checks the freestream boundary
+%   conditions, builds the streamwise FD operators (D_xi, D_xi2), sets up the
+%   mode tables and harmonic balancing, and allocates the solution arrays.
 
-%% Input validation — required fields
+%% Inputs
+% Name size         unit   explanation
+% Grid (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
+% Opt  (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Stab (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
+
+%% Outputs
+% Name    size         unit   explanation
+% Grid    (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
+% Init    (1,1) struct [-]    inflow initialization data
+% Mode    (1,1) struct [-]    mode bookkeeping: nf, active set RunJ and the interaction tables
+% Opt     (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Stab    (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
+% StabRes (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+
+%% Input validation: required fields
 assert(isfield(Stab,'M') && ~isempty(Stab.M),       'Stab.M (spectral truncation omega) is required.');
 assert(isfield(Stab,'N') && ~isempty(Stab.N),       'Stab.N (spectral truncation beta) is required.');
 assert(isfield(Stab,'omega_0') && ~isempty(Stab.omega_0), 'Stab.omega_0 (fundamental frequency) is required.');
@@ -47,7 +85,7 @@ if isfield(Stab,'A0_fund') && ~isfield(Stab,'A0')
     m_fund = double( Stab.M >= 1 && (Stab.omega_0 ~= 0 || Stab.N == 0) );
     n_fund = double( Stab.N >= 1 && Stab.beta_0  ~= 0 );
     if m_fund == 0 && n_fund == 0
-        error(['A0_fund: no fundamental mode — set omega_0~=0 (with M>=1) ' ...
+        error(['A0_fund: no fundamental mode: set omega_0~=0 (with M>=1) ' ...
                'or beta_0~=0 (with N>=1), or set Stab.A0 explicitly.']);
     end
 
@@ -73,7 +111,7 @@ if ~isfield(Opt,'ConvF');       Opt.ConvF = 100; end
 if ~isfield(Opt,'plot');        Opt.plot = 'on'; end
 if ~isfield(Opt,'buffer');     Opt.buffer = 'on'; end     % 'on', 'para', or 'off'
 if ~isfield(Opt,'allmodes');   Opt.allmodes = 'off'; end  % 'on' activates the full (m,n) mode set (2D oblique cascade); 'off' = 1D incremental introduction
-% Freestream BC: per-component type — 3 entries (u,v,w) incompressible,
+% Freestream BC: per-component type: 3 entries (u,v,w) incompressible,
 % 4 entries (u,w,rho,T) compressible. NB v is not a freestream channel in the
 % compressible case: it is left free to carry the displacement (see bc_rows).
 %   'H_DR'  = homogeneous Dirichlet  (q̂ = 0)
@@ -93,8 +131,6 @@ end
 valid_bc = {'H_DR','IH_DR','H_NM','free'};
 assert(all(ismember(lower(Opt.bc_top), lower(valid_bc))), ...
     'init:badBCtop', 'bc_top entries must be one of: %s.', strjoin(valid_bc, ', '));
-% One entry per freestream channel. Compressible constrains u, w, rho, T (v is free);
-% incompressible constrains u, v, w. 
 if ~is_compr && numel(Opt.bc_top) >= 3
     u_pinned = strcmpi(Opt.bc_top{1}, 'H_DR') || strcmpi(Opt.bc_top{1}, 'IH_DR');
     w_pinned = strcmpi(Opt.bc_top{3}, 'H_DR') || strcmpi(Opt.bc_top{3}, 'IH_DR');
@@ -116,7 +152,6 @@ assert(numel(Opt.bc_top) == n_bc_top, 'init:bcTopSize', ...
      'the freestream channels are %s.'], numel(Opt.bc_top), n_bc_top, ...
     Opt.compressible, strjoin(B_chan.top_names, ', '));
 if ~isfield(Opt,'lu_mode');    Opt.lu_mode = 'auto'; end  % lapack_band|block_thomas|full|auto|seq|none (see solve_modes)
-% Opt.lu_max_cache is left unset here
 if ~isfield(Opt,'parfor')
     has_pct = license('test','Distrib_Computing_Toolbox') && ~isempty(ver('parallel'));
     if has_pct; Opt.parfor = 'on'; else; Opt.parfor = 'off'; end
@@ -155,7 +190,7 @@ Stab.I      = eye(Grid.ny);
 Stab.Z      = zeros(Grid.ny);
 
 % LHS sparse blocks (MLA1..MLA5, MLAMFD) are built from triplet (i,j,s)
-% accumulators inside LHS / LHS_compressible — no preallocation needed.
+% accumulators inside LHS / LHS_compressible, so no preallocation is needed.
 
 StabRes.R = zeros(nvar*Grid.nx*Grid.ny, 1);  % Initiate RHS vector
 Stab.f    = zeros(Mode.nf, nvar*Grid.ny*Grid.nx);

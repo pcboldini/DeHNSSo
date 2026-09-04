@@ -1,19 +1,46 @@
 function [sol] = FalknerSkanCooke(eta_inf,n,beta,halfsine,tol)
-%FALKNERSKANCOOKE  Solve the Falkner-Skan-Cooke similarity equations (bvp5c).
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Solve the Falkner-Skan-Cooke similarity equations (bvp5c).
 %
 %   sol = FalknerSkanCooke(eta_inf, n, beta, halfsine, tol)
 %
 %   Falkner-Skan: f''' + f f'' + beta(1 - f'^2) = 0;  Cooke: g'' + f' g = 0,
 %   with eta = y sqrt((m+1)/2 Ue/(nu x)), f' = u/Ue, g = w/We.
 %
-%   Inputs:
-%     eta_inf   — freestream location where f' = g = 1 is imposed
-%     n         — number of points
-%     beta      — Hartree parameter
-%     halfsine  — (optional) half-sine node distribution, clustered at the wall
-%     tol       — (optional) absolute tolerance (default 1e-8)
-%   Output:
-%     sol       — bvp5c solution struct
+
+%% Inputs
+% Name     size unit   explanation
+% eta_inf       [-]    freestream location where f' = g = 1 is imposed
+% n             [-]    number of points
+% beta          [-]    Hartree parameter
+% halfsine      [-]    (optional) half-sine node distribution, clustered at the wall
+% tol           [-]    (optional) absolute tolerance (default 1e-8)
+
+%% Outputs
+% Name size unit   explanation
+% sol       [-]    bvp5c solution struct
 
 % Half-sine distribution (bias at the wall, at low eta)
 if nargin==4 && halfsine

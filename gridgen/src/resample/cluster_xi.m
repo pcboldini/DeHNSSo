@@ -1,5 +1,28 @@
 function coord = cluster_xi(lo, hi, n, mug, sig, ag, x_lo, x_hi)
-%CLUSTER_XI  Gaussian-clustered stations on [lo, hi].
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Gaussian-clustered stations on [lo, hi].
 %
 %   coord = cluster_xi(lo, hi, n, mug, sig, ag, x_lo, x_hi)
 %
@@ -12,6 +35,21 @@ function coord = cluster_xi(lo, hi, n, mug, sig, ag, x_lo, x_hi)
 %   physical x, [] meaning uniform spacing; sig and ag are the Gaussian width and
 %   the peak spacing factor (ag < 1 denser), each broadcast if scalar; x_lo, x_hi
 %   are the physical x at lo and hi. Returns 1 x n stations.
+
+%% Inputs
+% Name size   unit   explanation
+% lo   (1,1)  [-]    lower bound of the xi range
+% hi   (1,1)  [-]    upper bound of the xi range
+% n    (1,1)  [-]    number of stations to return
+% mug  (1,nc) [-]    cluster centres in physical x; empty gives uniform spacing
+% sig  (1,nc) [-]    Gaussian width of each cluster, broadcast if scalar
+% ag   (1,nc) [-]    peak spacing factor of each cluster, below one denser, broadcast if scalar
+% x_lo (1,1)  [-]    physical x at lo, mapped to -1 on the normalised axis
+% x_hi (1,1)  [-]    physical x at hi, mapped to +1 on the normalised axis
+
+%% Outputs
+% Name  size  unit   explanation
+% coord (1,n) [-]    monotonic stations on [lo, hi] with the requested clustering
 
 if isempty(mug) || all(ag(:) == 1)
     coord = linspace(lo, hi, n);

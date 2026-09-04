@@ -1,5 +1,28 @@
 function plot_amplitudes(StabGrid, StabRes, ref_data, scholten_csv, plot_metric)
-%PLOT_AMPLITUDES  Final amplitude development plot.
+%% License (GNU GENERAL PUBLIC LICENSE v3)
+%                  Delft Harmonic Navier-Stokes Solver
+%     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
+% 
+%     This program is free software: you can redistribute it and/or modify
+%     it under the terms of the GNU General Public License as published by
+%     the Free Software Foundation, either version 3 of the License, or
+%     (at your option) any later version.
+% 
+%     This program is distributed in the hope that it will be useful,
+%     but WITHOUT ANY WARRANTY; without even the implied warranty of
+%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%     GNU General Public License for more details.
+% 
+%     You should have received a copy of the GNU General Public License
+%     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+%
+%     Please cite this code and the paper if you have used this for your
+%     publication:
+
+% DOI:
+
+%% Description
+% Final amplitude development plot.
 %
 %   plot_amplitudes(StabGrid, StabRes)
 %   plot_amplitudes(StabGrid, StabRes, ref_data)
@@ -7,18 +30,29 @@ function plot_amplitudes(StabGrid, StabRes, ref_data, scholten_csv, plot_metric)
 %   plot_amplitudes(StabGrid, StabRes, ref_data, scholten_csv, plot_metric)
 %
 %   ref_data (optional) struct with:
-%     .file   — path to .mat file with reference StabRes/StabGrid
-%     .label  — legend prefix (e.g. 'NPSE', 'LPSE', 'DNS')
+%     .file     path to .mat file with reference StabRes/StabGrid
+%     .label    legend prefix (e.g. 'NPSE', 'LPSE', 'DNS')
 %
-%   scholten_csv (optional) — set to true (or a path string) to overlay the
+%   scholten_csv (optional): set to true (or a path string) to overlay the
 %   digitized Scholten Fig. 1a data. Pass [] or omit to skip.
 %
 %   plot_metric (optional, default 'umax'):
-%     'umax'   — peak |u'|        (StabRes.A directly)
-%     'urms'   — RMS u'           (StabRes.A / sqrt(2))
-%     'energy' — sqrt(E); E is kinetic (incompressible) or Chu/Mack (compressible)
+%     'umax'     peak |u'|        (StabRes.A directly)
+%     'urms'     RMS u'           (StabRes.A / sqrt(2))
+%     'energy'   sqrt(E); E is kinetic (incompressible) or Chu/Mack (compressible)
 %
 %   Mode labels use StabRes.omegavec/betavec to determine (m,n) indices.
+
+%% Inputs
+% Name         size         unit   explanation
+% StabGrid     (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
+% StabRes      (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
+% ref_data     (1,1) struct [-]    optional reference data to overlay; needs a file field pointing at a .mat
+% scholten_csv char         [-]    optional path to a Scholten CSV reference curve
+% plot_metric  char         [-]    quantity to plot: 'umax' (default) or 'energy', the latter requiring StabRes.E
+
+%% Outputs
+% None.
 
 if nargin < 5 || isempty(plot_metric); plot_metric = 'umax'; end
 switch lower(plot_metric)

@@ -18,7 +18,7 @@ load_bf ─► classify_input ─► resample_{cartesian,curvilinear,unstructure
 | `io/` | get the base flow in: `load_bf`, `classify_input` (cartesian / curvilinear / unstructured), `ensure_metadata` (Re/lref/Uref/nu) |
 | `resample/` | put the BF on the target grid: `resample_cartesian`, `resample_curvilinear`, `resample_unstructured`, `solve_elliptic_mesh` (curvilinear smoother), `cluster_xi` (streamwise clustering), `report_clustering` (print summary) |
 | `grid/` | build the DeHNSSo grid + operators: `build_stab_grid`, `compute_cheb_operators`, `compute_fd_operators`, `compute_bf_derivatives`, `bf_deriv_fields` |
-| `forcing/` | wall forcing: `prepare_forcing` (actuator or v-distribution → refinement extent + profile) and `flatten_forcing` (normalise one/many specs); stored as `StabGrid.forcing`, applied by `src/init/add_wall_forcing` |
+| `forcing/` | wall forcing: `prepare_forcing` (actuator or v-distribution → refinement extent + profile) and `flatten_forcing` (normalise one/many specs); stored as `StabGrid.forcing`, applied by `src/boundary/add_wall_forcing` |
 | `math/` | low-level numerics: `deriv1_uneven`, `deriv2_uneven` (non-uniform finite-difference weights), `chebDiff` (Chebyshev) |
 | `util/` | small helpers: `get_opt` (param default), `resolve_trim` (fraction → station count) |
 | `plot/` | diagnostics: `plot_raw_bf`, `plot_resampled_bf` |
