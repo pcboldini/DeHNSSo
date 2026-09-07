@@ -106,10 +106,18 @@ end
 % ---- scale and write additively into Stab.bcw -------------------------------
 v = spec.A * vprof * exp(1i*phi);
 
-n_modes = (2*Stab.N + 1) * (2*Stab.M + 1);
-if ~isfield(Stab, 'bcw') || isempty(Stab.bcw) || size(Stab.bcw, 2) ~= nx
-    Stab.bcw = zeros(3, nx, n_modes);
+n_modes  = (2*Stab.N + 1) * (2*Stab.M + 1);
+% u,v,w [,T]: the compressible operator carries a fourth wall channel, and init
+% asserts the row count, so size it from Opt rather than assuming incompressible.
+is_compr = isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on');
+n_bc     = 3 + double(is_compr);
+if ~isfield(Stab, 'bcw') || isempty(Stab.bcw) || ...
+        size(Stab.bcw, 2) ~= nx || size(Stab.bcw, 1) ~= n_bc
+    Stab.bcw = zeros(n_bc, nx, n_modes);
 end
+assert(comp <= n_bc, 'add_wall_forcing:badComp', ...
+    'spec.comp = %d but only %d wall channels exist (Opt.compressible=%s).', ...
+    comp, n_bc, string(is_compr));
 Stab.bcx = x;
 
 j = ModeToModeNumber(mode(1), mode(2), Stab.M, Stab.N);

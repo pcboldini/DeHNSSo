@@ -85,6 +85,24 @@ if isfield(params, 'forcing') && ~isempty(params.forcing)
     if ~isfield(params, 'spread') || isempty(params.spread)   % default: refine to the forcing width
         params.spread = cellfun(@(f) f.w, forcing);
     end
+    % A source must actually sit on the wall. The usual cause of a miss is a
+    % tabulated x in the wrong units (metres against a grid in x/lref), which
+    % would otherwise interpolate to zero everywhere and pass unnoticed.
+    Xlo = min(BF.X(:));   Xhi = max(BF.X(:));
+    for k = 1:numel(forcing)
+        fk = forcing{k};
+        if fk.xc + fk.w < Xlo || fk.xc - fk.w > Xhi
+            error('main_gridgen:forcingOffDomain', ...
+                ['Forcing %d spans [%.4g, %.4g] but the domain is [%.4g, %.4g]: it ' ...
+                 'lies entirely outside. Check the units of xc/w, or of x for a ' ...
+                 'distribution placed by its own support.'], ...
+                k, fk.xc-fk.w, fk.xc+fk.w, Xlo, Xhi);
+        elseif fk.xc - fk.w < Xlo || fk.xc + fk.w > Xhi
+            warning('main_gridgen:forcingClipped', ...
+                'Forcing %d spans [%.4g, %.4g], partly outside the domain [%.4g, %.4g].', ...
+                k, fk.xc-fk.w, fk.xc+fk.w, Xlo, Xhi);
+        end
+    end
     fprintf('Wall forcing: %d source(s) -> refining mesh\n', numel(forcing));
 end
 

@@ -510,10 +510,21 @@ By default all BCs are homogeneous (zero perturbation at wall and freestream). Y
 ### Arrays
 
 ```matlab
-Stab.bcx          % (1 x nx_bc)       x-locations of BC profile
-Stab.bcw(k,ix,j)  % (3 x nx_bc x nf)  wall BC:       k=1 u, k=2 v, k=3 w
-Stab.bct(k,ix,j)  % (3 x nx_bc x nf)  freestream BC: k=1 u, k=2 v, k=3 w
+Stab.bcx          % (1 x nx_bc)          x-locations of BC profile
+Stab.bcw(k,ix,j)  % (n_bc x nx_bc x nf)  wall BC
+Stab.bct(k,ix,j)  % (n_bc x nx_bc x nf)  freestream BC
 ```
+
+`n_bc` is 3 incompressible and 4 compressible, and the channel `k` maps differently at the two boundaries (see `bc_rows`):
+
+| `k` | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| wall, incompressible | u | v | w | — |
+| wall, compressible | u | v | w | T |
+| freestream, incompressible | u | v | w | — |
+| freestream, compressible | u | w | rho | T |
+
+`add_wall_forcing` sizes `Stab.bcw` from `Opt.compressible` for you, so this matters only when writing the arrays by hand.
 
 ### Wall actuation (blowing/suction)
 
@@ -521,25 +532,48 @@ Wall forcing follows a **grid-first** workflow: you describe what is at the wall
 
 This works on **any grid** — cartesian, curvilinear, and unstructured. On a flat plate `xc`/`x_data` are the physical `x`; on a curved or unstructured wall (swept-wing, hump, M3J/CSV) they are still physical `x` — gridgen samples the profile at the physical wall-x per station, so it lands geometrically correctly even though the grid runs in arc-length.
 
-**Step 1 — gridgen: define the forcing.** `params.forcing` is either a parameterized actuator or a measured/CFD distribution; gridgen sizes the clustering to it automatically:
+**Step 1 — gridgen: define the forcing.** `params.forcing` describes what sits at the wall. Two choices decide the form: where the **shape** comes from (the built-in cosine, or an array you supply), and **how many** sources there are (one, or an array of them). That gives seven forms:
+
+| # | shape | how many | spec |
+|---|---|---|---|
+| 1 | cosine | one | `struct('xc', xc, 'w', w)` |
+| 2 | cosine | N, same width | `struct('xc', [xc1 xc2 xc3], 'w', w)` |
+| 3 | cosine | N, own widths | `struct('xc', [xc1 xc2], 'w', [w1 w2])` |
+| 4 | tabulated | one | `struct('xc', xc, 'w', w, 'v', v_data)` |
+| 5 | tabulated | one, uneven samples | `struct('xc', xc, 'w', w, 'x', x_data, 'v', v_data)` |
+| 6 | tabulated | N | `struct('xc', [xc1 xc2 xc3], 'w', w, 'v', v_data)` |
+| 7 | tabulated | one, **placed by the data** | `struct('x', x_data, 'v', v_data)` |
+
+`'shape','cosine'` may be given explicitly in 1-3, but it is the default and `'cosine'` is the only value. In 4-6 `v_data` may be complex, carrying phase.
+
+**Forms 1-6 place the source themselves.** `xc` is the centre and `w` the HALF-width, so the footprint spans `2w`; a supplied array is stretched onto `[xc-w, xc+w]` and normalised to unit peak. Its own units, origin and sample order therefore never enter, and in form 5 `x_data` is read for the *relative spacing* of the samples alone. Pass a profile tabulated in millimetres about its own centre exactly as it comes out of the file.
+
+**Form 7 is the exception**: with no `xc`/`w`, the centre and half-width are taken from where `|v|` first and last exceeds `1e-6` of its peak, so there `x_data` **is** the position and must already be in the grid's coordinate. Use it when the distribution is the specification and has no natural centre and width to quote. Two consequences: a profile that is exactly zero at its end points reports a slightly narrow `w`, and a units mistake moves the source rather than being ignored.
+
+Whichever form, a source lying entirely off the domain raises `main_gridgen:forcingOffDomain`, and one hanging over an edge warns with `forcingClipped`.
 
 ```matlab
-% (a) raised-cosine actuator, center xc, half-width w (physical x)
-params.forcing = struct('xc', xc, 'w', w, 'shape', 'cosine');
+% one actuator
+params.forcing = struct('xc', 1379.1, 'w', 18);
 
-% (b) an arbitrary v-distribution — any shape; xc/w inferred from its support
-params.forcing = struct('x', x_data, 'v', v_data);   % v_data may be complex (phase)
+% a measured neck profile, as it comes out of the file
+D = load('hAbs_xProfile_TM295hz.mat');           % xh in metres, h in [0,1]
+params.forcing = struct('xc', Xc, 'w', s_nd/2, 'v', D.h);
 
-params.refine = 10/3;   % dxi over the forcing ~3.3x finer than equidistant
+% an array of three identical necks
+params.forcing = struct('xc', Xc + (0:2)*(s_nd + d_nd), 'w', s_nd/2, 'v', D.h);
+
+params.spread = 30;     % how far the refinement reaches
+params.refine = 5;      % dxi at the centre vs equidistant
 ```
 
 `refine` is the friendlier form of `ag` (see the clustering table above). `spread`, how far the refinement reaches, defaults to the forcing half-width, which is right for an actuator; set it explicitly only when the refinement must reach further than the feature itself, as the resonator neck does.
 
-For **several forcings**, give `xc` a vector (many same-type actuators) or pass a cell array (mixed actuators and distributions); gridgen refines for all of them and stores one profile each:
+**Sources that differ from each other** go in a cell array, one struct each. This composes with the table: a vector `xc` inside a cell entry still expands, so the example below is four sources.
 
 ```matlab
-params.forcing = struct('xc', [xc1, xc2, xc3], 'w', 18);          % w scalar broadcasts, or a vector
-params.forcing = { struct('xc', xc1, 'w', 18), struct('x', x_data, 'v', v_data) };
+params.forcing = { struct('xc', [xc1 xc2 xc3], 'w', 18, 'v', v_data), ...   % three alike
+                   struct('xc', xc4, 'w', 24) };                            % one different
 ```
 
 gridgen stores `StabGrid.forcing` (the unit-peak profile(s) sampled on the refined grid) plus `StabGrid.cluster.xc/.w`. The distribution's `v` values need only encode the **shape**; the amplitude is set in the caller. Note the fixed station budget is shared across all centers, so raise `params.n_xi_new` when refining several spots.
@@ -550,7 +584,7 @@ gridgen stores `StabGrid.forcing` (the unit-peak profile(s) sampled on the refin
 Stab = add_wall_forcing(Stab, StabGrid, Opt, struct('A', 1e-4));   % xc/w/shape from gridgen
 ```
 
-`spec` fields: `A` (amplitude, physical `2|û|` like `Stab.A0`, required), optional `phi` (phase), `comp` (1 u / 2 v / 3 w, default 2), `mode` (`[m n]`, default `[1 0]`), and `which` to pick one forcing when gridgen stored several. The forcing is **added** to any existing `Stab.bcw`, so call once per source to stack several:
+`spec` fields: `A` (amplitude, physical `2|û|` like `Stab.A0`, required), optional `phi` (phase), `comp` (1 u / 2 v / 3 w, and 4 T compressible; default 2), `mode` (`[m n]`, default `[1 0]`), and `which` to pick one forcing when gridgen stored several. The forcing is **added** to any existing `Stab.bcw`, so call once per source to stack several:
 
 ```matlab
 Stab = add_wall_forcing(Stab, StabGrid, Opt, struct('A', 2e-4, 'which', 1));

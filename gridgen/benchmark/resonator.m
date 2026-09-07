@@ -47,25 +47,22 @@ input.structured = true;
 
 %% Resampling
 params.n_eta_new = 40;
-params.n_xi_new  = 5000;
+params.n_xi_new  = 4000;
 params.rescale   = false;
 params.plot      = false;
 
-%% Neck clustering — Gaussian point density centred on the mouth
-% xi_nodes, like params.mug and params.spread, is in the units of the base flow's
-% X field: displacement thicknesses here, so the 1 mm neck becomes 1e-3/lref.
-BF   = load(fullfile(input.folder, input.filename)).BF;
-lref = BF.lref;
+%% Neck clustering — declare the mouth, gridgen sizes the mesh to it
+% params.forcing is in the units of the base flow's X field: displacement
+% thicknesses here, so the 1 mm neck becomes 1e-3/lref. Declaring it also stores
+% the mouth on the grid as StabGrid.forcing, which the caller reads back, so the
+% two cannot drift apart.
+lref = load(fullfile(input.folder, input.filename)).BF.lref;
 s_nd = 1e-3/lref;                       % 1 mm neck, non-dimensional
 Xc   = 0.55/lref + s_nd/2;              % neck centre
-Xa   = BF.X(1);   Xb = BF.X(end);
-rcl  = 4;                               % point-density ratio at the neck
-wc   = 60;                              % Gaussian half-width [delta*]
-Xr   = linspace(Xa, Xb, 120000);
-dens = 1 + (rcl-1)*exp(-0.5*((Xr-Xc)/wc).^2);
-Cc   = cumtrapz(Xr, dens);  Cc = (Cc-Cc(1))/(Cc(end)-Cc(1));
-params.xi_nodes = interp1(Cc, Xr, linspace(0, 1, params.n_xi_new));
-params.xi_nodes([1 end]) = [Xa Xb];
+
+params.forcing = struct('xc', Xc, 'w', s_nd/2, 'shape', 'cosine');
+params.spread  = 30;                    % refinement reach, ~16x the mouth
+params.refine  = 5;                     % dxi at the neck vs equidistant
 
 %% Grid operators
 params.FD_xi_order_1 = 4;
