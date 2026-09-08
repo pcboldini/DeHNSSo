@@ -15,7 +15,7 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 
 > **First draft (September 2026), paper in preparation.** For questions about the method or implementation, contact **Pietro Carlo Boldini** — P.C.Boldini@tudelft.nl
 
-**Last updated:** 4 September 2026
+**Last updated:** 8 September 2026
 
 ---
 
