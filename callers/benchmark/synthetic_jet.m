@@ -28,7 +28,7 @@
 %  amplitude and phase. Models an active TS-control actuator (cf. the TS-control
 %  study).
 %
-%  New actuator workflow (see docs/user_guide.md "Wall actuation"):
+%  New actuator workflow (see docs/DeHNSSo_guide.md "Wall actuation"):
 %    1. gridgen/benchmark/synthetic_jet.m clusters the mesh at the jet centre
 %       (params.mug) and stores it as StabGrid.cluster.xc.
 %    2. add_wall_forcing reads that centre and builds a raised-cosine forcing of a

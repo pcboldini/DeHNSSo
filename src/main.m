@@ -42,7 +42,7 @@ function [StabRes, StabGrid, LHS] = main(Stab, StabGrid, Opt, LHS)
 % Name     size         unit   explanation
 % Stab     (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
 % StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
-% Opt      (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt      (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 % LHS      (1,1) struct [-]    mode-invariant operator blocks and the LU cache
 
 %% Outputs
@@ -183,7 +183,7 @@ if is_newton
     if ~isfield(Opt,'newton_target') || isempty(Opt.newton_target)
         error('main:noNewtonTarget', ...
               ['Opt.solver=''newton'' runs pseudo-arclength continuation and needs ' ...
-               'Opt.newton_target (target A0_fund). See docs/user_guide.md.']);
+               'Opt.newton_target (target A0_fund). See docs/DeHNSSo_guide.md.']);
     end
     fprintf('\n--- Newton solve (pseudo-arclength continuation) ---\n');
     t_loop = tic;
@@ -214,7 +214,7 @@ elseif is_linear
             error('main:linearNotFinite', ...
                 ['Linear solve returned non-finite %s''. The operator is singular ' ...
                  'or badly conditioned; check Opt.bc_top (see the freestream ' ...
-                 'boundary-condition notes in docs/user_guide.md).'], f{1});
+                 'boundary-condition notes in docs/DeHNSSo_guide.md).'], f{1});
         end
     end
 

@@ -87,7 +87,7 @@ function F = bt_factor(ML, b, np, oocdir, par, amode)
 %     'lu' (default)      its pivoted LU factors, applied by triangular solves
 %     'inverse'           G^-1, as in Paredes et al. (2024)
 %   'lu' keeps the pivoting that forming the inverse discards, which matters
-%   where G is close to singular; see docs/user_guide.md for the measured
+%   where G is close to singular; see docs/DeHNSSo_guide.md for the measured
 %   difference. Both forms stream, the LU record carrying b extra doubles per
 %   station for the pivots.
 if nargin < 3 || isempty(np); np = 2; end

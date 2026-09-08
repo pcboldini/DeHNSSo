@@ -45,7 +45,7 @@ function [Mode,StabRes] = inflow(Mode,Stab,StabGrid,StabRes,Opt)
 % Stab     (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
 % StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
 % StabRes  (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
-% Opt      (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt      (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 
 %% Outputs
 % Name    size         unit   explanation
@@ -69,7 +69,7 @@ nvar     = 4 + double(is_compr);
 % Amplitude convention: Stab.A0 (and Stab.bcw, halved in RHS) is the PHYSICAL peak
 % amplitude 2|û| of the real disturbance q' = q̂ e^{-iωt} + c.c. The inflow seeds the
 % complex amplitude û = A0/2; post-process then reports StabRes.A = 2|û| = A0, so the
-% amplitude you set in equals the amplitude you get out (see docs/user_guide.md §5).
+% amplitude you set in equals the amplitude you get out (see docs/DeHNSSo_guide.md §5).
 A0s = 0.5 * Stab.A0;
 
 StabRes.phi    = zeros(Mode.nf,nvar*StabGrid.ny,StabGrid.nx);

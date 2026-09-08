@@ -54,7 +54,7 @@ Opt.xb     = 85;             % buffer start [% of domain]
 %% Solver
 Opt.plot        = 'on';
 Opt.plot_metric = 'umax';    % 'umax' | 'urms' | 'energy'
-Opt.lu_mode     = 'auto';    % 'full' | 'auto' | 'lapack_band' | 'none' (user_guide §8)
+Opt.lu_mode     = 'auto';    % 'full' | 'auto' | 'lapack_band' | 'none' (DeHNSSo_guide §8)
                              % 'auto' bounds the factor cache: 3.5x faster than 'full' here,
                              % which holds 16.3 GB of factors and thrashes a 32 GB machine
 Opt.parfor      = 'off';

@@ -64,7 +64,7 @@ function [eta_max, eta_mode, res_mode] = backward_error(Bound, StabGrid, Mode, O
 % Bound    (1,1) struct      [-]    boundary conditions and outflow-buffer coefficients
 % StabGrid (1,1) struct      [-]    stability grid, coordinate metrics and base-flow fields on it
 % Mode     (1,1) struct      [-]    mode bookkeeping: nf, active set RunJ and the interaction tables
-% Opt      (1,1) struct      [-]    solver options; see the option index in docs/user_guide.md
+% Opt      (1,1) struct      [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 % Stab     (1,1) struct      [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
 % StabRes  (1,1) struct      [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
 % MLA1     nvar*ny*nx sparse [-]    mode-invariant operator block, zeroth order in omega and beta

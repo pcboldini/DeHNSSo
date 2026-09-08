@@ -30,7 +30,7 @@ function plot_stability(StabGrid, StabRes, Opt)
 % Name     size         unit   explanation
 % StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
 % StabRes  (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
-% Opt      (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt      (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 
 %% Outputs
 % None.

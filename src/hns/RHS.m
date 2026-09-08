@@ -40,7 +40,7 @@ function [R] = RHS(Bound,Grid,Mode,Opt,StabRes,j)
 % Bound   (1,1) struct [-]    boundary conditions and outflow-buffer coefficients
 % Grid    (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
 % Mode    (1,1) struct [-]    mode bookkeeping: nf, active set RunJ and the interaction tables
-% Opt     (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt     (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 % StabRes (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
 % j       (1,1)        [-]    mode counter of the mode the right-hand side is built for
 
@@ -65,7 +65,7 @@ function [R] = RHS(Bound,Grid,Mode,Opt,StabRes,j)
         base  = nvar*ny*(i_vec - 1);
         % Bound.bcw/bct are the PHYSICAL peak amplitude 2|û|; seed the complex
         % amplitude û = value/2 so the reconstructed field (post-process 2|û|) equals
-        % the value the user set (same convention as the inflow A0; user_guide §5).
+        % the value the user set (same convention as the inflow A0; DeHNSSo_guide §5).
         % Same row map the LHS uses, so each channel's value lands on the row
         % whose BC type was consulted. The freestream and wall maps differ in the
         % compressible case (see bc_rows).

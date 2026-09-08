@@ -48,7 +48,7 @@ function [StabRes, info] = solve_newton(Stab, StabGrid, Opt)
 % Name     size         unit   explanation
 % Stab     (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
 % StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
-% Opt      (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt      (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 
 %% Outputs
 % Name    size         unit   explanation

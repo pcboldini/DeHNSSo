@@ -38,7 +38,7 @@ function ctx = newton_context(BF, Bound, StabGrid, Init, Mode, Opt, Stab, StabRe
 % StabGrid (1,1) struct [-]    stability grid, coordinate metrics and base-flow fields on it
 % Init     (1,1) struct [-]    inflow initialization data
 % Mode     (1,1) struct [-]    mode bookkeeping: nf, active set RunJ and the interaction tables
-% Opt      (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt      (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 % Stab     (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
 % StabRes  (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
 

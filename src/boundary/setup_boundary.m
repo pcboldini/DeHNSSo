@@ -40,7 +40,7 @@ function [Bound]=setup_boundary(Grid,Opt,Stab)
 %% Inputs
 % Name size         unit   explanation
 % Grid (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
-% Opt  (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt  (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 % Stab (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
 
 %% Outputs

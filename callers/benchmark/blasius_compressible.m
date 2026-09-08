@@ -60,7 +60,7 @@ Opt.xb     = 90;                % buffer start [% of domain]
 %% Solver
 Opt.plot        = 'on';
 Opt.plot_metric = 'umax';       % 'umax' | 'urms' | 'energy'
-Opt.lu_mode     = 'lapack_band';  % 'full'/'auto' OOM at nx=800 (user_guide §8)
+Opt.lu_mode     = 'lapack_band';  % 'full'/'auto' OOM at nx=800 (DeHNSSo_guide §8)
 Opt.parfor      = 'off';
 Opt.solver      = 'picard';     % 'picard' | 'newton' (pseudo-arclength continuation, needs Opt.newton_target)
 

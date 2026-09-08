@@ -30,7 +30,7 @@ Opt.xb     = 85;            % buffer start [% of domain]
 %% Solver
 Opt.plot        = 'on';
 Opt.plot_metric = 'umax';   % 'umax' | 'urms' | 'energy'
-Opt.lu_mode     = 'full';   % 'full' | 'auto' | 'lapack_band' | 'none' (user_guide §8)
+Opt.lu_mode     = 'full';   % 'full' | 'auto' | 'lapack_band' | 'none' (DeHNSSo_guide §8)
 Opt.parfor      = 'off';
 Opt.solver      = 'picard'; % 'picard' | 'newton'
 

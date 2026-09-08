@@ -33,7 +33,7 @@ function [Grid,Init,Mode,Opt,Stab,StabRes] = init(Grid,Opt,Stab)
 %% Inputs
 % Name size         unit   explanation
 % Grid (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
-% Opt  (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt  (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 % Stab (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
 
 %% Outputs
@@ -41,7 +41,7 @@ function [Grid,Init,Mode,Opt,Stab,StabRes] = init(Grid,Opt,Stab)
 % Grid    (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
 % Init    (1,1) struct [-]    inflow initialization data
 % Mode    (1,1) struct [-]    mode bookkeeping: nf, active set RunJ and the interaction tables
-% Opt     (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt     (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 % Stab    (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
 % StabRes (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
 

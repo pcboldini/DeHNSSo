@@ -2,12 +2,12 @@
 
 [![MATLAB](https://img.shields.io/badge/MATLAB-R2025b-0076A8)](https://www.mathworks.com/products/matlab.html)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-user%20guide-2b6cb0)](docs/user_guide.md)
+[![Docs](https://img.shields.io/badge/docs-DeHNSSo%20guide-2b6cb0)](docs/DeHNSSo_guide.md)
 [![DeHNSSo-v1 paper](https://img.shields.io/badge/DeHNSSo--v1-10.1016%2Fj.cpc.2024.109250-6f42c1)](https://doi.org/10.1016/j.cpc.2024.109250)
 [![DeHNSSo-v2 paper](https://img.shields.io/badge/DeHNSSo--v2-in%20preparation-lightgrey)](#)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555)](docs/user_guide.md)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555)](docs/DeHNSSo_guide.md)
 [![MUMPS](https://img.shields.io/badge/MUMPS-5.3.5-4a7c59)](src/external/)
-[![Parallel Computing Toolbox](https://img.shields.io/badge/Parallel%20Computing%20Toolbox-optional-4a7c59)](docs/user_guide.md)
+[![Parallel Computing Toolbox](https://img.shields.io/badge/Parallel%20Computing%20Toolbox-optional-4a7c59)](docs/DeHNSSo_guide.md)
 
 **Delft Harmonic Navier-Stokes Solver** — nonlinear stability analysis of laminar boundary layers over surfaces with complex geometric features.
 
@@ -42,9 +42,9 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 
 ## Recent updates (June 2026)
 
-- **`Opt.rerun` reuses the LU factorization cache** — amplitude/forcing sweeps on a fixed base flow now skip both assembly and factorization (~6× faster reuse). See [docs/user_guide.md](docs/user_guide.md) §9
-- **Analytic base-flow derivatives as gridgen input** — supply them on the base flow to skip finite differencing (auto-detected per field); all base-flow differentiation now lives in gridgen. See [docs/user_guide.md](docs/user_guide.md) §3 (Step 1d)
-- **Save run output** — `Opt.save_output` writes the final results to a git-ignored `output/` folder. See [docs/user_guide.md](docs/user_guide.md) §10
+- **`Opt.rerun` reuses the LU factorization cache** — amplitude/forcing sweeps on a fixed base flow now skip both assembly and factorization (~6× faster reuse). See [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) §9
+- **Analytic base-flow derivatives as gridgen input** — supply them on the base flow to skip finite differencing (auto-detected per field); all base-flow differentiation now lives in gridgen. See [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) §3 (Step 1d)
+- **Save run output** — `Opt.save_output` writes the final results to a git-ignored `output/` folder. See [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) §10
 
 ## Recent updates (May 2026)
 
@@ -53,7 +53,7 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 - **Compressible callers** — `gridgen/benchmark/blasius_compressible.m` + `callers/benchmark/blasius_compressible.m` with built-in HNS vs Zanus/Bertolotti PSE plot
 - **`lapack_band` LU mode** — LAPACK banded LU MEX (`src/linsolve/lapack_band/dgbsv_solve.c`), ~3× faster than `seq` on compressible TS. Build via `src/linsolve/lapack_band/mexbuild_dgbsv.m`
 - **`block`/`band` LU modes removed** — `block` was silently wrong on ill-conditioned boundary stencils; `band` was redundant with `seq`
-- **Docs** — `docs/user_guide.md` and `docs/developer_guide.md` updated for compressible mode and `lapack_band` MEX
+- **Docs** — `docs/DeHNSSo_guide.md` and `docs/developer_guide.md` updated for compressible mode and `lapack_band` MEX
 
 ## Recent updates (April 2026)
 
@@ -177,7 +177,7 @@ DeHNSSo/
 │   ├── IBL/                     — Incompressible BL (Blasius, Falkner-Skan-Cooke)
 │   ├── CBL/                     — Compressible BL (compressible FSC + Sutherland)
 │   └── output/                  — Generated base flows (bf_blasius.mat, BF_compressible.mat, ...)
-└── docs/                        — User guide and developer guide
+└── docs/                        — installation, gridgen, DeHNSSo and developer guides
 ```
 
 ## Workflow
@@ -249,7 +249,7 @@ sweptwing_hump          % curvilinear swept BL over a Gaussian hump
 m3j                     % unstructured OpenFOAM scatter (M3J curved wall)
 ```
 
-For dimensional CFD imports (e.g. OpenFOAM CSV) the cartesian path supports `params.rescale = true` with `Uref`/`lref` (X/Y divided by `lref`, U/V/W by `Uref` before interpolation), `params.interp_method` (`'makima'` default — handles non-uniform wall-clustered spacing without overshoot), and `params.xi_trim_inflow`/`xi_trim_outflow` for trimming noisy CFD BC regions. See [docs/user_guide.md](docs/user_guide.md) §1c.
+For dimensional CFD imports (e.g. OpenFOAM CSV) the cartesian path supports `params.rescale = true` with `Uref`/`lref` (X/Y divided by `lref`, U/V/W by `Uref` before interpolation), `params.interp_method` (`'makima'` default — handles non-uniform wall-clustered spacing without overshoot), and `params.xi_trim_inflow`/`xi_trim_outflow` for trimming noisy CFD BC regions. See [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) §1c.
 
 Reference base-flow data lives in `baseflow/output/benchmark/` (committed; the rest of `baseflow/output/` stays a scratch area for `baseflow/caller/caller_IBL.m` and `caller_CBL.m` runs).
 
@@ -269,13 +269,16 @@ Per-case stability scripts in `callers/benchmark/` share an identical structure 
 cd callers/benchmark/
 blasius                 % TS waves in Blasius BL
 blasius_compressible    % compressible TS waves (overlays Zanus/Bertolotti 2017 PSE M=0.5 reference)
-blasius_newton          % Blasius K-type breakdown via Newton pseudo-arclength continuation
+blasius_newton          % Blasius K-type via Newton pseudo-arclength continuation (laptop-sized)
 synthetic_jet           % synthetic-jet wall actuator on a Blasius TS wave
 resonator               % Helmholtz-resonator impedance wall BC (TS control, Michelis 2023)
 sweptwing_flat          % stationary CFI on flat-plate swept BL
 sweptwing_hump          % stationary CFI over a hump on swept BL
 m3j                     % stationary CFI on M3J curved swept-wing BL
 ```
+
+`blasius_newton` needs **MUMPS**, which nothing else uses. Build it once
+(`docs/installation.md`) and start MATLAB with `OMP_NUM_THREADS=1`.
 
 ## Key solver options
 
@@ -304,7 +307,7 @@ Set in the caller before calling `main()`:
 | `Opt.plot` | `'on'` | Plots: `'on'` or `'off'` |
 | `Opt.plot_metric` | `'umax'` | Amplitude metric: `'umax'` / `'urms'` / `'energy'` (Chu/Mack for compressible) |
 
-See [docs/user_guide.md](docs/user_guide.md) for a full parameter reference.
+See [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) for a full parameter reference.
 
 ## Performance
 
@@ -361,7 +364,9 @@ path when even the banded factor exceeds RAM.
 
 ## Documentation
 
-- [docs/user_guide.md](docs/user_guide.md) — how to configure and run cases
+- [docs/installation.md](docs/installation.md) — prerequisites, the `lapack_band` MEX, and MUMPS for the Newton solver
+- [docs/gridgen_guide.md](docs/gridgen_guide.md) — generating the grid: resampling, clustering, derivatives, wall forcing
+- [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) — how to configure and run cases
 - [docs/developer_guide.md](docs/developer_guide.md) — code architecture, data structures, how to extend
 - [docs/reference_cases.md](docs/reference_cases.md) — replication instructions for the three validated cases (Blasius TS, swept-wing flat CFI, swept-wing hump CFI)
 

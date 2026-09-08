@@ -34,13 +34,13 @@ function [Opt,StabRes] = AVAL(Grid,Opt,Mode,StabRes)
 %% Inputs
 % Name    size         unit   explanation
 % Grid    (1,1) struct [-]    grid sizes, coordinates and inverse metric terms
-% Opt     (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt     (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 % Mode    (1,1) struct [-]    mode bookkeeping: nf, active set RunJ and the interaction tables
 % StabRes (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
 
 %% Outputs
 % Name    size         unit   explanation
-% Opt     (1,1) struct [-]    solver options; see the option index in docs/user_guide.md
+% Opt     (1,1) struct [-]    solver options; see the option index in docs/DeHNSSo_guide.md
 % StabRes (1,1) struct [-]    solution: shape functions, modal amplitudes, wavenumbers and iteration history
 
 %% Reshape the solution vector into the field array phi
