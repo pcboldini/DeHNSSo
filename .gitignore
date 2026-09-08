@@ -45,3 +45,6 @@ tests/
 
 # Resonator base-flow caller (local only, not shipped)
 baseflow/caller/caller_CBL_resonator.m
+
+# DeHNSSo-v1 replication cases: kept locally, not shipped
+literature/DeHNSSo-v1/
