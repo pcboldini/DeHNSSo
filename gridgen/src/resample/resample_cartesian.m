@@ -34,7 +34,7 @@ function BF_new = resample_cartesian(BF, params)
 %   canonicalised on entry. params: n_eta_new / n_xi_new (default source);
 %   H, y_i (0.99 span, H/10); xi_range / xi_trim_* to restrict or trim the span;
 %   mug, sig, ag and spread for the streamwise clustering (see cluster_xi);
-%   interp_method (default 'makima'); rescale, Uref, lref to non-dimensionalise.
+%   interp_method (default 'makima'); rescale, Uref, lref to non-dimensionalise;
 %
 %   Output: BF_new (X, Y, U, V, W, H, y_i, cluster) plus any Re/lref/Uref/nu.
 
@@ -94,7 +94,7 @@ if isfield(params, 'H') && ~isempty(params.H)
 elseif isfield(BF, 'H') && ~isempty(BF.H)
     H = BF.H;
 else
-    H = abs(y_raw(end) - y_raw(1)) * 0.99;   % BF.Y may be descending (η: top→wall)
+    H = abs(y_raw(end) - y_raw(1)) * 0.99;   % BF.Y may be descending (η: top -> wall)
 end
 if isfield(params, 'y_i') && ~isempty(params.y_i)
     y_i = params.y_i;
@@ -146,6 +146,31 @@ end
 xi_new = cluster_xi(x_lo, x_hi, nx_new, mug, sig, ag, x_lo, x_hi);   % [1 × nx_new]
 report_clustering(mug, sig, ag, xi_new);
 
+%% Solid: put a station on the face and a node on the top
+% Both are uniform rescales, as in DeHNSSo-v1: the Malik map scales exactly with
+% (H, y_i), so the node distribution keeps its shape and the wall location is
+% exact without ghost rows.
+step = get_opt(params, 'step', struct('type','FLAT'));
+if ~isfield(step, 'seg'); step.seg = zeros(0,3); end
+step.snapped = false;
+% Two rescales place one face and one height, so only a single box can be put on
+% grid lines. 
+snap = get_opt(params, 'snap', true);
+if size(step.seg,1) > 1
+    fprintf('Solid: %d boxes, so the grid is not snapped and the ghost-cell boundary carries the surfaces\n', size(step.seg,1));
+elseif ~snap && ~strcmpi(step.type, 'FLAT')
+    fprintf('Solid: not snapped (params.snap = false), the ghost-cell boundary carries the surface\n');
+elseif ~strcmpi(step.type, 'FLAT') && step.x > x_lo && step.x < x_hi && step.h > 0 && step.h < H
+    [~, k] = min(abs(xi_new - step.x));
+    xi_new = x_lo + (xi_new - x_lo) * (step.x - x_lo) / (xi_new(k) - x_lo);
+    [~, j] = min(abs(eta_new - step.h));
+    f_eta   = step.h / eta_new(j);
+    eta_new = f_eta * eta_new;  H = f_eta * H;  y_i = f_eta * y_i;
+    step.i = k;  step.j = j;  step.snapped = true;
+    fprintf('Solid: station %d snapped to the face x = %.4f (domain end %.4f -> %.4f), node %d to the top h = %.4f (H scaled by %.5f)\n', ...
+            k, step.x, x_hi, xi_new(end), j, step.h, f_eta);
+end
+
 %% Interpolate onto the target grid ('makima': no overshoot on non-uniform data)
 interp_method = 'makima';
 if isfield(params, 'interp_method') && ~isempty(params.interp_method)
@@ -194,17 +219,27 @@ for dn = bf_deriv_fields()
     end
 end
 
+% Interpolation smears the solid edges, so restore the zeros inside every box.
+if ~strcmpi(step.type, 'FLAT')
+    in_solid = false(size(Xq));
+    for b = 1:size(step.seg, 1)
+        xb = step.seg(b,1);  xe = step.seg(b,2);  hb = step.seg(b,3);
+        in_solid = in_solid | (Xq >= xb - 1e-9*max(1,abs(xb)) & Xq <= xe + 1e-9*max(1,abs(xe)) ...
+                             & Yq > 0 & Yq <= hb + 1e-9*hb);
+    end
+    for f_name = [{'U','V','W'}, bf_deriv_fields()]
+        if isfield(BF_new, f_name{1});  BF_new.(f_name{1})(in_solid) = 0;  end
+    end
+end
+BF_new.step = step;
+
 fprintf('Cartesian resample done: %d × %d → %d × %d (Malik-Cheb η, %s interp)\n', ...
         ny_raw, nx_raw, ny_new, nx_new, interp_method);
 end
 
 
 function BF = reshape_scatter(BF)
-%RESHAPE_SCATTER  Flat-lattice scatter → canonical (ny × nx) gridded form.
-%   X, Y are paired column vectors lying on a rectangular lattice; this
-%   helper turns them into 1-D axes (X = 1×nx, Y = ny×1) and reshapes any
-%   per-point numeric field of length numel(X) into a (ny × nx) array.
-%   No-op when BF is already 2-D or when X/Y lengths differ.
+%RESHAPE_SCATTER  Flat-lattice scatter -> canonical (ny × nx) gridded form.
 if ~isvector(BF.X) || ~isvector(BF.Y) || numel(BF.X) ~= numel(BF.Y)
     return;
 end

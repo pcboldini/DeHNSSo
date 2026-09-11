@@ -24,10 +24,10 @@
 % Generate an incompressible boundary-layer base flow.
 %
 %   Solves the Falkner-Skan-Cooke similarity problem for the case set in the
-%   USER INPUTS block and writes baseflow/output/BF_Blasius.mat, ready for
+%   USER INPUTS block and writes baseflow/output/bf_ts_blasius.mat, ready for
 %   gridgen. BL.model selects the incompressible (0) or compressible (1) path.
 %
-%   Run this before gridgen/benchmark/blasius.m.
+%   Run this before gridgen/benchmark/ts_blasius.m.
 clc; clear all; format long
 caller_dir = fileparts(mfilename('fullpath'));
 rootdir    = fullfile(caller_dir, '..', '..');
@@ -75,6 +75,9 @@ BF.y_i = BL.y_i / BF.lref;
 [BL] = post_BL(BL);
 
 %% Save
+% Written to baseflow/output/, which is scratch and gitignored. The gridgen
+% benchmarks read the tracked copies in baseflow/output/benchmark/; copy a
+% regenerated file there to make it the benchmark input.
 outdir = fullfile(caller_dir, '..', 'output');
 if ~exist(outdir, 'dir'); mkdir(outdir); end
-save(fullfile(outdir, 'BF_Blasius.mat'), 'BF');
+save(fullfile(outdir, 'bf_ts_blasius.mat'), 'BF');

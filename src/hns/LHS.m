@@ -281,6 +281,17 @@ Gi_u = If.*(1-bufs_i) + If.*Bound.bufs(:,end)*(1-bufc_i);
 Gi_v = If.*(1-bufs_i);
 Gi_w = If.*(1-bufs_i) + If.*Bound.bufs(:,end)*(1-bufc_i);
 
+% Ghost row: the first node below a solid surface gets an interpolation row,
+% so the velocity is zero at the exact surface height.
+if Bound.ghost_idx(i) > 0
+    kg = Bound.ghost_idx(i);
+    w  = Bound.ghost_wts(:,i).';
+    js = [kg-2, kg-1, kg, min(kg+1, ny)];
+    Gi_u(kg,:) = 0;  Gi_u(kg, js) = w;
+    Gi_v(kg,:) = 0;  Gi_v(kg, js) = w;
+    Gi_w(kg,:) = 0;  Gi_w(kg, js) = w;
+end
+
 Gi = [Gi_u  Zf   Zf   Zf
        Zf   Gi_v  Zf   Zf
        Zf   Zf   Gi_w  Zf
@@ -293,6 +304,13 @@ sten = bsize*(i-1)+1 : bsize*i;   % global row (= global col of diagonal block)
 % function using Fornberg's algorithm on Grid.x, so xrefined / non-uniform
 % streamwise grids are handled correctly. On a uniform grid these reduce
 % to the classical 4th-order coefficients.
+% Next to a solid face some fluid rows have a masked station inside their
+% 5-point window. Those stations get one-sided stencils below.
+truncated = false;
+if Grid.hasMask && i > 3 && i < nx-2
+    truncated = any(Bound.bufs(:,i) == 1 & min(Bound.bufs(:,i-2:i+2), [], 2) == 0);
+end
+
 if i == 2
     stenr   = [sten-bsize, sten, sten+bsize, sten+2*bsize, sten+3*bsize];
     cur_blk = 2;
@@ -316,6 +334,21 @@ elseif i == nx
     blk1MFD = [ Ei*w1(1) + Fi*w2(1), ...
                 Ei*w1(2) + Fi*w2(2), ...
               (Ai + Ei*w1(3) + Fi*w2(3)) + Gi/bufc_i] * bufc_i;
+
+elseif truncated
+    % One-sided stencils, row by row. A row whose window is all fluid gets the
+    % centred stencil back.
+    [offs, W1m, W2m] = xi_masked_weights(i, Grid.x(:), Bound.bufs, ny, nx, Bound.stencil_wall);
+    npos    = numel(offs);
+    cur_blk = find(offs == 0);
+    stenr   = reshape(sten(:) + bsize*offs(:).', 1, []);
+    blk1MFD = zeros(bsize, npos*bsize, 'like', Ei);
+    for p = 1:npos
+        blk = repmat(W1m(:,p), 4, 1).*Ei + repmat(W2m(:,p), 4, 1).*Fi;
+        if p == cur_blk;  blk = Ai + blk + Gi/bufc_i;  end
+        blk1MFD(:, (p-1)*bsize+1 : p*bsize) = blk;
+    end
+    blk1MFD = blk1MFD * bufc_i;
 
 else   % interior (centred 5-point)
     stenr   = [sten-2*bsize, sten-bsize, sten, sten+bsize, sten+2*bsize];
@@ -380,4 +413,32 @@ row_off = bsize*(i-1);
 [ii,jj,ss] = find(blk3);     ci3   =reshape(ii+row_off,[],1); cj3   =reshape(stenr(jj),[],1); cs3   =reshape(ss,[],1);
 [ii,jj,ss] = find(blk4);     ci4   =reshape(ii+row_off,[],1); cj4   =reshape(stenr(jj),[],1); cs4   =reshape(ss,[],1);
 
+end
+
+function [offs, W1m, W2m] = xi_masked_weights(i, x_xi, bufs, ny, nx, use_wall)
+% First- and second-derivative Fornberg weights for every fluid row of station i,
+% on the five nearest usable stations within six of it. offs lists the station
+% offsets; W1m and W2m are ny x numel(offs), zero where a row does not use a
+% station. Masked rows get no weights.
+lo   = max(1, i-6);  hi = min(nx, i+6);
+offs = (lo:hi) - i;
+W1m  = zeros(ny, numel(offs));  W2m = zeros(ny, numel(offs));
+for k = 1:ny
+    if bufs(k,i) == 0;  continue;  end
+    win  = lo:hi;
+    cand = win(bufs(k,win) == 1);
+    if use_wall
+        % Add the first masked station on each side. Its unknown is zero, so the
+        % stencil reaches the wall, as in DeHNSSo-v1.
+        edge = [min(cand)-1, max(cand)+1];
+        edge = edge(edge >= lo & edge <= hi);
+        edge = edge(bufs(k, edge) == 0);
+        cand = sort([cand, edge]);
+    end
+    [~, ord] = sort(abs(cand - i));
+    sel = sort(cand(ord(1:min(5, numel(cand)))));
+    c   = fornberg_weights(x_xi(i), x_xi(sel), 2);
+    W1m(k, sel - lo + 1) = c(:,2).';
+    W2m(k, sel - lo + 1) = c(:,3).';
+end
 end

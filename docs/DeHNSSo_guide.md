@@ -23,6 +23,7 @@
     - [Helmholtz-resonator wall (impedance BC)](#helmholtz-resonator-wall-impedance-bc)
     - [Freestream forcing](#freestream-forcing)
     - [Freestream BC type](#freestream-bc-type)
+    - [Steps and blocks on the wall](#steps-and-blocks-on-the-wall)
 - [7. Linear vs nonlinear mode](#7-linear-vs-nonlinear-mode)
 - [8. Solver options](#8-solver-options)
     - [Buffer zone](#buffer-zone)
@@ -32,7 +33,6 @@
         - [Running it: MUMPS, memory and where](#running-it-mumps-memory-and-where)
     - [LU mode](#lu-mode)
     - [Fill-reducing ordering](#fill-reducing-ordering)
-    - [Building the `lapack_band` MEX](#building-the-lapackband-mex)
     - [Parallel acceleration](#parallel-acceleration)
     - [Output control](#output-control)
     - [Iteration history](#iteration-history)
@@ -57,6 +57,8 @@ Every `Stab` and `Opt` field the guide documents, grouped by what it controls. "
 | `Stab.beta_0` | fundamental spanwise wavenumber | required | [Spectral content](#4-spectral-content) |
 | `Opt.compressible` | `on` selects the five-variable (u,v,w,rho,T) operator | `'off'` | [Spectral content](#4-spectral-content) |
 | `Opt.linear` | `on` single linear solve, `off` nonlinear iteration | `'off'` | [Linear vs nonlinear](#7-linear-vs-nonlinear-mode) |
+| `Opt.solid` | how a solid surface between grid lines is carried: `mask`, `ghost` or `auto` | `'auto'` | [Steps and blocks](#steps-and-blocks-on-the-wall) |
+| `Opt.solid_stencil` | streamwise stencils next to a face: `wall` reaches the face, `fluid` stops one station short | `'wall'` | [Steps and blocks](#steps-and-blocks-on-the-wall) |
 
 **Inflow**
 
@@ -152,7 +154,7 @@ The equations are the compressible Navier-Stokes equations, written for perturba
 - A base-flow input file `DeHNSSo_input_<case>.mat` containing the `StabGrid` struct.
 
 Two things are built once per machine, and only if you need them: the `lapack_band` MEX,
-and MUMPS for `Opt.solver = 'newton'`. Picard runs need neither. See `docs/installation.md`.
+and MUMPS for `Opt.solver = 'newton'`. Picard runs need neither. See `docs/dependencies.md`.
 
 ---
 
@@ -164,7 +166,7 @@ Run the gridgen script for your case, which writes `input/DeHNSSo_input_<case>.m
 
 ```matlab
 cd gridgen/benchmark/
-blasius                 % or resonator, sweptwing_hump, m3j, ...
+ts_blasius                 % or resonator, cfi_hump, cfi_curved_airfoil, ...
 ```
 
 That covers the base flow, mesh clustering, derivatives and any wall forcing. See
@@ -172,7 +174,7 @@ That covers the base flow, mesh clustering, derivatives and any wall forcing. Se
 
 ### Step 2 — Configure and run
 
-Per-case stability scripts live in `callers/benchmark/` (`blasius.m`, `blasius_compressible.m`, `sweptwing_flat.m`, `sweptwing_hump.m`, `m3j.m`, `resonator.m`, `synthetic_jet.m`, `blasius_newton.m`). They share an identical sectioned layout — only case-specific values differ:
+Per-case stability scripts live in `callers/benchmark/` (`ts_blasius.m`, `ts_compressible.m`, `cfi_flat_plate.m`, `cfi_hump.m`, `cfi_step.m`, `cfi_curved_airfoil.m`, `resonator.m`, `wall_jet.m`, `newton_continuation.m`). They share an identical sectioned layout — only case-specific values differ:
 
 | Section | What to set |
 |---|---|
@@ -190,7 +192,7 @@ Run a caller from the MATLAB command window:
 
 ```matlab
 cd callers/benchmark/
-blasius           % or sweptwing_flat / sweptwing_hump / m3j
+ts_blasius           % or cfi_flat_plate / cfi_hump / cfi_curved_airfoil
 ```
 
 ---
@@ -263,21 +265,58 @@ Always set both the mode and its conjugate (index `-m`, `-n`) to ensure real phy
 
 ### Amplitude convention
 
-`Stab.A0_fund`, `Stab.A0`, and the wall/freestream forcing `Stab.bcw`/`Stab.bct` are the **physical peak amplitude** `2|û|` of the real disturbance `q'(x,y,t) = q̂(x,y) e^{-iωt} + c.c.`, normalized by the freestream velocity. Internally the solver seeds the complex amplitude `û = A0/2`, and post-process reports `StabRes.A = 2|û|` — so **what you put in is what you get out**:
+DeHNSSo uses the **physical amplitude** everywhere, on input and on output.
 
-- `StabRes.A` at the inlet equals `A0_fund`;
-- the reconstructed wall velocity `StabRes.v .* StabRes.A` over an actuator equals the `bcw` you imposed.
+A real disturbance is the mode plus its conjugate:
 
-So set `A0_fund`/`bcw` to the physical amplitude you want and compare directly.
+```
+q'(x,y,t) = q̂(x,y) e^{-iωt} + c.c.
+```
 
-**Porting a case from DeHNSSo-v1 (Westerbeek et al. 2024).** The *stored* meaning of `Stab.A0` changed, so do not paste a v1 literal verbatim. In v1 the code seeded `û = A0` directly (no halving) and doubled only at output, so `Stab.A0` held the complex amplitude `|û|`; the user was expected to type **half** the physical amplitude in the caller, which is why every v1 caller reads e.g. `Stab.A0(...) = 0.00125*sqrt(2); % Half the desired inflow amplitude` or `= 3.5e-3/2`. v2 keeps the seeded `û` identical but moves that `/2` into the solver, so `Stab.A0` now holds the physical `2|û|`. Carry over the **desired physical** amplitude (the value *before* the v1 `/2`), not the raw v1 number:
+Each half contributes `|q̂|`, so the physical peak is `2|q̂|`. That is the number DeHNSSo
+expects and the number it reports:
+
+| quantity | is the physical peak `2\|û\|` of |
+|---|---|
+| `Stab.A0_fund`, `Stab.A0` | the inflow disturbance |
+| `Stab.bcw`, `Stab.bct` | the wall or freestream forcing |
+| `StabRes.A` | the result |
+
+All are normalized by the freestream velocity.
+
+**What you put in is what you get out.** Internally the solver seeds `û = A0/2`, and
+post-process reports `2|û|`. The halving and the doubling cancel, so:
+
+- `StabRes.A` at the inlet equals `A0_fund`
+- `StabRes.v .* StabRes.A` over an actuator equals the `bcw` you imposed
+
+Set `A0_fund` and `bcw` to the physical amplitude you want, then compare directly.
+
+#### Two exceptions
+
+- The (0,0) mean-flow distortion keeps `|û|`.
+- A checkpoint holds `|û|`. `Opt.save_checkpoint` writes before post-process, so
+  `StabRes.A` read from a checkpoint is half the value the same run reports at the end.
+  Only the post-processed output follows the convention above.
+
+Post-processed results carry `StabRes.A_physical = true`; checkpoints do not. Test
+`isfield(StabRes,'A_physical')` to tell the two apart in a script.
+
+#### Coming from DeHNSSo-v1 (Westerbeek et al. 2024)
+
+Both codes **export** `StabRes.A` the same way, as `2|û|`. Only the **inflow** differs:
+
+- v1 seeds `û = A0`, so its `Stab.A0` is the mode amplitude. v1 callers therefore type
+  half the physical value, e.g. `Stab.A0(...) = 0.00125*sqrt(2); % Half the desired
+  inflow amplitude`.
+- v2 seeds `û = A0/2`, so its `Stab.A0` is the physical amplitude.
+
+Carry over the physical value, which is the number *before* v1's `/2`:
 
 | case | v1 caller (`A0 = \|û\|`) | v2 caller (`A0 = 2\|û\|`) |
 |------|------------------------|--------------------------|
 | Blasius TS | `0.00125*sqrt(2)` | `0.0025*sqrt(2)` |
 | swept-wing CFI | `3.5e-3/2` | `3.5e-3` |
-
-Pasting the v1 literal into v2 unchanged halves it a second time (a 4× weaker fundamental for nonlinear runs). The physics and results are otherwise identical between v1 and v2 for the same physical amplitude — only the input label moved.
 
 ### Restarting from a previous solution (`Stab.IC = 'LOAD'`)
 
@@ -313,7 +352,7 @@ If it instead prints `LOAD: inflow-only (station 1) — no downstream warm-start
 
 **Anderson is not optional here.** Near saturation plain Picard can diverge at the target amplitude even though the continuation gives it a good initial guess; set `Opt.anderson = 5` on both runs (§8).
 
-A complete working example is `callers/benchmark/blasius.m` with a `restart` flag. On the Blasius benchmark (800×40, M=5), continuing `A0 = 0.00125√2 → 0.002` reaches the same solution as a cold run at 0.002 (`max(A)` agreeing to 7e-05) in 43 iterations instead of 57.
+A complete working example is `callers/benchmark/ts_blasius.m` with a `restart` flag. On the Blasius benchmark (800×40, M=5), continuing `A0 = 0.00125√2 → 0.002` reaches the same solution as a cold run at 0.002 (`max(A)` agreeing to 7e-05) in 43 iterations instead of 57.
 
 The same mechanism serves parameter sweeps: restart at a new `omega_0`, `beta_0` or grid-independent parameter from a nearby converged state. The checkpoint must come from a run with the same `M`/`N` and grid.
 
@@ -403,7 +442,7 @@ Stab.bcw = zeros(3, numel(x), (2*Stab.N+1)*(2*Stab.M+1));
 Stab.bcw(2, :, j_fund) = vjet;   % e.g. a wall-normal velocity actuator on the fundamental
 ```
 
-The inflow plane is clamped to zero, so the active modes come from the wall forcing alone. `inflow` warns (`inflow:zeroNoForcing`) if there is no forcing at all, since the field would then be identically zero. A minimal example is `callers/benchmark/synthetic_jet.m` — a wall synthetic jet driving a Blasius BL with no incoming TS wave.
+The inflow plane is clamped to zero, so the active modes come from the wall forcing alone. `inflow` warns (`inflow:zeroNoForcing`) if there is no forcing at all, since the field would then be identically zero. A minimal example is `callers/benchmark/wall_jet.m` — a wall synthetic jet driving a Blasius BL with no incoming TS wave.
 
 ---
 
@@ -432,7 +471,7 @@ Stab.bct(k,ix,j)  % (n_bc x nx_bc x nf)  freestream BC
 
 ### Wall actuation (blowing/suction)
 
-Wall forcing follows a **grid-first** workflow: you describe what is at the wall **in the gridgen script**, gridgen refines the mesh to resolve it and stores the profile on the grid, and the caller applies it in one line. Location, width and shape are defined **once**, in gridgen; only the strength (amplitude, phase) lives in the caller. The reference pair is `gridgen/benchmark/synthetic_jet.m` + `callers/benchmark/synthetic_jet.m`.
+Wall forcing follows a **grid-first** workflow: you describe what is at the wall **in the gridgen script**, gridgen refines the mesh to resolve it and stores the profile on the grid, and the caller applies it in one line. Location, width and shape are defined **once**, in gridgen; only the strength (amplitude, phase) lives in the caller. The reference pair is `gridgen/benchmark/wall_jet.m` + `callers/benchmark/wall_jet.m`.
 
 This works on **any grid** — cartesian, curvilinear, and unstructured. On a flat plate `xc`/`x_data` are the physical `x`; on a curved or unstructured wall (swept-wing, hump, M3J/CSV) they are still physical `x` — gridgen samples the profile at the physical wall-x per station, so it lands geometrically correctly even though the grid runs in arc-length.
 
@@ -545,6 +584,35 @@ Stab.bct(2,:,j_conj) = conj(Stab.bct(2,:,j_fund));
 For backward compatibility, scalar strings `'dirichlet'` and `'neumann'` are auto-converted to `{'H_DR','H_DR','H_DR'}` and `{'H_NM','H_NM','H_NM'}` respectively.
 
 The ILST inflow computation uses the same BC type.
+
+### Steps and blocks on the wall
+
+A step or a block on the wall is not meshed. The grid stays flat. gridgen finds the solid in the base flow and stores it as boxes in `StabGrid.step` ([gridgen guide, section 6](gridgen_guide.md#6-steps-and-blocks-on-the-wall)). The solver masks the boxes out: inside the solid the velocity is set to zero and the pressure has zero wall-normal gradient.
+
+The top of the solid does not always fall on a grid node. `Opt.solid` chooses how the solver handles that:
+
+| `Opt.solid` | Meaning |
+|---|---|
+| `'mask'` | Zero velocity at the first node below the top. The wall is off by less than a cell. This is what DeHNSSo-v1 did. |
+| `'ghost'` | The first node below the top gets an interpolation row, so the velocity is zero at the exact height (Tseng and Ferziger 2003). |
+| `'auto'` | `mask` when gridgen put the grid exactly on the box, `ghost` otherwise. Default. |
+
+Next to a face the streamwise stencils are one-sided and reach the wall, as in DeHNSSo-v1. At each rising face the continuity row is dropped at the corner. A falling face, as in a backward-facing step, is masked but not validated; the solver warns.
+
+Solids work with the incompressible operator only.
+
+After `setup_boundary`, `Bound.h_surf` holds the solid height at every station.
+
+---|---|
+| `'mask'` | mask only: zero velocity at the first node below the surface, so the wall is misplaced by less than a cell. This is how DeHNSSo-v1 did it. |
+| `'ghost'` | ghost cell (Tseng and Ferziger 2003): the first node below the surface gets a cubic interpolation row that enforces zero velocity at the exact surface height. Exact for a smooth profile, but it can excite a two-cell oscillation at the face. |
+| `'auto'` (default) | `mask` when gridgen snapped the grid onto a single box, `ghost` otherwise. |
+
+Streamwise stencils never difference across a face: rows next to the solid get Fornberg weights built on fluid stations only. At each rising face the continuity row is dropped at the concave corner, at the height the solid rises from. Falling faces, a backward-facing step, get masks but no corner treatment and warn, because that configuration is not validated.
+
+Masked solids are implemented for the incompressible operator only; `Opt.compressible = 'on'` with a solid on the grid is refused in `init`.
+
+`Bound.h_surf` holds the solid height at every station after `setup_boundary`, for post-processing.
 
 ---
 
@@ -659,17 +727,17 @@ Opt.newton_arclength = 'absolute'; % arclength metric; see below
 Newton factorizes the Jacobian with **MUMPS**. It is a separate dependency. Picard runs
 without it. Newton does not.
 
-If you have not built MUMPS yet, see `docs/installation.md`.
+If you have not built MUMPS yet, see `docs/dependencies.md`; macOS and Linux are both covered.
 
 **1. Check the size first.** The Jacobian is `2N x 2N`, with `N = nphys * nvar * nx * ny`.
 
 | case | grid | `2N` | needs |
 |---|---|---|---|
-| `blasius_newton.m` | 400 x 40, 2 modes | 256k | ~8.6 GB, 4 min. Laptop is fine. |
+| `newton_continuation.m` | 400 x 40, 2 modes | 256k | ~8.6 GB, 4 min. Laptop is fine. |
 | full Blasius K-type | 1050 x 60, 3 modes | 1.512M | ~80 GB, 7.7 h. Workstation. |
 | same at `Stab.M = 4` | 1050 x 60, 5 modes | 2.520M | out-of-core, and slower again. |
 
-The Jacobian gets denser as the solution saturates. In the `blasius_newton.m` run above,
+The Jacobian gets denser as the solution saturates. In the `newton_continuation.m` run above,
 `nnz` went from 1.4e7 to 3.6e7 and one factorization from 3.9 s to 56 s. So do not estimate
 memory or time from the first steps: both will be too low.
 
@@ -704,7 +772,7 @@ setenv('MUMPS_OOC_TMPDIR', '/Volumes/<your disk>/mumps_ooc');   % e.g. an extern
 `solve_newton` stops if that disk has less than 50 GB free, and prints the free space when
 it starts. It also cleans up its own scratch files, since MUMPS leaves them behind.
 
-**5. Check the answer.** `blasius_newton.m` ends by printing three numbers. On this grid and
+**5. Check the answer.** `newton_continuation.m` ends by printing three numbers. On this grid and
 these settings they are
 
 ```
@@ -725,7 +793,7 @@ Opt.lu_mode = 'auto';         % LRU-cached LUs, bounded memory (Opt.lu_max_cache
 Opt.lu_mode = 'seq';          % one LU at a time: factor, solve its modes, discard — minimal memory
 Opt.lu_mode = 'none';         % plain backslash each time, no caching (slowest, baseline)
 Opt.lu_mode = 'lapack_band';  % banded LU MEX (zgbtrf/zgbtrs) with per-mode factor caching —
-                              %   fastest single solve (~3x); one-time MEX build (see below)
+                              %   fastest single solve (~3x); needs the MEX, see docs/dependencies.md
 Opt.lu_mode = 'block_thomas'; % dual-Schur block-Thomas (Paredes 2024) — COMPRESSIBLE operator only
 % Opt.lu_max_cache = 3;       % cache size for 'auto' (and the banded / block-Thomas factor caches)
 ```
@@ -765,6 +833,7 @@ offered.
 ```matlab
 Opt.bt_np    = 2;         % number of partitions (default 2)
 Opt.bt_ooc   = 'on';      % out-of-core: stream the factor to disk, minimal RAM (default off)
+Opt.bt_ooc_dir = '/Volumes/scratch';  % where those factors go (default tempdir); a big disk, not MATLAB's own
 Opt.bt_apply = 'inverse'; % how the diagonal station block is applied (default 'lu')
 Opt.lu_cache = 'off';     % one-shot factor+solve, no caching (default: cache like the other modes)
 ```
@@ -794,11 +863,6 @@ per station.
 | Memory-constrained                   | `seq`, or `auto` with small `lu_max_cache` |
 | Compressible, large grid, low RAM    | `block_thomas` with `bt_ooc='on'`          |
 | Validation / debugging               | `none` (reference, no caching)             |
-
-### Building the `lapack_band` MEX
-
-The MEX is platform-specific and not shipped; build it once with
-`run('src/linsolve/lapack_band/mexbuild_dgbsv.m')`. See `docs/installation.md`.
 
 ### Parallel acceleration
 
@@ -921,13 +985,13 @@ Index convention: `y=1` is the freestream (`y=H`), `y=ny` is the wall (`y=0`).
 By default a run returns `StabRes` to the workspace but writes nothing to disk. Set `Opt.save_output` to a path to save the final (post-processed) results:
 
 ```matlab
-Opt.save_output = fullfile(rootdir, 'output', 'StabRes_blasius.mat');   % [] to skip
+Opt.save_output = fullfile(rootdir, 'output', 'StabRes_ts_blasius.mat');   % [] to skip
 ```
 
 This writes `StabRes`, `StabGrid` and `Stab` to that `.mat` after post-processing. The benchmark callers set it by default to `output/StabRes_<case>.mat`; the `output/` folder is created automatically and its `.mat` files are git-ignored (like `input/` and `gridgen/output/`). Every run ends with a completion line:
 
 ```text
-=== DeHNSSo finished — output saved to output/StabRes_blasius.mat ===
+=== DeHNSSo finished — output saved to output/StabRes_ts_blasius.mat ===
 ```
 
 (or `=== DeHNSSo finished (output not saved; set Opt.save_output to save) ===` when the option is empty).
@@ -973,9 +1037,12 @@ Reference data shipped in `literature/`:
 
 | File | Used by | Source |
 |---|---|---|
-| `StabRes_Blasius_NPSE.mat` | `blasius.m` | NPSE reference (Westerbeek 2024 Fig. 8) |
-| `StabRes_SweptWing_flat_NPSE.mat` | `sweptwing_flat.m` | NPSE reference (Westerbeek 2024 Fig. 9) |
-| `StabRes_SweptWing_Hump_AHLNS.mat` | `sweptwing_hump.m` | AHLNS reference (Westerbeek 2024 Fig. 10) |
+| `StabRes_Blasius_NPSE.mat` | `ts_blasius.m` | NPSE reference (Westerbeek 2024 Fig. 8) |
+| `StabRes_SweptWing_flat_NPSE.mat` | `cfi_flat_plate.m` | NPSE reference (Westerbeek 2024 Fig. 9) |
+| `StabRes_SweptWing_Hump_AHLNS.mat` | `cfi_hump.m` | AHLNS reference (Westerbeek 2024 Fig. 10) |
+| `Zanus_PSE_CPG_M05_F40.mat` | `ts_compressible.m` | PSE reference, Ma = 0.5 (Zanus/Bertolotti 2017) |
+| `StabRes_SweptWing_step_DNS.mat` | `cfi_step.m` | DNS reference for the forward-facing step |
+| `DeHNSSo-v1/<case>/*.mat` | `DeHNSSo-v1/<case>/caller_*.m` | NPSE, LPSE, AHLNS and DNS data shipped with DeHNSSo-v1 |
 
 To overlay a different reference, point `ref_file` at any `.mat` file with a `StabRes` struct in the format that `plot_amplitudes` expects (see `src/plot/plot_amplitudes.m`).
 

@@ -27,10 +27,10 @@ function StabGrid = main_gridgen(input, params, output)
 %   StabGrid = main_gridgen(input, params, output)
 %
 %   Three input paths are supported, auto-selected by classify_input:
-%     'cartesian'              — 1-D X, 1-D Y axes (e.g. bf_blasius.mat)
+%     'cartesian'              — 1-D X, 1-D Y axes (e.g. bf_ts_blasius.mat)
 %     'curvilinear_structured' — 2-D X, 2-D Y body-fitted grid
-%                                (e.g. bf_sweptwing_flat.mat, bf_sweptwing_hump.mat)
-%     'unstructured'           — flat scatter cloud (e.g. m3j.csv)
+%                                (e.g. bf_cfi_flat_plate.mat, bf_cfi_hump.mat)
+%     'unstructured'           — flat scatter cloud (e.g. cfi_curved_airfoil.csv)
 %
 %   input   struct with fields:
 %     .folder     directory containing the BF file
@@ -68,7 +68,7 @@ fprintf(' | | | |___| |_| ||  \\| |\\ `--.\\ `--.  ___  \n');
 fprintf(' | | | / _ \\  _  || . ` | `--. \\`--. \\/ _ \\ \n');
 fprintf(' | |/ /  __/ | | || |\\  |/\\__/ /\\__/ / (_) |\n');
 fprintf(' |___/ \\___\\_| |_/\\_| \\_/\\____/\\____/ \\___/ \n');
-fprintf('                                       v1.2  \n');
+fprintf('                                       v2.0  \n');
 fprintf('  Delft Harmonic Navier-Stokes Solver\n');
 fprintf('  =========================================\n');
 
@@ -126,15 +126,64 @@ end
 %% 2. Classify and dispatch to the appropriate resampler
 class = classify_input(BF, input);
 
+%% Cartesian input written as 2-D coordinate arrays: reduce to axes
+% classify_input accepts meshgrid-style X and Y as Cartesian, while the detector
+% and the resampler below are written for 1-D axes. Reducing here keeps the three
+% in step: on a Cartesian mesh Y is constant along each row and X down each column.
+if strcmp(class, 'cartesian') && ~isvector(BF.X) && ~isvector(BF.Y)
+    if max(std(BF.X, 0, 1)) > 1e-8 * (max(BF.X(:)) - min(BF.X(:)))
+        error('main_gridgen:notMeshgrid', ...
+            ['Cartesian input has 2-D coordinates but X is not constant down each ' ...
+             'column, so the two axes cannot be recovered.']);
+    end
+    BF.X = BF.X(1, :);  BF.Y = BF.Y(:, 1);
+end
+
+%% Solid on the wall, read off the base flow
+% step.seg holds one [x_lo, x_hi, h] box per run of constant height.
+% params.StepX/StepH still describe a single step by hand and override it.
+step = detect_wall_solid(BF, class);
+if isfield(params, 'StepType') && ~isempty(params.StepType) && ~strcmpi(params.StepType, 'FLAT')
+    if ~isfield(params, 'StepX') || ~isfield(params, 'StepH') || isempty(params.StepX) || isempty(params.StepH)
+        error('main_gridgen:stepIncomplete', ...
+            'params.StepType = %s needs params.StepX and params.StepH as well. Leave all three out to read the geometry off the base flow.', ...
+            params.StepType);
+    end
+    if ~strcmpi(params.StepType, 'FFS')
+        error('main_gridgen:stepOverrideType', ...
+            'params.StepX/StepH describe a forward-facing step only; a %s must be read off the base flow.', ...
+            params.StepType);
+    end
+    if size(step.seg, 1) > 1
+        error('main_gridgen:stepOverrideAmbiguous', ...
+            ['The base flow holds %d solid boxes, which a single params.StepX/StepH cannot ' ...
+             'describe. Remove them and let the geometry be read off the base flow.'], size(step.seg,1));
+    end
+    if strcmpi(step.type, 'FLAT')
+        warning('main_gridgen:stepNotInBF', 'params.StepType = %s given, but the base flow has no solid above the wall; using the given geometry.', params.StepType);
+        step.type = params.StepType;  step.nface = 1;
+    elseif abs(params.StepX - step.x) > 2*step.x_tol || abs(params.StepH - step.h) > 2*step.h_tol
+        warning('main_gridgen:stepMismatch', 'params.Step (x=%.4f, h=%.4f) differs from the base flow (x=%.4f+-%.4f, h=%.4f+-%.4f); keeping the given values.', ...
+                params.StepX, params.StepH, step.x, step.x_tol, step.h, step.h_tol);
+    end
+    step.x = params.StepX;  step.h = params.StepH;
+    step.seg     = [params.StepX, max(BF.X(:)), params.StepH];
+    step.seg_tol = [0, 0];             % stated by hand, so exact
+end
+if ~strcmpi(step.type, 'FLAT')
+    fprintf('Solid detected: %s, %d box(es), %d face(s)\n', step.type, size(step.seg,1), step.nface);
+    for b = 1:size(step.seg, 1)
+        fprintf('   x = %.4f .. %.4f,  h = %.4f\n', step.seg(b,1), step.seg(b,2), step.seg(b,3));
+    end
+end
+params.step = step;
+
 if isfield(params,'plot') && params.plot
     plot_raw_bf(BF, class);
 end
 
 switch class
     case 'cartesian'
-        % resample_cartesian handles both gridded and flat-scatter inputs,
-        % and defaults to source resolution when n_eta_new / n_xi_new are
-        % empty (effective no-op resample → just canonicalises shape).
         BF_rs = resample_cartesian(BF, params);
 
     case 'curvilinear_structured'
@@ -195,7 +244,8 @@ function Grid = params_to_grid(params)
 % Extract the grid-generation subset of params into a struct that
 % build_stab_grid understands.
 Grid = struct();
-passthrough = {'Re','plot','FD_xi_order_1','FD_xi_order_2','FD_eta_method','FD_eta_order'};
+passthrough = {'Re','plot','FD_xi_order_1','FD_xi_order_2','FD_eta_method','FD_eta_order', ...
+               'StepType','StepX','StepH'};
 for k = 1:numel(passthrough)
     f = passthrough{k};
     if isfield(params, f) && ~isempty(params.(f))

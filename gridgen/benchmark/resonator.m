@@ -27,7 +27,7 @@
 %  with a Gaussian point density: the target ratio is 4 at the neck, falling off
 %  over 60 displacement thicknesses, which puts about 20 stations in the mouth.
 %
-%  Base flow: baseflow/benchmark/resonator.m (writes BF_compressible_M006_fine.mat
+%  Base flow: baseflow/caller/caller_CBL_resonator.m (writes bf_compressible_m006_fine.mat
 %  at high resolution, so this step is a clean downsampling).
 %  Writes input/DeHNSSo_input_resonator.mat  (Table C.7: 5000 x 40, FD4)
 
@@ -41,7 +41,7 @@ addpath(rootdir, ...
 
 %% Input
 input.folder     = fullfile(rootdir, '..', 'baseflow', 'output', 'benchmark');
-input.filename   = 'BF_compressible_M006_fine.mat';
+input.filename   = 'bf_compressible_m006_fine.mat';
 input.format     = 'mat';
 input.structured = true;
 
@@ -57,8 +57,11 @@ params.plot      = false;
 % the mouth on the grid as StabGrid.forcing, which the caller reads back, so the
 % two cannot drift apart.
 lref = load(fullfile(input.folder, input.filename)).BF.lref;
+% x_r = 0.55 m is the neck CENTRE, not its leading edge: the COMSOL reference has
+% wall |v| over 0.549545..0.550445 m. 'Xc = 0.55/lref + s_nd/2' put the mouth half
+% a width downstream of it.
 s_nd = 1e-3/lref;                       % 1 mm neck, non-dimensional
-Xc   = 0.55/lref + s_nd/2;              % neck centre
+Xc   = 0.55/lref;                       % neck centre
 
 params.forcing = struct('xc', Xc, 'w', s_nd/2, 'shape', 'cosine');
 params.spread  = 30;                    % refinement reach, ~16x the mouth

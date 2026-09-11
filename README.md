@@ -15,12 +15,15 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 
 > **First draft (September 2026), paper in preparation.** For questions about the method or implementation, contact **Pietro Carlo Boldini** — P.C.Boldini@tudelft.nl
 
-**Last updated:** 8 September 2026
+**Last updated:** 11 September 2026
 
 ---
 
 ## Recent updates (September 2026)
 
+- **Benchmark cases renamed** — one name per case through all three stages: `baseflow/output/benchmark/bf_<case>.mat`, `gridgen/benchmark/<case>.m` writing `input/DeHNSSo_input_<case>.mat`, and `callers/benchmark/<case>.m`. `ts_` cases are Tollmien-Schlichting (`ts_blasius`, `ts_compressible`), `cfi_` cases crossflow (`cfi_flat_plate`, `cfi_hump`, `cfi_step`, `cfi_curved_airfoil`); `wall_jet`, `resonator`, `newton_continuation` and `csv_input` complete the set. Old names such as `blasius.m` and `sweptwing_flat.m` are gone; see `docs/reference_cases.md`
+- **MUMPS on Linux** — `src/external/mumps_5.3.5/install/install_mumps_linux.sh` builds MUMPS 5.3.5 and its MATLAB gateway on x86-64 Linux (ILP64, MATLAB's own BLAS, METIS); the macOS build moved to `install_mumps_macos.sh`. Both in `docs/dependencies.md`, which replaces `installation.md`
+- **Mean-flow distortion on Chebyshev grids** — the (0,0) operator is real and its sparse LU now uses full partial pivoting, fixing a factor-of-two error in the swept-wing MFD that the incomplete pivoting had introduced
 - **Inflow seeding rewritten** — `inflow.m` is one `switch` over `Stab.IC` with small per-mode helpers
 - **Source restyled** — short description blocks and lean comments across `src/`, `gridgen/`, `baseflow/` and the callers
 - **MUMPS diagnostics** — `Opt.newton_analyze_only` (analysis only) and back-solve timing in `Opt.newton_stats_file`
@@ -48,9 +51,9 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 
 ## Recent updates (May 2026)
 
-- **Compressible mode** — full (u, v, w, ρ, T) HNS path (Scholten 2024). Validated against incompressible LST in the Ma → 0 limit (Bertolotti) and against the Zanus/Bertolotti 2017 PSE benchmarks at Ma=0.5, 1.6, and 4.5 (Ma=0.5 case shipped as `blasius_compressible`)
+- **Compressible mode** — full (u, v, w, ρ, T) HNS path (Scholten 2024). Validated against incompressible LST in the Ma → 0 limit (Bertolotti) and against the Zanus/Bertolotti 2017 PSE benchmarks at Ma=0.5, 1.6, and 4.5 (Ma=0.5 case shipped as `ts_compressible`)
 - **CBL solver** — compressible Falkner-Skan-Cooke similarity; new `baseflow/caller/` layout splits IBL and CBL entry points
-- **Compressible callers** — `gridgen/benchmark/blasius_compressible.m` + `callers/benchmark/blasius_compressible.m` with built-in HNS vs Zanus/Bertolotti PSE plot
+- **Compressible callers** — `gridgen/benchmark/ts_compressible.m` + `callers/benchmark/ts_compressible.m` with built-in HNS vs Zanus/Bertolotti PSE plot
 - **`lapack_band` LU mode** — LAPACK banded LU MEX (`src/linsolve/lapack_band/dgbsv_solve.c`), ~3× faster than `seq` on compressible TS. Build via `src/linsolve/lapack_band/mexbuild_dgbsv.m`
 - **`block`/`band` LU modes removed** — `block` was silently wrong on ill-conditioned boundary stencils; `band` was redundant with `seq`
 - **Docs** — `docs/DeHNSSo_guide.md` and `docs/developer_guide.md` updated for compressible mode and `lapack_band` MEX
@@ -59,7 +62,7 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 
 - **Validation status** — three reference cases from Westerbeek et al. 2024 reproduce end-to-end: nonlinear TS waves in a Blasius BL (Fig. 8), nonlinear stationary CFI on a swept-wing flat plate (Fig. 9), and linear stationary CFI over a smooth hump (Fig. 10). See [docs/reference_cases.md](docs/reference_cases.md) for replication instructions
 - **New grid-generation pipeline** — flat-plate, body-fitted curvilinear, and unstructured CFD scatter (e.g. OpenFOAM)
-- **Nonlinear solver** — AF-continuation Picard with damping, optional Anderson acceleration, and JFNK Newton fallback
+- **Nonlinear solver** — AF-continuation Picard with damping and optional Anderson acceleration
 - **Crossflow instability** — full M3J swept curved-wall case end-to-end
 - **Non-uniform streamwise grids** — per-station Fornberg weights and sparse `D_xi`
 - **Repository restructured** — `input/` + `literature/` split; per-case scripts under `*/benchmark/`
@@ -145,14 +148,15 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 
 ### Code quality
 - **Modular structure** — refactored from a monolithic 900-line function into focused, single-purpose files organised by role (`src/init`, `src/hns`, `src/newton`, `src/convergence`, `src/io`, `src/thermo`, `src/plot`, `src/math`)
-- **Documented caller** — `callers/benchmark/blasius.m` is organised into labelled sections (spectral content, inflow, boundary conditions, buffer, solver options, performance, run, post-processing)
+- **Documented caller** — `callers/benchmark/ts_blasius.m` is organised into labelled sections (spectral content, inflow, boundary conditions, buffer, solver options, performance, run, post-processing)
 
 ## Directory structure
 
 ```
 DeHNSSo/
 ├── callers/
-│   └── benchmark/               — Reference example callers (blasius.m, blasius_compressible.m, ...)
+│   └── benchmark/               — Per-case callers: ts_blasius.m, ts_compressible.m, cfi_flat_plate.m, cfi_hump.m, ...
+├── literature/DeHNSSo-v1/       — The four DeHNSSo-v1 cases on v1's own grids, against v1 reference data
 ├── input/                       — Stability grid input, one per case (DeHNSSo_input_<case>.mat)
 ├── literature/                  — Reference data for validation plots (PSE, DNS, LPSE, Zanus/Bertolotti)
 ├── src/                         — Solver source code
@@ -170,13 +174,13 @@ DeHNSSo/
 │   └── external/                — Bundled MUMPS 5.3.5 (Newton factorizations)
 ├── gridgen/                     — Grid generation and base-flow preprocessing
 │   ├── main_gridgen.m           — Pipeline entry point
-│   ├── benchmark/               — Per-case scripts: blasius.m, blasius_compressible.m, sweptwing_flat.m, ...
+│   ├── benchmark/               — Per-case scripts, same names as callers/benchmark/: ts_blasius.m, ts_compressible.m, ...
 │   └── src/                     — Mesh, metric tensors, resampling (ρ/T pass-through), elliptic smoother
 ├── baseflow/                    — Boundary-layer solvers
 │   ├── caller/                  — Entry points: caller_IBL.m, caller_CBL.m
 │   ├── IBL/                     — Incompressible BL (Blasius, Falkner-Skan-Cooke)
 │   ├── CBL/                     — Compressible BL (compressible FSC + Sutherland)
-│   └── output/                  — Generated base flows (bf_blasius.mat, BF_compressible.mat, ...)
+│   └── output/                  — Generated base flows (bf_ts_blasius.mat, bf_ts_compressible.mat, ...)
 └── docs/                        — installation, gridgen, DeHNSSo and developer guides
 ```
 
@@ -224,10 +228,9 @@ flowchart TD
 
 ```matlab
 cd baseflow/caller/
-caller_IBL             % incompressible (Blasius, FSC) → baseflow/output/bf_blasius.mat
-caller_CBL             % compressible (FSC + Sutherland) → baseflow/output/BF_compressible.mat
-%   for blasius_newton: edit caller_IBL (domain to R = 1200, see gridgen/benchmark/blasius_newton.m) → bf_blasius_newton.mat
-% compressible Ma=0.061 (Michelis, fine): base flow supplied as baseflow/output/benchmark/BF_compressible_M006_fine.mat
+caller_IBL             % incompressible (Blasius, FSC) → baseflow/output/bf_ts_blasius.mat
+caller_CBL             % compressible (FSC + Sutherland) → baseflow/output/bf_ts_compressible.mat
+% resonator (Michelis, Ma=0.061): bf_compressible_m006_fine.mat is NOT shipped; regenerate with caller_CBL_resonator
 ```
 
 Or provide base-flow data from an external CFD solver (OpenFOAM, DNS, COMSOL, ...).
@@ -238,15 +241,15 @@ The `gridgen/` pipeline builds the stability grid (Malik-Chebyshev wall-normal, 
 
 ```matlab
 cd gridgen/benchmark/
-blasius                 % Cartesian Blasius BL (.mat)
-blasius_compressible    % Cartesian compressible FSC BL (.mat) — passes ρ/T/μ through
-blasius_newton          % Cartesian Blasius BL resampled to the 1050 x 60 FD grid of the Newton benchmark
-blasius_csv             % Cartesian Blasius BL from OpenFOAM CSV (flat-lattice scatter)
-synthetic_jet           % Cartesian Blasius BL, mesh clustered at the jet orifice
-resonator               % compressible Blasius BL, mesh clustered at the resonator neck
-sweptwing_flat          % curvilinear flat-plate swept BL
-sweptwing_hump          % curvilinear swept BL over a Gaussian hump
-m3j                     % unstructured OpenFOAM scatter (M3J curved wall)
+ts_blasius             % Cartesian Blasius BL (.mat)
+ts_compressible        % Cartesian compressible FSC BL (.mat) — passes ρ/T/μ through
+newton_continuation    % Cartesian Blasius BL resampled to 400 x 40 Chebyshev, the laptop-sized Newton demo grid
+wall_jet               % Cartesian Blasius BL, mesh clustered at the jet orifice
+resonator              % compressible Blasius BL, mesh clustered at the resonator neck (base flow not shipped)
+cfi_flat_plate         % curvilinear flat-plate swept BL
+cfi_hump               % curvilinear swept BL over a Gaussian hump (base flow not shipped)
+cfi_step               % Cartesian swept BL over a step, embedded boundary read off the base flow (base flow not shipped)
+cfi_curved_airfoil     % unstructured OpenFOAM scatter (M3J curved wall; base flow not shipped)
 ```
 
 For dimensional CFD imports (e.g. OpenFOAM CSV) the cartesian path supports `params.rescale = true` with `Uref`/`lref` (X/Y divided by `lref`, U/V/W by `Uref` before interpolation), `params.interp_method` (`'makima'` default — handles non-uniform wall-clustered spacing without overshoot), and `params.xi_trim_inflow`/`xi_trim_outflow` for trimming noisy CFD BC regions. See [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) §1c.
@@ -267,18 +270,19 @@ Per-case stability scripts in `callers/benchmark/` share an identical structure 
 
 ```matlab
 cd callers/benchmark/
-blasius                 % TS waves in Blasius BL
-blasius_compressible    % compressible TS waves (overlays Zanus/Bertolotti 2017 PSE M=0.5 reference)
-blasius_newton          % Blasius K-type via Newton pseudo-arclength continuation (laptop-sized)
-synthetic_jet           % synthetic-jet wall actuator on a Blasius TS wave
-resonator               % Helmholtz-resonator impedance wall BC (TS control, Michelis 2023)
-sweptwing_flat          % stationary CFI on flat-plate swept BL
-sweptwing_hump          % stationary CFI over a hump on swept BL
-m3j                     % stationary CFI on M3J curved swept-wing BL
+ts_blasius             % TS waves in Blasius BL
+ts_compressible        % compressible TS waves (overlays Zanus/Bertolotti 2017 PSE M=0.5 reference)
+newton_continuation    % Blasius K-type via Newton pseudo-arclength continuation (laptop-sized)
+wall_jet               % synthetic-jet wall actuator on a Blasius TS wave
+resonator              % Helmholtz-resonator impedance wall BC (TS control, Michelis 2023)
+cfi_flat_plate         % stationary CFI on flat-plate swept BL
+cfi_hump               % stationary CFI over a hump on swept BL
+cfi_step               % stationary CFI over a forward-facing step (embedded boundary)
+cfi_curved_airfoil     % stationary CFI on M3J curved swept-wing BL
 ```
 
-`blasius_newton` needs **MUMPS**, which nothing else uses. Build it once
-(`docs/installation.md`) and start MATLAB with `OMP_NUM_THREADS=1`.
+`newton_continuation` needs **MUMPS**, which nothing else uses. Build it once
+(`docs/dependencies.md`) and start MATLAB with `OMP_NUM_THREADS=1`.
 
 ## Key solver options
 
@@ -364,7 +368,7 @@ path when even the banded factor exceeds RAM.
 
 ## Documentation
 
-- [docs/installation.md](docs/installation.md) — prerequisites, the `lapack_band` MEX, and MUMPS for the Newton solver
+- [docs/dependencies.md](docs/dependencies.md) — prerequisites, the `lapack_band` MEX, and MUMPS for the Newton solver
 - [docs/gridgen_guide.md](docs/gridgen_guide.md) — generating the grid: resampling, clustering, derivatives, wall forcing
 - [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) — how to configure and run cases
 - [docs/developer_guide.md](docs/developer_guide.md) — code architecture, data structures, how to extend

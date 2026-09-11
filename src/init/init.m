@@ -53,6 +53,11 @@ assert(isfield(Stab,'beta_0') && ~isempty(Stab.beta_0),   'Stab.beta_0 (fundamen
 assert(isfield(Stab,'IC') && ~isempty(Stab.IC),     'Stab.IC (inflow method: ILST/CLST/PSE/LOAD/ZERO) is required.');
 assert(isfield(Grid,'nx') && ~isempty(Grid.nx),      'Grid.nx (streamwise points) is required.');
 assert(isfield(Grid,'ny') && ~isempty(Grid.ny),      'Grid.ny (wall-normal points) is required.');
+
+% Steps and blocks on the wall: the geometry travels on the grid in Grid.step, and
+% step_geometry derives StepType, StepX, StepH and hasMask from it. A flat wall
+% is the default and leaves every mask at one (see setup_boundary).
+Grid = step_geometry(Grid);
 assert(isfield(Grid,'Re') && ~isempty(Grid.Re),      'Grid.Re (Reynolds number) is required.');
 
 if ~isfield(Opt,'compressible'); Opt.compressible = 'off'; end
@@ -103,6 +108,11 @@ if ~isfield(Opt,'xbe'),         Opt.xbe = 85; end
 if ~isfield(Opt,'AFg'),         Opt.AFg = 1.1; end
 if ~isfield(Opt,'Sweep'),       Opt.Sweep = 0; end
 if ~isfield(Opt,'nltbufxb');    Opt.nltbufxb = Opt.xb; end
+if ~isfield(Opt,'solid') || isempty(Opt.solid); Opt.solid = 'auto'; end   % 'auto' | 'mask' | 'ghost': how a surface between grid lines is carried
+if ~isfield(Opt,'solid_stencil') || isempty(Opt.solid_stencil); Opt.solid_stencil = 'wall'; end   % 'wall' | 'fluid': streamwise stencils next to a face reach it, as DeHNSSo-v1, or stop short
+if Grid.hasMask && isfield(Opt,'compressible') && strcmpi(Opt.compressible,'on')
+    error('init:solid', 'Masked solids on the wall (Grid.StepType ~= FLAT) are implemented for the incompressible operator only.');
+end
 if ~isfield(Opt,'TH');          Opt.TH = 1e-11; end
 if ~isfield(Opt,'Conv');        Opt.Conv = 1e-4 ; end
 if ~isfield(Opt,'kappa');       Opt.kappa = 6; end

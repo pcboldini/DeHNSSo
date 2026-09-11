@@ -30,13 +30,19 @@
 DeHNSSo/
 ├── callers/
 │   └── benchmark/                  — Per-case stability callers (identical structure)
-│       ├── blasius.m               — TS waves in Blasius BL
-│       ├── sweptwing_flat.m        — Stationary CFI on flat-plate swept BL
-│       ├── sweptwing_hump.m        — Stationary CFI over a hump on swept BL
-│       └── m3j.m                   — Stationary CFI on M3J curved swept-wing BL
+│       ├── ts_blasius.m            — TS waves in Blasius BL (Sec. 6.1)
+│       ├── ts_compressible.m       — Compressible TS waves, Ma = 0.5 (Zanus/Bertolotti)
+│       ├── cfi_flat_plate.m        — Stationary CFI on flat-plate swept BL (Sec. 6.2)
+│       ├── cfi_hump.m              — Stationary CFI over a hump on swept BL (Sec. 6.3)
+│       ├── cfi_curved_airfoil.m    — Stationary CFI on M3J curved swept-wing BL
+│       ├── resonator.m             — TS wave over a Helmholtz resonator (Sec. 6.4)
+│       ├── cfi_step.m              — Stationary CFI over a forward-facing step (embedded boundary)
+│       ├── wall_jet.m              — Prescribed wall forcing (synthetic jet)
+│       └── newton_continuation.m   — Newton pseudo-arclength continuation demo
 ├── input/                          — DeHNSSo_input_<case>.mat (gridgen → solver handoff, gitignored)
 ├── output/                         — Saved StabRes results (Opt.save_output, gitignored)
 ├── literature/                     — Committed reference data (auto-loaded by callers/benchmark/<case>.m via ref_file)
+│   ├── DeHNSSo-v1/                 — The four DeHNSSo-v1 cases on v1's own grids and settings, with v1 reference data
 │   ├── StabRes_Blasius_NPSE.mat        — NPSE for Blasius TS (Fig. 8)
 │   ├── StabRes_Blasius_LPSE.mat        — LPSE for Blasius TS (linear PSE)
 │   ├── StabRes_SweptWing_flat_NPSE.mat — NPSE for swept-wing flat CFI (Fig. 9)
@@ -93,7 +99,8 @@ DeHNSSo/
 ├── gridgen/                        — Grid generation and base-flow preprocessing
 │   ├── main_gridgen.m              — Pipeline entry point (function called by per-case scripts)
 │   ├── benchmark/                  — Per-case grid-gen scripts
-│   │   ├── blasius.m, blasius_csv.m, sweptwing_flat.m, sweptwing_hump.m, m3j.m, synthetic_jet.m
+│   │   ├── one per case, named as in callers/benchmark/: ts_blasius.m, ts_compressible.m, cfi_flat_plate.m,
+│   │   │   cfi_hump.m, cfi_step.m, cfi_curved_airfoil.m, resonator.m, wall_jet.m, newton_continuation.m
 │   └── src/                        — grouped by pipeline role (see gridgen/src/README.md)
 │       ├── io/                     — load_bf, classify_input, ensure_metadata
 │       ├── resample/              — resample_{cartesian,curvilinear,unstructured}, solve_elliptic_mesh, cluster_xi, report_clustering
@@ -104,7 +111,8 @@ DeHNSSo/
 │       └── plot/                   — plot_raw_bf, plot_resampled_bf
 └── baseflow/                       — Boundary-layer solvers
     ├── IBL/                        — Incompressible BL (Blasius, Falkner-Skan-Cooke)
-    └── output/benchmark/           — Committed reference base flows (bf_*.mat, bf_m3j.csv)
+    └── output/benchmark/           — Committed reference base flows: bf_ts_blasius, bf_ts_compressible, bf_cfi_flat_plate, bf_cfi_hump
+                                      (the M006 resonator flow and the two CSV flows are local only, not shipped)
 ```
 
 ---
@@ -226,8 +234,8 @@ Interpolated BC arrays (set by `setup_boundary.m`).
 ## 3. Call flow
 
 ```
-callers/benchmark/<case>.m   (blasius / blasius_compressible / sweptwing_flat /
-                              sweptwing_hump / m3j / resonator / synthetic_jet)
+callers/benchmark/<case>.m   (ts_blasius / ts_compressible / cfi_flat_plate /
+                              cfi_hump / cfi_curved_airfoil / resonator / wall_jet)
 └── main(Stab, StabGrid, Opt [, LHS])
     ├── init(StabGrid, Opt, Stab)          % defaults, mode numbering
     ├── inflow(Mode, Stab, StabGrid, StabRes, Opt)
@@ -291,18 +299,18 @@ Freestream values are only injected for components where `Opt.bc_top{k} = 'IH_DR
 
 ## 6. LU strategies
 
-`solve_modes.m` dispatches on `Opt.lu_mode`. Every mode factors the same per-mode operator `ML(omega_j, beta_j)`; they differ in the factorization used and in how many factors are kept.
+`solve_modes.m` groups the modes by their operator `ML(omega_j, beta_j)`, factors each group once and solves its modes against that factor; `Opt.lu_mode` chooses the factorization and how many factors are kept. Optional iterative refinement (`Opt.iterref = n`) adds `n` passes on any back-end that holds a factor, recovering accuracy on the ill-conditioned operator.
 
 **Sparse LU** (`'full'`, `'auto'`, `'seq'`, `'none'`): `do_lu` runs MATLAB's sparse `lu` (symrcm reordering on the compressible operator, COLAMD otherwise).
 
 - `'full'`: cache every factor in `Opt.LU_cache`, keyed by `(omega_j, beta_j)`. Fastest for repeated solves; memory scales with `nf × (4·ny·nx)² / 8`.
 - `'auto'`: LRU cache capped at `Opt.lu_max_cache`. Eviction skips keys still needed this iteration; the cache grows past `lu_max_cache` if every active key is needed (one-time warning).
-- `'seq'`: one factor at a time — factor a key, solve every mode that uses it, then discard. No cache, minimal memory. Optional iterative refinement (`Opt.iterref`) recovers accuracy on the ill-conditioned operator.
+- `'seq'`: one factor at a time — factor a key, solve every mode that uses it, then discard. No cache, minimal memory.
 - `'none'`: no reuse, plain `\` each time. Slowest, minimal memory.
 
 **Banded LU** (`'lapack_band'`): LAPACK banded factor/solve via MEX (`src/linsolve/lapack_band/`; `dgbsv_factor.c` → `zgbtrf`, `dgbsv_solve_cached.c` → `zgbtrs`). Exploits the block-pentadiagonal structure with Apple Accelerate / OpenBLAS dense-banded BLAS3. Factors once per `(omega_j, beta_j)` and caches the factor (LRU, `Opt.lu_max_cache`), so Picard iterations reuse it. ~3× faster than the sparse path on a single solve. See section 6a.
 
-**Block-Thomas** (`'block_thomas'`, compressible only): dual-Schur block-pentadiagonal factorization (Paredes 2024, `src/linsolve/block_thomas/`), partitioned by `Opt.bt_np` (default 2). Factors once per `(omega_j, beta_j)` and caches like the banded path; `Opt.lu_cache='off'` forces a one-shot factor+solve, and `Opt.bt_ooc='on'` streams the factor to disk (out-of-core) for minimal RAM. `Opt.bt_apply` selects whether each diagonal station block is stored as its pivoted LU factors (default) or as its inverse ('inverse', Paredes 2024); the former is three orders more accurate on near-singular station blocks for ~4% more time; both forms are streamed out of core. Errors on the incompressible operator, whose zero-diagonal continuity rows make the unpivoted block factorization silently wrong.
+**Block-Thomas** (`'block_thomas'`, compressible only): dual-Schur block-pentadiagonal factorization (Paredes 2024, `src/linsolve/block_thomas/`), partitioned by `Opt.bt_np` (default 2). Factors once per `(omega_j, beta_j)` and caches like the banded path; `Opt.lu_cache='off'` forces a one-shot factor+solve, and `Opt.bt_ooc='on'` streams the factor to disk (out-of-core) for minimal RAM, under `Opt.bt_ooc_dir` (default `tempdir`). `Opt.bt_apply` selects whether each diagonal station block is stored as its pivoted LU factors (default) or as its inverse ('inverse', Paredes 2024); the former is three orders more accurate on near-singular station blocks for ~4% more time; both forms are streamed out of core. Errors on the incompressible operator, whose zero-diagonal continuity rows make the unpivoted block factorization silently wrong.
 
 **MUMPS** (`src/newton/mumps_solve.m`, Newton only): factorises the real 2N x 2N Jacobian through one entry point, `mumps_solve('factor'|'bsolve'|'destroy')`. Not an `Opt.lu_mode` back-end: those factorise one mode at a time, whereas the Newton Jacobian couples all modes at once. It climbs the `Opt.newton_mumps_relax` ladder (ICNTL(14)) before falling back to out-of-core (ICNTL(22)), and deletes its own scratch on destroy, since MUMPS closes those files without unlinking them.
 
@@ -427,8 +435,8 @@ Per-case stability runs live in `callers/benchmark/`. The scripts share an ident
 | Case | `Stab.M` | `Stab.N` | `Stab.omega_0` | `Stab.beta_0` | `Stab.phaseRef` | `Opt.buffer` |
 |---|---|---|---|---|---|---|
 | `blasius` | 1 | 0 | 0.034576 | 0 | `'pwall'` | `'para'` |
-| `sweptwing_flat` | 0 | 1 | 0 | `2π·lref/7.5e-3` | `'umax'` | `'para'` |
-| `sweptwing_hump` | 0 | 1 | 0 | `2π·lref/7.5e-3` | `'umax'` | `'para'` |
-| `m3j` | 0 | 1 | 0 | 0.40 | `'umax'` | `'on'` |
+| `cfi_flat_plate` | 0 | 1 | 0 | `2π·lref/7.5e-3` | `'umax'` | `'para'` |
+| `cfi_hump` | 0 | 1 | 0 | `2π·lref/7.5e-3` | `'umax'` | `'para'` |
+| `cfi_curved_airfoil` | 0 | 1 | 0 | 0.40 | `'umax'` | `'on'` |
 
 The corresponding base flows are produced by `gridgen/benchmark/<case>.m` (which writes `input/DeHNSSo_input_<case>.mat`, one file per case so they cannot clobber each other).

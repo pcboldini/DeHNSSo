@@ -101,7 +101,11 @@ Grid.S       = Grid.x(1);
 Grid.L       = Grid.x(end) - Grid.x(1);
 Grid.xun     = Grid.x;          % unmapped streamwise coordinate
 Grid.etaun   = Grid.y;          % unmapped wall-normal coordinate
-Grid.hasMask = false;
+% Solid on the wall. Grid.step is the only thing written
+if isfield(BF, 'step') && ~isempty(BF.step)
+    Grid.step = BF.step;
+end
+Grid = step_geometry(Grid);
 
 %% Clustering metadata: centre(s) into the xun frame (a pure shift of xi1D)
 if isfield(BF, 'cluster') && ~isempty(BF.cluster) ...
@@ -218,7 +222,7 @@ Grid.U = BF.U;
 Grid.V = BF.V;
 Grid.W = BF.W;
 
-% Compressible base flow: copy ρ, T and thermo metadata, evaluate Sutherland.
+% Compressible base flow: copy rho, T and thermo metadata, evaluate Sutherland.
 is_compr = isfield(BF, 'rho') && isfield(BF, 'T');
 if is_compr
     Grid.rho = BF.rho;

@@ -1,14 +1,25 @@
 # Reference cases
 
-Five reference cases ship with the repository. Cases 1-3 reproduce published validations in Westerbeek et al., *DeHNSSo: The Delft Harmonic Navier-Stokes Solver for nonlinear stability problems with complex geometric features*, **Comput. Phys. Commun. 302 (2024) 109250** ([DOI](https://doi.org/10.1016/j.cpc.2024.109250)). Cases 4 and 5 are v2 additions, validated against other references.
+The reference cases below ship with the repository; a base flow marked (not shipped) has to be obtained separately. The first three reproduce published validations in Westerbeek et al., *DeHNSSo: The Delft Harmonic Navier-Stokes Solver for nonlinear stability problems with complex geometric features*, **Comput. Phys. Commun. 302 (2024) 109250** ([DOI](https://doi.org/10.1016/j.cpc.2024.109250)). The others are DeHNSSo-v2 additions, validated against other references.
 
 | Case | Reference | Caller | Base flow |
 |---|---|---|---|
-| Blasius TS — nonlinear | §6.1, Fig. 8 | `callers/benchmark/blasius.m` | `bf_blasius.mat` |
-| Swept-wing CFI flat — nonlinear | §6.2, Fig. 9 | `callers/benchmark/sweptwing_flat.m` | `bf_sweptwing_flat.mat` |
-| Swept-wing CFI hump — linear | §6.3, Fig. 10 | `callers/benchmark/sweptwing_hump.m` | `bf_sweptwing_hump.mat` |
-| Compressible TS — linear | Zanus/Bertolotti | `callers/benchmark/blasius_compressible.m` | `BF_compressible.mat` |
-| Helmholtz resonator — linear | Michelis 2023 | `callers/benchmark/resonator.m` | `BF_compressible_M006_fine.mat` |
+| Blasius TS — nonlinear | §6.1, Fig. 8 | `callers/benchmark/ts_blasius.m` | `bf_ts_blasius.mat` |
+| Swept-wing CFI flat — nonlinear | §6.2, Fig. 9 | `callers/benchmark/cfi_flat_plate.m` | `bf_cfi_flat_plate.mat` |
+| Swept-wing CFI hump — linear | §6.3, Fig. 10 | `callers/benchmark/cfi_hump.m` | `bf_cfi_hump.mat` (not shipped) |
+| Compressible TS — linear | Zanus/Bertolotti | `callers/benchmark/ts_compressible.m` | `bf_ts_compressible.mat` |
+| Helmholtz resonator — linear | Michelis 2023 | `callers/benchmark/resonator.m` | `bf_compressible_m006_fine.mat` (not shipped) |
+| Swept-wing CFI, curved M3J surface | DNS | `callers/benchmark/cfi_curved_airfoil.m` | `bf_cfi_curved_airfoil.csv` (not shipped) |
+| Wall jet — prescribed forcing | DeHNSSo-v1 benchmark | `callers/benchmark/wall_jet.m` | `bf_ts_blasius.mat` |
+| Newton continuation — demo | — | `callers/benchmark/newton_continuation.m` | `bf_ts_blasius.mat` (400 x 40) |
+| Swept-wing CFI step — embedded boundary, linear | DNS | `callers/benchmark/cfi_step.m` | `bf_cfi_step.mat` (not shipped) |
+
+Names are shared by all three stages of a case: `baseflow/output/benchmark/bf_<case>`,
+`gridgen/benchmark/<case>.m` writing `input/DeHNSSo_input_<case>.mat`, and
+`callers/benchmark/<case>.m`. `ts_` cases are Tollmien–Schlichting, `cfi_` crossflow.
+
+The four cases published with DeHNSSo-v1 are also reproduced on v1's own grids and
+settings, against the v1 reference data, in `literature/DeHNSSo-v1/`.
 
 The base flows are committed in `baseflow/output/benchmark/`. Both the gridgen and stability scripts read from there directly, so no manual file copying is required.
 
@@ -30,10 +41,10 @@ The base flows are committed in `baseflow/output/benchmark/`. Both the gridgen a
 
 | case | what it is | caller | runtime |
 |---|---|---|---|
-| [Case 1 — Blasius TS waves](#case-1--blasius-ts-waves) | 2-D nonlinear TS wave packet in a Blasius layer | `blasius` | see Heritage v1 note |
-| [Case 2 — Swept-wing CFI on a flat plate](#case-2--swept-wing-cfi-on-a-flat-plate) | nonlinear stationary crossflow, N=5, needs `Opt.anderson = 5` | `sweptwing_flat` | ~4 days (2544x100, workstation) |
-| [Case 3 — Swept-wing CFI over a smooth hump (linear)](#case-3--swept-wing-cfi-over-a-smooth-hump-linear) | linear CFI over a hump, conformal mesh | `sweptwing_hump` | ~0.6 h (2000x100, desktop) |
-| [Case 4 — Compressible TS waves (Zanus/Bertolotti benchmark)](#case-4--compressible-ts-waves-zanusbertolotti-benchmark) | compressible TS, five-variable operator | `blasius_compressible` | see Runtime (laptop, single thread) |
+| [Case 1 — Blasius TS waves](#case-1--blasius-ts-waves) | 2-D nonlinear TS wave packet in a Blasius layer | `ts_blasius` | see Heritage v1 note |
+| [Case 2 — Swept-wing CFI on a flat plate](#case-2--swept-wing-cfi-on-a-flat-plate) | nonlinear stationary crossflow, N=5, needs `Opt.anderson = 5` | `cfi_flat_plate` | ~4 days (2544x100, workstation) |
+| [Case 3 — Swept-wing CFI over a smooth hump (linear)](#case-3--swept-wing-cfi-over-a-smooth-hump-linear) | linear CFI over a hump, conformal mesh | `cfi_hump` | ~0.6 h (2000x100, desktop) |
+| [Case 4 — Compressible TS waves (Zanus/Bertolotti benchmark)](#case-4--compressible-ts-waves-zanusbertolotti-benchmark) | compressible TS, five-variable operator | `ts_compressible` | see Runtime (laptop, single thread) |
 | [Case 5 — Helmholtz-resonator wall (linear)](#case-5--helmholtz-resonator-wall-linear) | TS over a resonator mouth, impedance wall BC | `resonator` | ~180 s (4000x40, laptop) |
 
 Each case is documented with the same four subsections: physical parameters, numerical setup, expected output and runtime.
@@ -43,7 +54,7 @@ Each case is documented with the same four subsections: physical parameters, num
 ```matlab
 % 1. Build the stability grid from the base flow
 cd gridgen/benchmark/
-<case>            % blasius / sweptwing_flat / sweptwing_hump
+<case>            % blasius / cfi_flat_plate / cfi_hump
                   % writes ../../input/DeHNSSo_input_<case>.mat
 
 % 2. Run the stability solver
@@ -78,13 +89,13 @@ Tollmien-Schlichting waves in a flat-plate Blasius boundary layer with zero pres
 | Spectral truncation `(M, N)` | `(5, 0)` — 5 harmonics + MFD | same |
 | `Opt.linear` | `'off'` (nonlinear) | same |
 | `Stab.A0_fund` | `0.0025·√2` (physical peak) | same |
-| Streamwise grid `nx` | 800 (medium, from `bf_blasius.mat`) | 2674 (refined) |
+| Streamwise grid `nx` | 800 (medium, from `bf_ts_blasius.mat`) | 2674 (refined) |
 | Wall-normal grid `ny` | 40 (medium) | 100 (refined) |
 | Buffer | `Opt.buffer = 'on'`, starts at 70% | same |
 
 ### To reproduce Fig. 8 exactly (refined grid)
 
-The shipped caller is already the M=5 nonlinear configuration. For the refined paper grid, regenerate `bf_blasius.mat` at `nx=2674`, `ny=100` via `baseflow/caller/caller_IBL.m`.
+The shipped caller is already the M=5 nonlinear configuration. For the refined paper grid, regenerate `bf_ts_blasius.mat` at `nx=2674`, `ny=100` via `baseflow/caller/caller_IBL.m`.
 
 ### Expected output (paper-faithful run)
 
@@ -134,7 +145,7 @@ Stationary crossflow instabilities (CFI) in a swept-wing boundary layer with fav
 
 ### To reproduce Fig. 9 exactly (refined grid)
 
-The shipped caller is already the N=5 nonlinear configuration with `Opt.anderson = 5` — **required**, since without it plain Picard diverges during the mode cascade near saturation (`max_A` runs away). For the paper's wall-normal resolution, increase `params.n_eta_new = 100` in `gridgen/benchmark/sweptwing_flat.m` and re-run gridgen.
+The shipped caller is already the N=5 nonlinear configuration with `Opt.anderson = 5` — **required**, since without it plain Picard diverges during the mode cascade near saturation (`max_A` runs away). For the paper's wall-normal resolution, increase `params.n_eta_new = 100` in `gridgen/benchmark/cfi_flat_plate.m` and re-run gridgen.
 
 ### Expected output (paper-faithful run)
 
@@ -176,7 +187,7 @@ The hump is shallow enough to avoid flow separation; the base flow is taken from
 | Streamwise grid `nx` | 1200 (curvilinear, Gaussian-clustered around `x_m = 859`) |
 | Wall-normal grid `ny` | 80 (FD, 4th-order, sparse) |
 | Buffer | `Opt.buffer = 'para'`, starts at 85% |
-| Mesh | grid is **conformal** to the hump (`η`-axis follows the wall) — handled automatically by `gridgen/benchmark/sweptwing_hump.m` |
+| Mesh | grid is **conformal** to the hump (`η`-axis follows the wall) — handled automatically by `gridgen/benchmark/cfi_hump.m` |
 
 The shipped defaults match the paper configuration; no edits needed to reproduce Fig. 10.
 
@@ -226,9 +237,9 @@ Tollmien-Schlichting waves in a compressible (subsonic) flat-plate boundary laye
 ### Pipeline
 
 ```matlab
-cd baseflow/caller/;       caller_CBL                          % BF_compressible.mat (~10 s)
-cd ../../gridgen/benchmark/; blasius_compressible              % DeHNSSo_input_compressible.mat (~10 s)
-cd ../../callers/benchmark/; blasius_compressible              % HNS + Zanus/Bertolotti overlay
+cd baseflow/caller/;       caller_CBL                          % bf_ts_compressible.mat (~10 s)
+cd ../../gridgen/benchmark/; ts_compressible              % DeHNSSo_input_ts_compressible.mat (~10 s)
+cd ../../callers/benchmark/; ts_compressible              % HNS + Zanus/Bertolotti overlay
 ```
 
 If `Opt.lu_mode = 'lapack_band'`: build the MEX once per machine with `run('src/linsolve/lapack_band/mexbuild_dgbsv.m')`. Requires MATLAB ≥ R2018a and a C compiler configured for `mex`. Fall back to `Opt.lu_mode = 'seq'` if no compiler is available (≈3× slower).
@@ -262,7 +273,7 @@ A Tollmien-Schlichting wave passing over a Helmholtz-resonator neck embedded in 
 | Mach number | 0.061 (effectively incompressible) |
 | TS frequency `f_TS` | 295 Hz, equal to the resonance `f_r` (on resonance) |
 | Neck width | 1 mm, centred at `x_0 = 0.55` m |
-| Admittance | `\|Y\| = 12.7688`, `arg Y = π` |
+| Admittance | `\|Y\| = 12.7688`, `arg Y = π`, entered as a constant: the lumped-model value at resonance (the model itself is not part of the tree) |
 
 On resonance the reactances cancel, so the admittance is real and negative: the phase is exactly `π`, which is why a resonant passive resonator can only amplify.
 
@@ -285,9 +296,12 @@ The neck geometry lives in `gridgen/benchmark/resonator.m` as `params.forcing`, 
 
 ```
 Resonator wall BC active: |Y| = 12.7688, arg Y = +180.0 deg, mouth = 21 stations.
- neck Rx = 870,  measure Rx = 1053
- dN_u' = +0.353,  dN_v' = +0.354    (Michelis ~ +0.4, amplifying)
+dN over the flat-plate value: 0.354      (Michelis ~ +0.4, amplifying)
 ```
+
+Measured 2026-09-11 with the neck centred on x_r = 0.55 m (`Xc = 0.55/lref`; the
+earlier `0.55/lref + s_nd/2` put the mouth 0.5 mm downstream of the COMSOL reference
+and gave 0.353).
 
 Two solves are run, a rigid-wall baseline and the resonator, and the N-factor increment `ΔN` is their difference just upstream of the buffer. The resonator **amplifies**, consistent with Michelis 2023.
 

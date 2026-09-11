@@ -80,7 +80,8 @@ Opt.solver  = 'picard';
 %% Resonator — admittance at the wave frequency (Michelis 2023, on resonance)
 Y    = 12.7688*exp(1i*pi);      % non-dimensional |Y| exp(i arg Y) at f_r
 x    = StabGrid.xun(1,:);
-s_nd = 1e-3/lref;   Xc = 0.55/lref + s_nd/2;
+% x_r = 0.55 m is the neck CENTRE
+s_nd = 1e-3/lref;   Xc = 0.55/lref;
 mask = (x >= Xc - s_nd/2) & (x <= Xc + s_nd/2);    % mouth stations
 fprintf('f = %.0f Hz | Y = |%.3f| exp(%+.0f deg) | %d stations in the neck\n', ...
         f_TS, abs(Y), rad2deg(angle(Y)), nnz(mask));

@@ -15,6 +15,7 @@ Per-case scripts live in `gridgen/benchmark/`. Run one, then run the matching ca
 - [3. Cartesian / OpenFOAM CSV input](#3-cartesian--openfoam-csv-input)
 - [4. Base-flow derivatives](#4-base-flow-derivatives)
 - [5. Wall forcing](#5-wall-forcing)
+- [6. Steps and blocks on the wall](#6-steps-and-blocks-on-the-wall)
 
 ---
 
@@ -23,18 +24,21 @@ Per-case scripts live in `gridgen/benchmark/`. Run one, then run the matching ca
 For a Blasius flat-plate boundary layer:
 
 ```matlab
-cd baseflow/IBL/
-caller        % produces bf_blasius.mat in baseflow/output/
+cd baseflow/caller/
+caller_IBL    % writes bf_ts_blasius.mat to baseflow/output/ (scratch, gitignored)
 ```
 
 Then build the stability grid via the per-case script in `gridgen/benchmark/`:
 
 ```matlab
 cd gridgen/benchmark/
-blasius       % reads bf_blasius.mat from baseflow/output/benchmark/, writes DeHNSSo_input_blasius.mat
+ts_blasius       % reads the COMMITTED bf_ts_blasius.mat in baseflow/output/benchmark/, writes DeHNSSo_input_ts_blasius.mat
 ```
 
-For other supported cases (`blasius_csv`, `sweptwing_flat`, `sweptwing_hump`, `m3j` / OpenFOAM): see [README.md](../README.md).
+The benchmarks read the committed base flows in `baseflow/output/benchmark/`, not the caller's
+scratch output: to run a benchmark on a regenerated base flow, copy it there first. The other
+cases (`ts_compressible`, `cfi_flat_plate`, `cfi_hump`, `cfi_step`, `cfi_curved_airfoil`, `resonator`,
+`wall_jet`, `newton_continuation`) follow the same pattern: see [README.md](../README.md).
 
 ## 2. Streamwise clustering
 
@@ -57,7 +61,7 @@ Algorithm (`gridgen/src/resample/cluster_xi.m`):
 3. Local modulation: `fg(ξ) = 1 − (1 − ag) · max_k G_k(ξ)` → `fg = ag` at each peak.
 4. Build the new ξ grid by integrating `∫ dξ / fg` and renormalizing — denser where `fg` is small.
 
-Example (heritage `sweptwing_hump.m`):
+Example (`gridgen/benchmark/cfi_hump.m`):
 
 ```matlab
 x_m = 0.1837410879 / 2.1394e-4;   % physical hump center / lref ≈ 859
@@ -80,7 +84,7 @@ Leave `params.mug = []` and define no `params.forcing`, or set `params.refine = 
 
 ## 3. Cartesian / OpenFOAM CSV input
 
-The cartesian path (`gridgen/src/resample/resample_cartesian.m`) reads either a heritage `.mat` (e.g. `bf_blasius.mat`) or a flat-lattice CSV from a CFD code (e.g. OpenFOAM `midPlane_*.csv`). For CSV input a few extra `params` fields are usually needed in the gridgen script:
+The cartesian path (`gridgen/src/resample/resample_cartesian.m`) reads either a heritage `.mat` (e.g. `bf_ts_blasius.mat`) or a flat-lattice CSV from a CFD code (e.g. OpenFOAM `midPlane_*.csv`). For CSV input a few extra `params` fields are usually needed in the gridgen script:
 
 | Parameter | Meaning |
 |---|---|
@@ -92,7 +96,7 @@ The cartesian path (`gridgen/src/resample/resample_cartesian.m`) reads either a 
 
 The path detects whether the CSV is structured (`X`, `Y` are 2-D arrays) or a flat lattice scatter (`X`, `Y` are paired column vectors of length `nx·ny`). The reshape from flat scatter to canonical `(ny × nx)` form is automatic — no manual preprocessing needed.
 
-Example (heritage `blasius_csv.m`):
+Example, a dimensional CSV at 20.9 m/s non-dimensionalised on the Blasius length at its inflow:
 
 ```matlab
 params.rescale      = true;
@@ -183,3 +187,37 @@ params.forcing = { struct('xc', [xc1 xc2 xc3], 'w', 18, 'v', v_data), ...   % th
 
 gridgen stores `StabGrid.forcing` (the unit-peak profile(s) sampled on the refined grid) plus `StabGrid.cluster.xc/.w`. The distribution's `v` values need only encode the **shape**; the amplitude is set in the caller. Note the fixed station budget is shared across all centers, so raise `params.n_xi_new` when refining several spots.
 
+---
+
+## 6. Steps and blocks on the wall
+
+A step or a block on the wall is not meshed. The wall stays flat and gridgen stores the solid as one box `[x_lo, x_hi, h]` per step. The solver masks the boxes out. For the solver side, see `docs/DeHNSSo_guide.md`, "Steps and blocks on the wall".
+
+gridgen finds the boxes in the base flow: a solid computed on a Cartesian grid shows up as nodes with zero velocity above the wall. Nothing about the geometry is typed into the script.
+
+```
+Solid detected: STEPS, 2 box(es), 2 face(s)
+   x =  79.8750 .. 149.8750,  h = 1.2000
+   x = 149.8750 .. 219.8750,  h = 2.4000
+```
+
+| Parameter | Meaning |
+|---|---|
+| `params.y_i` | Set it to the step height, so about half the wall-normal points lie below the step |
+| `params.mug`, `params.refine`, `params.spread` | Streamwise refinement at the face, as in [2. Streamwise clustering](#2-streamwise-clustering). Use `params.mug = StabGrid.step.x` for the first face |
+| `params.StepType`, `params.StepX`, `params.StepH` | Optional. State a single forward-facing step by hand, all three together. gridgen still detects the step and warns if the two disagree |
+
+What gridgen writes:
+
+| Field | Meaning |
+|---|---|
+| `StabGrid.step.type` | `FFS`, `BFS`, `BLOCK` or `STEPS` |
+| `StabGrid.step.seg` | the boxes, one row `[x_lo, x_hi, h]` each |
+| `StabGrid.step.seg_tol` | how well each box is known, `[x_tol, h_tol]` |
+| `StabGrid.step.snapped` | true when the grid was put exactly on the box |
+
+Limits to keep in mind:
+
+- Only Cartesian input is read. On a curvilinear or unstructured base flow a solid would be treated as fluid, so gridgen warns if it sees one.
+- A face lies somewhere between the last fluid column and the first solid one. gridgen places it halfway and reports half that gap as `x_tol`. The height is read off the base-flow nodes, so it is exact only when the surface falls on a node.
+- A solid that does not rest on the wall, or one that spans the whole domain, is refused.

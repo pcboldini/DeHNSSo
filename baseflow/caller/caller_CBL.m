@@ -24,11 +24,11 @@
 % Generate a compressible boundary-layer base flow.
 %
 %   Solves the self-similar compressible boundary layer for the case set in the
-%   USER INPUTS block and writes baseflow/output/BF_compressible.mat, ready for
+%   USER INPUTS block and writes baseflow/output/bf_ts_compressible.mat, ready for
 %   gridgen. The shipped settings are the Zanus and Bertolotti compressible
 %   PSE benchmark: Ma = 0.5, Pr = 0.72, adiabatic flat plate at Te = 206 K.
 %
-%   Run this before gridgen/benchmark/blasius_compressible.m.
+%   Run this before gridgen/benchmark/ts_compressible.m.
 clc; clear all; format long
 caller_dir = fileparts(mfilename('fullpath'));
 rootdir    = fullfile(caller_dir, '..', '..');     % refactor repo root
@@ -165,12 +165,15 @@ BF.T   = T;                   % already T/T_inf
 
 %% Save
 
+% Written to baseflow/output/, which is scratch and gitignored. The gridgen
+% benchmarks read the tracked copies in baseflow/output/benchmark/; copy a
+% regenerated file there to make it the benchmark input.
 outdir = fullfile(caller_dir, '..', 'output');
 if ~exist(outdir, 'dir'); mkdir(outdir); end
-save(fullfile(outdir, 'BF_compressible.mat'), 'BF');
+save(fullfile(outdir, 'bf_ts_compressible.mat'), 'BF');
 
 fprintf('\nSaved:\n');
-fprintf('  BF -> baseflow/output/BF_compressible.mat\n');
+fprintf('  BF -> baseflow/output/bf_ts_compressible.mat\n');
 fprintf('  nx=%d, ny=%d, Re_0=%.2f, Ma=%.3f, beta_H=%.3f, We/Ue=%.2f\n', ...
     nx, ny, Re_0, BL.Ma, BL.beta_H, BL.We_ratio);
 

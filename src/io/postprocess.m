@@ -58,13 +58,17 @@ for j = Mode.RunJ
 end
 
 %% Normalize shape functions and compute amplitudes
+% makima (non-overshooting) only when a masked step makes u(y) jump at the
+% masked region; a spline overshoots there. Gated on hasMask so other cases are unchanged.
+eta_interp = 'spline';
+if isfield(StabGrid,'hasMask') && StabGrid.hasMask;  eta_interp = 'makima';  end
 % Interpolate all stations in one matrix call to interp1 (one spline per mode)
 % instead of looping over 2*nx individual scalar spline calls per mode.
 yinteg = linspace(0, max(StabGrid.eta1D), 4000);
 
 for j = Mode.RunJ
     % Interpolate u and dux over all stations simultaneously [4000 x nx]
-    U_fine   = interp1(StabGrid.etaun, squeeze(StabRes.u(j,:,:)), yinteg, 'spline');
+    U_fine   = interp1(StabGrid.etaun, squeeze(StabRes.u(j,:,:)), yinteg, eta_interp);
     DUX_fine = interp1(StabGrid.eta1D, squeeze(dux(j,:,:)),       yinteg, 'spline');
 
     % Find wall-normal location of max |u| per station (integer index)
@@ -172,6 +176,13 @@ if Opt.Sweep
     StabRes.wsweep(1:half-1, :, :, :)    = [];
     StabRes.psweep(1:half-1, :, :, :)    = [];
 end
+
+%% Mark the amplitude convention
+% StabRes.A is now the physical peak 2|u_hat| (the (0,0) mode keeps |u_hat|:
+% it is its own conjugate). A checkpoint written by Opt.save_checkpoint is
+% saved before this function runs, so its StabRes.A is |u_hat| and it carries
+% no A_physical field. Test isfield(StabRes,'A_physical') to tell them apart.
+StabRes.A_physical = true;
 
 %% Remove working arrays
 StabRes = rmfield(StabRes, {'q', 'phi', 'R'});

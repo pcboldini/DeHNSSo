@@ -1,0 +1,26 @@
+ILP64 gateway fix for MUMPS 5.3.5 MATLAB/mumpsmex.c
+===================================================
+Only needed on Linux, where DeHNSSo builds MUMPS with 64-bit integers
+(-fdefault-integer-8 / -DINTSIZE64) because the factors of a 1M-DOF Jacobian
+exceed 2^31 entries.
+
+The stock gateway allocates these arrays as C `int` (4 bytes) while the ILP64
+library writes MUMPS_INT (8 bytes) into them: a heap overflow that shows up as
+"free(): invalid next size" when the instance is destroyed.
+
+install_mumps_linux.sh applies this with sed. The lines are:
+
+  line 334   MYMALLOC((dmumps_par->jcn),(int)netrue,int);
+             ->  MYMALLOC((dmumps_par->jcn),(int)netrue,MUMPS_INT);
+
+  line 335   MYMALLOC((dmumps_par->irn),(int)netrue,int);
+             ->  MYMALLOC((dmumps_par->irn),(int)netrue,MUMPS_INT);
+
+  line 416   EXTRACT_FROM_MATLAB_TOPTR(PERM_IN,(dmumps_par->perm_in),int,((int)n));
+             ->  ...,MUMPS_INT,((int)n));
+
+  line 431   EXTRACT_FROM_MATLAB_TOPTR(VAR_SCHUR,(dmumps_par->listvar_schur),int,...);
+             ->  ...,MUMPS_INT,...);
+
+irhs_sparse (line 503) is left as int: it is unused with a dense RHS, which is
+all DeHNSSo sends.

@@ -82,19 +82,18 @@ if is_compr
 end
 fprintf('  Solver\n');
 fprintf('    Buffer: %s from %d%%,  Conv: %.1e\n', Opt.buffer, Opt.xb, Opt.Conv);
-if is_compr
-    fprintf('    BC top: u=%s, v=%s, w=%s, T=%s\n', ...
-        Opt.bc_top{1}, Opt.bc_top{2}, Opt.bc_top{3}, Opt.bc_top{4});
-else
-    fprintf('    BC top: u=%s, v=%s, w=%s\n', Opt.bc_top{1}, Opt.bc_top{2}, Opt.bc_top{3});
+% Channel names come from bc_rows so they cannot drift from the rows the operator
+% actually constrains: (u,w,rho,T) compressible, (u,v,w) incompressible. There is
+% no v channel at the compressible freestream.
+B     = bc_rows(StabGrid.ny, is_compr);
+pairs = cell(1, numel(B.top_names));
+for k = 1:numel(B.top_names)
+    pairs{k} = sprintf('%s=%s', B.top_names{k}, Opt.bc_top{k});
 end
+fprintf('    BC top: %s\n', strjoin(pairs, ', '));
 fprintf('    LU mode: %s\n', Opt.lu_mode);
 if isfield(Opt,'parfor') && strcmpi(Opt.parfor,'on')
     fprintf('    Parfor: on\n');
-end
-if isfield(Opt,'adjoint') && strcmpi(Opt.adjoint,'on')
-    fprintf('  Adjoint\n');
-    fprintf('    J = %s,  x_out = %.4g\n', Opt.adjoint_J, Opt.adjoint_xout);
 end
 
 %% Memory estimates
