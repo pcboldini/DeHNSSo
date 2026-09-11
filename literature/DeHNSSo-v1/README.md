@@ -1,14 +1,15 @@
 # DeHNSSo-v1 test cases
 
-The cases published with DeHNSSo-v1 (Westerbeek et al., CPC 302 (2024) 109250),
+Three of the cases published with DeHNSSo-v1 (Westerbeek et al., CPC 302 (2024) 109250),
 each in its own folder with a caller and the reference data it is compared against.
+The fourth v1 case, crossflow instability over a step, is not included here; its v2
+counterpart is `callers/benchmark/cfi_step.m`.
 
 | folder | v1 case | status |
 |---|---|---|
 | `TS_Blasius/` | TS waves in a Blasius boundary layer | runs |
 | `CFI_SweptWing/` | crossflow instability in a swept-wing boundary layer | runs |
 | `CFI_SweptWing_hump/` | crossflow instability over a hump | runs |
-| `CFI_SweptWing_step/` | crossflow instability over a step | **not available**, see its README |
 
 ## Running one
 
@@ -36,6 +37,5 @@ benchmark's 1200 x 80 FD grid) so that v2 can be checked against v1 like for lik
 | `StabRes_Blasius_NPSE.mat`, `StabRes_Blasius_LPSE.mat` | nonlinear and linear PSE |
 | `StabRes_SweptWing_flat_NPSE.mat`, `_LPSE.mat`, `_DNS.mat` | nonlinear PSE, linear PSE, DNS |
 | `StabRes_SweptWing_Hump_AHLNS.mat` | AHLNS |
-| `StabRes_SweptWing_step_DNS.mat` | DNS (case not runnable, see above) |
 
 All are the files shipped with v1 in `Data_Files/`.

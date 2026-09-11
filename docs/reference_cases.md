@@ -18,8 +18,9 @@ Names are shared by all three stages of a case: `baseflow/output/benchmark/bf_<c
 `gridgen/benchmark/<case>.m` writing `input/DeHNSSo_input_<case>.mat`, and
 `callers/benchmark/<case>.m`. `ts_` cases are Tollmien–Schlichting, `cfi_` crossflow.
 
-The four cases published with DeHNSSo-v1 are also reproduced on v1's own grids and
-settings, against the v1 reference data, in `literature/DeHNSSo-v1/`.
+Three of the four cases published with DeHNSSo-v1 (Blasius TS, flat-plate CFI, hump CFI)
+are also reproduced on v1's own grids and settings, against the v1 reference data, in
+`literature/DeHNSSo-v1/`.
 
 The base flows are committed in `baseflow/output/benchmark/`. Both the gridgen and stability scripts read from there directly, so no manual file copying is required.
 
@@ -248,7 +249,7 @@ If `Opt.lu_mode = 'lapack_band'`: build the MEX once per machine with `run('src/
 
 - Spatial growth rate `−α_i(R)` matches the Zanus/Bertolotti 2017 PSE reference (markers) to plot resolution across the full domain (R ∈ [500, 1700]), including the unstable lobe peaked at R ≈ 1050 and the return to stability at R ≳ 1400.
 - Streamwise wavenumber `α_r(R)` overlays the parallel CLST result.
-- `StabRes.E` (Chu/Mack disturbance energy) available via `Opt.plot_metric = 'energy'`.
+- `StabRes.E` (Chu/Mack disturbance energy) is written by `postprocess`; `Opt.plot_metric = 'energy'` plots its square root.
 
 ### Runtime
 

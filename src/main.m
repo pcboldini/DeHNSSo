@@ -173,11 +173,6 @@ if isfield(Opt,'solver') && ~ismember(lower(Opt.solver), {'picard','newton'})
 end
 is_newton = isfield(Opt,'solver') && strcmpi(Opt.solver, 'newton');
 
-if is_compr && isfield(Opt,'adjoint') && strcmpi(Opt.adjoint,'on')
-    error('main:compressibleAdjoint', ...
-        'Adjoint not yet implemented for the compressible path.');
-end
-
 if is_newton
     %% Newton solve: pseudo-arclength continuation in A0_fund (see solve_newton.m)
     if ~isfield(Opt,'newton_target') || isempty(Opt.newton_target)

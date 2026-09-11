@@ -29,7 +29,7 @@
     - [Buffer zone](#buffer-zone)
     - [Convergence](#convergence)
     - [Picard acceleration and under-relaxation](#picard-acceleration-and-under-relaxation)
-    - [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solvenewton)
+    - [Pseudo-arclength continuation (`solve_newton`)](#pseudo-arclength-continuation-solve_newton)
         - [Running it: MUMPS, memory and where](#running-it-mumps-memory-and-where)
     - [LU mode](#lu-mode)
     - [Fill-reducing ordering](#fill-reducing-ordering)
@@ -66,6 +66,7 @@ Every `Stab` and `Opt` field the guide documents, grouped by what it controls. "
 |---|---|---|---|
 | `Stab.IC` | inflow condition: `ILST`, `CLST`, `PSE`, `LOAD` or `ZERO` | required | [Inflow conditions](#5-inflow-conditions) |
 | `Stab.phaseRef` | phase reference: `pwall` (wall pressure) or `umax` | required | [Inflow conditions](#5-inflow-conditions) |
+| `Opt.mode_select` | Mack branch of the `CLST`/`PSE` inflow at Ma>1: `auto` (smallest residual), `slow` or `fast` | `'auto'` | [Inflow conditions](#5-inflow-conditions) |
 | `Stab.A0_fund` | fundamental amplitude, the physical peak 2·abs(u_hat) | required | [Amplitude convention](#amplitude-convention) |
 | `Stab.A0` | per-mode amplitude vector; use instead of `A0_fund` to seed several modes | from `A0_fund` | [Setting initial amplitudes](#setting-initial-amplitudes) |
 | `Stab.ICfile` | file read when `Stab.IC='LOAD'`: a checkpoint, or a `phiIC` profile file | — | [Restarting](#restarting-from-a-previous-solution-stabic--load) |
@@ -90,30 +91,31 @@ Every `Stab` and `Opt` field the guide documents, grouped by what it controls. "
 | `Opt.Conv` | nonlinear convergence criterion | `1e-4` | [Convergence](#convergence) |
 | `Opt.ConvF` | convergence criterion on the forcing | `100` | [Convergence](#convergence) |
 | `Opt.TH` | nonlinear-term activation threshold | `1e-11` | [Convergence](#convergence) |
-| `Opt.AFg` | amplitude-factor ramping increment | — | [Convergence](#convergence) |
+| `Opt.AFg` | amplitude-factor ramping increment | `1.1` | [Convergence](#convergence) |
 | `Opt.AMAX` | maximum amplitude factor | `0.1` | [Convergence](#convergence) |
 | `Opt.buffer` | outflow treatment: `on` damping, `para` parabolisation, `off` | `'on'` | [Buffer zone](#buffer-zone) |
 | `Opt.xb` | buffer start, in % of the domain | `85` | [Buffer zone](#buffer-zone) |
+| `Opt.nltbufxb` | start of the separate ramp on the nonlinear forcing, in % of the domain | `Opt.xb` | [Buffer zone](#buffer-zone) |
 
 **Newton pseudo-arclength continuation**
 
 | field | what it does | default | see |
 |---|---|---|---|
-| `Opt.newton_target` | target `A0_fund` for the continuation | required | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_start` | continuation start amplitude | `Stab.A0_fund` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_seed2` | second seed point | `1.04*start` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_reuse` | steps a factorisation is reused before a forced refactor | `8` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_it_thresh` | refactor next step if the corrector exceeded this | `8` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_maxit` | corrector back-solves before the factor is called stale | `25` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_dsmax` | maximum arclength step | `3` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_tol` | corrector residual tolerance | `1e-6` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_corrector` | `modified`, or `full` to refactorise every corrector iteration | `'modified'` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_predictor` | `curvature`, or `tangent` for the first-order Keller step | `'curvature'` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_arclength` | arclength metric | `'absolute'` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_seedfile` | cache file for the two seed points | `[]` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_ckfile` | checkpoint written each continuation step | `[]` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_resume` | `on` resumes from `newton_ckfile` | `'off'` | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
-| `Opt.newton_mumps_relax` | MUMPS working-space relaxation schedule | — | [Arclength continuation](#pseudo-arclength-continuation-solvenewton) |
+| `Opt.newton_target` | target `A0_fund` for the continuation | required | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_start` | continuation start amplitude | `Stab.A0_fund` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_seed2` | second seed point | `1.04*start` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_reuse` | steps a factorisation is reused before a forced refactor | `8` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_it_thresh` | refactor next step if the corrector exceeded this | `8` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_maxit` | corrector back-solves before the factor is called stale | `25` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_dsmax` | maximum arclength step | `3` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_tol` | corrector residual tolerance | `1e-6` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_corrector` | `modified`, or `full` to refactorise every corrector iteration | `'modified'` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_predictor` | `curvature`, or `tangent` for the first-order Keller step | `'curvature'` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_arclength` | arclength metric | `'absolute'` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_seedfile` | cache file for the two seed points | `[]` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_ckfile` | checkpoint written each continuation step | `[]` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_resume` | `on` resumes from `newton_ckfile` | `'off'` | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
+| `Opt.newton_mumps_relax` | MUMPS working-space relaxation schedule | — | [Arclength continuation](#pseudo-arclength-continuation-solve_newton) |
 
 **Linear algebra**
 
@@ -134,6 +136,7 @@ Every `Stab` and `Opt` field the guide documents, grouped by what it controls. "
 |---|---|---|---|
 | `Opt.rerun` | `on` reuses the assembled operator from a previous run | `'off'` | [Running and reruns](#9-running-and-reruns) |
 | `Opt.plot` | `on` / `off` run-time figures | `'on'` | [Output control](#output-control) |
+| `Opt.plot_metric` | amplitude plotted by `plot_amplitudes`: `umax`, `urms` or `energy` (sqrt of `StabRes.E`); the callers pass it, the solver does not read it | `'umax'` | [Output control](#output-control) |
 | `Opt.iter_history` | `on` records amplitudes, residual and energy each iteration | `'off'` | [Iteration history](#iteration-history) |
 | `Opt.xloc` | station for the local energy measure; unset skips it | `[]` | [Iteration history](#iteration-history) |
 | `Opt.save_output` | results file written after post-processing | `[]` | [Saving results to disk](#saving-results-to-disk) |
@@ -244,6 +247,8 @@ Stab.phaseRef = 'pwall';  % 'pwall' = wall pressure reference | 'umax' = max u
 | `'PSE'` | non-parallel linear-PSE seed instead of the local eigenmode |
 | `'LOAD'` | warm-start from a checkpoint, or impose user-defined profiles from a `phiIC` file |
 | `'ZERO'` | no inlet disturbance; the field is generated by wall/freestream forcing alone |
+
+At Ma>1 the fast and slow Mack modes coexist; `Opt.mode_select` picks the branch (`'auto'`, `'slow'` or `'fast'`).
 
 ### Setting initial amplitudes
 
@@ -1025,9 +1030,9 @@ ref_label = '<METHOD>';
 
 if strcmpi(Opt.plot, 'on')
     if ~isempty(ref_file) && isfile(ref_file)
-        plot_amplitudes(StabGrid, StabRes, struct('file', ref_file, 'label', ref_label));
+        plot_amplitudes(StabGrid, StabRes, struct('file', ref_file, 'label', ref_label), [], Opt.plot_metric);
     else
-        plot_amplitudes(StabGrid, StabRes);
+        plot_amplitudes(StabGrid, StabRes, [], [], Opt.plot_metric);
     end
     plot_stability(StabGrid, StabRes, Opt);
 end

@@ -40,6 +40,20 @@ scratch output: to run a benchmark on a regenerated base flow, copy it there fir
 cases (`ts_compressible`, `cfi_flat_plate`, `cfi_hump`, `cfi_step`, `cfi_curved_airfoil`, `resonator`,
 `wall_jet`, `newton_continuation`) follow the same pattern: see [README.md](../README.md).
 
+Every per-case script fills one `params` struct. The basic fields, all optional:
+
+| Parameter | Meaning | Default |
+|---|---|---|
+| `params.n_xi_new`, `params.n_eta_new` | number of streamwise and wall-normal points | source resolution |
+| `params.H` | domain height | `BF.H`, else 0.99 of the base-flow height |
+| `params.y_i` | Malik mapping parameter: half of the wall-normal points lie below it | `BF.y_i`, else `H/10` |
+| `params.xi_range` | `[lo, hi]` fractions of the streamwise span to keep | whole span |
+| `params.FD_xi_order_1`, `params.FD_xi_order_2` | order of the streamwise first and second derivatives of the metrics | 4, 2 |
+| `params.FD_eta_method`, `params.FD_eta_order` | wall-normal operator: `cheb`, or `fd` with this order | `'cheb'`, 4 |
+| `params.snap` | move a node onto the box edges of a single step (see [6.](#6-steps-and-blocks-on-the-wall)) | `true` |
+| `params.elliptic`, `params.elliptic_opts` | elliptic smoothing of an unstructured body-fitted mesh; `elliptic_opts` overrides `max_iter`, `tol`, `omega`, `n_uniform` | `false` |
+| `params.plot`, `params.plot_opts` | show the raw and resampled base flow; `plot_opts.xi_slices` / `eta_slices` pick the profiles | `false` |
+
 ## 2. Streamwise clustering
 
 By default the gridgen scripts distribute `nx` stations uniformly in ξ (wall arc length for curvilinear cases, `x` for the flat plate). For cases with a localized feature (hump, leading-edge curvature, roughness element) — or simply to concentrate stations where the disturbance grows fastest — you can cluster stations around one or more centers via a Gaussian step-size modulation. Configured in the per-case gridgen script via three `params` fields:

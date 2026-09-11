@@ -15,7 +15,7 @@ Everything you need before running DeHNSSo, in the order you need it.
 
 ## 1. Prerequisites
 
-- MATLAB R2020b or later. No additional MATLAB toolboxes are used.
+- MATLAB R2020b or later. No toolbox is required; the Parallel Computing Toolbox is used only when `Opt.parfor = 'on' (auto-detected).
 - A base-flow input file `DeHNSSo_input_<case>.mat` holding the `StabGrid` struct.
   Generate one with the scripts in `gridgen/benchmark/`.
 

@@ -131,7 +131,7 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 - **Compressible HNS** — `Opt.compressible = 'on'` activates the full (u, v, w, ρ, T) path (Scholten et al. 2024 density formulation). Pressure perturbation eliminated via the EOS; ρ is a direct state variable. Validated against incompressible LST (Bertolotti) in the Ma → 0 limit and against the Zanus/Bertolotti 2017 PSE M=0.5 benchmark; additional sanity tests at Ma=1.6 and Ma=4.5
 - **Compressible base flow** — `baseflow/CBL/compressibleFSC.m` solves the compressible Falkner-Skan-Cooke similarity problem (adiabatic or isothermal walls, Sutherland viscosity)
 - **Compressible inflow** — CLST eigenvalue solver with Mack F/S mode selection (`Opt.mode_select = 'slow' | 'fast'`) and continuous-spectrum branch rejection
-- **Chu/Mack disturbance energy** — `Opt.plot_metric = 'energy'` plots √E with the compressible energy norm
+- **Chu/Mack disturbance energy** — `postprocess` writes `StabRes.E`; `Opt.plot_metric = 'energy'` plots √E
 
 ### Computational efficiency
 - **LHS matrix reuse** — pass the assembled LHS back across calls via `Opt.rerun = 'on'`; avoids full matrix reassembly for parameter sweeps (amplitude, actuation, frequency)
@@ -156,7 +156,7 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 DeHNSSo/
 ├── callers/
 │   └── benchmark/               — Per-case callers: ts_blasius.m, ts_compressible.m, cfi_flat_plate.m, cfi_hump.m, ...
-├── literature/DeHNSSo-v1/       — The four DeHNSSo-v1 cases on v1's own grids, against v1 reference data
+├── literature/DeHNSSo-v1/       — Three DeHNSSo-v1 cases on v1's own grids, against v1 reference data
 ├── input/                       — Stability grid input, one per case (DeHNSSo_input_<case>.mat)
 ├── literature/                  — Reference data for validation plots (PSE, DNS, LPSE, Zanus/Bertolotti)
 ├── src/                         — Solver source code
@@ -181,7 +181,7 @@ DeHNSSo/
 │   ├── IBL/                     — Incompressible BL (Blasius, Falkner-Skan-Cooke)
 │   ├── CBL/                     — Compressible BL (compressible FSC + Sutherland)
 │   └── output/                  — Generated base flows (bf_ts_blasius.mat, bf_ts_compressible.mat, ...)
-└── docs/                        — installation, gridgen, DeHNSSo and developer guides
+└── docs/                        — dependencies, gridgen, DeHNSSo, reference-cases and developer guides
 ```
 
 ## Workflow
@@ -304,12 +304,12 @@ Set in the caller before calling `main()`:
 | `Opt.xb` | 85 | Buffer start (% of domain) |
 | `Opt.Conv` | `1e-4` | Convergence criterion |
 | `Opt.solver` | `'picard'` | Nonlinear solver: `'picard'` or `'newton'` (pseudo-arclength continuation; needs `Opt.newton_target`) |
-| `Opt.lu_mode` | `'full'` | LU strategy: `'lapack_band'` / `'block_thomas'` / `'full'` / `'auto'` / `'seq'` / `'none'` |
+| `Opt.lu_mode` | `'auto'` | LU strategy: `'lapack_band'` / `'block_thomas'` / `'full'` / `'auto'` / `'seq'` / `'none'` |
 | `Opt.rerun` | `'off'` | Reuse LHS: `'on'` or `'off'` |
 | `Opt.parfor` | auto | Parallel: `'on'` or `'off'` |
 | `Opt.linear` | `'off'` | Linear mode: `'on'` or `'off'` |
 | `Opt.plot` | `'on'` | Plots: `'on'` or `'off'` |
-| `Opt.plot_metric` | `'umax'` | Amplitude metric: `'umax'` / `'urms'` / `'energy'` (Chu/Mack for compressible) |
+| `Opt.plot_metric` | `'umax'` | Amplitude plotted by `plot_amplitudes`: `'umax'` / `'urms'` / `'energy'` (passed by the callers) |
 
 See [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) for a full parameter reference.
 

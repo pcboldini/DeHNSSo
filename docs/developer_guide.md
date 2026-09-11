@@ -18,7 +18,7 @@
 - [4. LHS matrix structure](#4-lhs-matrix-structure)
 - [5. RHS and inhomogeneous BCs](#5-rhs-and-inhomogeneous-bcs)
 - [6. LU strategies](#6-lu-strategies)
-- [6a. `lapack_band` MEX](#6a-lapackband-mex)
+- [6a. `lapack_band` MEX](#6a-lapack_band-mex)
 - [7. ILST inflow computation](#7-ilst-inflow-computation)
 - [8. Adding a new inflow method](#8-adding-a-new-inflow-method)
 - [9. DeHNSSo-v2 changes relative to the heritage version](#9-dehnsso-v2-changes-relative-to-the-heritage-version)
@@ -30,23 +30,24 @@
 DeHNSSo/
 ├── callers/
 │   └── benchmark/                  — Per-case stability callers (identical structure)
-│       ├── ts_blasius.m            — TS waves in Blasius BL (Sec. 6.1)
-│       ├── ts_compressible.m       — Compressible TS waves, Ma = 0.5 (Zanus/Bertolotti)
-│       ├── cfi_flat_plate.m        — Stationary CFI on flat-plate swept BL (Sec. 6.2)
-│       ├── cfi_hump.m              — Stationary CFI over a hump on swept BL (Sec. 6.3)
-│       ├── cfi_curved_airfoil.m    — Stationary CFI on M3J curved swept-wing BL
-│       ├── resonator.m             — TS wave over a Helmholtz resonator (Sec. 6.4)
-│       ├── cfi_step.m              — Stationary CFI over a forward-facing step (embedded boundary)
+│       ├── ts_blasius.m            — TS waves in Blasius BL (DeHNSSo-v1 paper Sec. 6.1)
+│       ├── ts_compressible.m       — Compressible TS waves, Ma = 0.5 (DeHNSSo-v2 paper Sec. 6.1)
+│       ├── cfi_flat_plate.m        — Stationary CFI on flat-plate swept BL (DeHNSSo-v1 paper Sec. 6.2)
+│       ├── cfi_hump.m              — Stationary CFI over a hump on swept BL (DeHNSSo-v1 paper Sec. 6.3)
+│       ├── cfi_curved_airfoil.m    — Stationary CFI on M3J curved swept-wing BL (DeHNSSo-v2 paper Sec. 6.3)
+│       ├── resonator.m             — TS wave over a Helmholtz resonator (DeHNSSo-v2 paper Sec. 6.4)
+│       ├── cfi_step.m              — Stationary CFI over a forward-facing step (DeHNSSo-v1 paper Sec. 6.4)
 │       ├── wall_jet.m              — Prescribed wall forcing (synthetic jet)
 │       └── newton_continuation.m   — Newton pseudo-arclength continuation demo
 ├── input/                          — DeHNSSo_input_<case>.mat (gridgen → solver handoff, gitignored)
 ├── output/                         — Saved StabRes results (Opt.save_output, gitignored)
 ├── literature/                     — Committed reference data (auto-loaded by callers/benchmark/<case>.m via ref_file)
-│   ├── DeHNSSo-v1/                 — The four DeHNSSo-v1 cases on v1's own grids and settings, with v1 reference data
+│   ├── DeHNSSo-v1/                 — Three DeHNSSo-v1 cases on v1's own grids and settings, with v1 reference data
 │   ├── StabRes_Blasius_NPSE.mat        — NPSE for Blasius TS (Fig. 8)
-│   ├── StabRes_Blasius_LPSE.mat        — LPSE for Blasius TS (linear PSE)
 │   ├── StabRes_SweptWing_flat_NPSE.mat — NPSE for swept-wing flat CFI (Fig. 9)
-│   └── StabRes_SweptWing_Hump_AHLNS.mat — AHLNS for swept-wing hump CFI (Fig. 10)
+│   ├── StabRes_SweptWing_Hump_AHLNS.mat — AHLNS for swept-wing hump CFI (Fig. 10)
+│   ├── StabRes_SweptWing_step_DNS.mat  — DNS for swept-wing forward-facing-step CFI
+│   └── Zanus_PSE_CPG_M05_F40.mat       — PSE for compressible TS, Ma = 0.5
 ├── src/
 │   ├── main.m                      — Main entry point (convergence loop)
 │   ├── init/                       — Initialization
@@ -62,7 +63,8 @@ DeHNSSo/
 │   ├── boundary/                   — Boundary conditions
 │   │   ├── setup_boundary.m        — Interpolate Stab.bcw/bct onto the grid; outflow buffer; resolve Opt.hr
 │   │   ├── add_wall_forcing.m      — Apply the gridgen-defined wall forcing (sets Stab.bcw)
-│   │   └── apply_resonator_wall.m  — Helmholtz-resonator impedance wall BC + optional mouth u'-slip (Opt.hr)
+│   │   ├── apply_resonator_wall.m  — Helmholtz-resonator impedance wall BC + optional mouth u'-slip (Opt.hr)
+│   │   └── bc_rows.m               — Row indices of the wall and freestream BC rows in a station block (shared by LHS and RHS)
 │   ├── hns/                        — Core HNS equations + solve
 │   │   ├── LHS.m                   — Assemble incompressible LHS (per mode)
 │   │   ├── LHS_compressible.m      — Assemble compressible (u,v,w,rho,T) LHS
@@ -84,9 +86,9 @@ DeHNSSo/
 │   ├── convergence/
 │   │   ├── check_convergence.m     — Convergence criterion, amplitude ramping
 │   │   └── update_modes.m          — Update u/v/w/p, amplitudes, active mode set
-│   ├── postprocess/
-│   │   ├── postprocess.m           — Normalize shape functions, compute wavenumbers
-│   │   └── ModeToModeNumber.m
+│   ├── io/
+│   │   ├── postprocess.m           — Normalize shape functions, compute wavenumbers, StabRes.E
+│   │   └── print_config.m          — Print the run configuration
 │   ├── plot/
 │   │   ├── plot_amplitudes.m       — Final amplitude vs x (with optional reference)
 │   │   ├── plot_stability.m        — N-factor, growth rates, wavenumber, phase speed, eigenfunctions
@@ -96,22 +98,27 @@ DeHNSSo/
 │       ├── chebdif.m              — Chebyshev differentiation matrices (Weideman-Reddy)
 │       ├── MappingMalik.m         — Malik wall-normal grid mapping (used by the inflow solvers)
 │       └── FD*.m / fornberg_weights.m — Finite-difference operators (uniform + arbitrary spacing)
+│   ├── thermo/                     — sutherland.m (viscosity and conductivity laws)
+│   └── external/mumps_5.3.5/       — MUMPS sources, MATLAB gateway and install scripts (see docs/dependencies.md)
 ├── gridgen/                        — Grid generation and base-flow preprocessing
 │   ├── main_gridgen.m              — Pipeline entry point (function called by per-case scripts)
 │   ├── benchmark/                  — Per-case grid-gen scripts
 │   │   ├── one per case, named as in callers/benchmark/: ts_blasius.m, ts_compressible.m, cfi_flat_plate.m,
 │   │   │   cfi_hump.m, cfi_step.m, cfi_curved_airfoil.m, resonator.m, wall_jet.m, newton_continuation.m
 │   └── src/                        — grouped by pipeline role (see gridgen/src/README.md)
-│       ├── io/                     — load_bf, classify_input, ensure_metadata
+│       ├── io/                     — load_bf, classify_input, ensure_metadata, detect_wall_solid
 │       ├── resample/              — resample_{cartesian,curvilinear,unstructured}, solve_elliptic_mesh, cluster_xi, report_clustering
-│       ├── grid/                   — build_stab_grid, compute_{cheb,fd}_operators, compute_bf_derivatives, bf_deriv_fields
+│       ├── grid/                   — build_stab_grid, step_geometry, compute_{cheb,fd}_operators, compute_bf_derivatives, bf_deriv_fields
 │       ├── forcing/                — prepare_forcing, flatten_forcing (wall forcing)
 │       ├── math/                   — deriv1_uneven, deriv2_uneven, chebDiff
 │       ├── util/                   — get_opt, resolve_trim
 │       └── plot/                   — plot_raw_bf, plot_resampled_bf
 └── baseflow/                       — Boundary-layer solvers
+    ├── caller/                     — caller_IBL, caller_CBL (write bf_<case>.mat)
     ├── IBL/                        — Incompressible BL (Blasius, Falkner-Skan-Cooke)
-    └── output/benchmark/           — Committed reference base flows: bf_ts_blasius, bf_ts_compressible, bf_cfi_flat_plate, bf_cfi_hump
+    ├── CBL/                        — Compressible BL (compressibleFSC, continuity_V)
+    ├── math/                       — chebdif, MappingMalik, FD1d4o (copies of src/math, kept separate on purpose)
+    └── output/benchmark/           — Committed reference base flows: bf_ts_blasius, bf_ts_compressible, bf_cfi_flat_plate
                                       (the M006 resonator flow and the two CSV flows are local only, not shipped)
 ```
 
