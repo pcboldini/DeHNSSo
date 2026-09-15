@@ -252,21 +252,26 @@ At Ma>1 the fast and slow Mack modes coexist; `Opt.mode_select` picks the branch
 
 ### Setting initial amplitudes
 
-The simplest way is to set the fundamental amplitude as a scalar:
+The simplest way is one scalar:
 
 ```matlab
-Stab.A0_fund = 0.00125*sqrt(2);  % fundamental mode amplitude
+Stab.A0_fund = 0.0025*sqrt(2);  % fundamental mode amplitude
 ```
 
-`init.m` automatically builds the full amplitude vector with conjugate pairs. For per-mode control, set `Stab.A0` directly:
+`A0_fund` seeds **one mode only**, picked from `M`, `N`, `omega_0`, `beta_0`: (1, 0) for a TS wave (`N = 0`), (0, 1) for stationary CFI (`M = 0` or `omega_0 = 0`), and the oblique (1, 1) when `M >= 1`, `N >= 1` and both wavenumbers are nonzero. So raising `M` from 0 to 1 in a stationary-CFI run moves the amplitude from (0, 1) to (1, 1).
+
+To seed several modes, set `Stab.A0` per mode instead (each mode plus its conjugate `-m, -n`, same value). A stationary and a travelling crossflow mode:
 
 ```matlab
+Stab.M = 1;  Stab.N = 5;
 Stab.A0 = zeros(1, (2*Stab.N+1)*(2*Stab.M+1));
-Stab.A0(ModeToModeNumber( 1, 0, Stab.M, Stab.N)) = 0.00125*sqrt(2);
-Stab.A0(ModeToModeNumber(-1, 0, Stab.M, Stab.N)) = 0.00125*sqrt(2);
+Stab.A0(ModeToModeNumber( 0, 1, Stab.M, Stab.N)) = 0.002;    % stationary CFI (0,1)
+Stab.A0(ModeToModeNumber( 0,-1, Stab.M, Stab.N)) = 0.002;    % its conjugate
+Stab.A0(ModeToModeNumber( 1, 1, Stab.M, Stab.N)) = 0.0005;   % travelling CFI (1,1)
+Stab.A0(ModeToModeNumber(-1,-1, Stab.M, Stab.N)) = 0.0005;   % its conjugate
 ```
 
-Always set both the mode and its conjugate (index `-m`, `-n`) to ensure real physical fields.
+Leave `A0_fund` unset when `Stab.A0` is given.
 
 ### Amplitude convention
 
