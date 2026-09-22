@@ -29,6 +29,7 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 - **MUMPS diagnostics** — `Opt.newton_analyze_only` (analysis only) and back-solve timing in `Opt.newton_stats_file`
 - **`Opt.xloc`** — station of the local energy measure; `Opt.iter_history` documented
 - **Resonator benchmark** — Gaussian-clustered grid at the neck, Ma=0.061 base flow included
+- **Resolvent analysis** — `src/hns/resolvent.m` gives the optimal forcing and response of one mode from the LU factors of a linear run. Incompressible only.
 
 ## Recent updates (August 2026)
 
@@ -385,6 +386,7 @@ Contact P.C.Boldini@tudelft.nl if interested in contributing.
 ## References
 
 - S. Westerbeek, S. Hulshoff, H. Schuttelaars, M. Kotsonis. *DeHNSSo: The Delft Harmonic Navier-Stokes Solver for nonlinear stability problems with complex geometric features.* Computer Physics Communications 302, 109250 (2024). [DOI](https://doi.org/10.1016/j.cpc.2024.109250)
+- D. Sipp, O. Marquet. *Characterization of noise amplifiers with global singular modes: the case of the leading-edge flat-plate boundary layer.* Theoretical and Computational Fluid Dynamics 27, 617–635 (2013). [DOI](https://doi.org/10.1007/s00162-012-0265-y) (resolvent analysis)
 
 ## License
 

@@ -79,6 +79,24 @@ grep -q 'MUMPS_INT);' "$G" || {
       "$G"
     grep -q 'MUMPS_INT' "$G" || { echo "ERROR: gateway patch did not apply."; exit 1; }
 }
+# the stock gateway also counts nonzeros in C int: array lengths, nz and the copy
+# loop counters are cast to 32 bits, so a Jacobian with more than 2^31 nonzeros
+# fails with "Malloc failed in mumpsmex.c". Widen them to the 64-bit types the
+# ILP64 library and MATLAB already use.
+grep -q 'mwSize i,j,pos;' "$G" || {
+    sed -i \
+      -e 's#^  int i,j,pos;#  mwSize i,j,pos;#' \
+      -e 's#MYMALLOC((dmumps_par->jcn),(int)netrue,MUMPS_INT);#MYMALLOC((dmumps_par->jcn),(size_t)netrue,MUMPS_INT);#' \
+      -e 's#MYMALLOC((dmumps_par->irn),(int)netrue,MUMPS_INT);#MYMALLOC((dmumps_par->irn),(size_t)netrue,MUMPS_INT);#' \
+      -e 's#MYMALLOC((dmumps_par->a),(int)netrue,double2);#MYMALLOC((dmumps_par->a),(size_t)netrue,double2);#' \
+      -e 's#dmumps_par->nz_alloc = (int)netrue;#dmumps_par->nz_alloc = (MUMPS_INT)netrue;#' \
+      -e 's#dmumps_par->nz = (int)ne;#dmumps_par->nz = (MUMPS_INT)ne;#' \
+      -e 's#(dmumps_par->irn)\[j\] = ((int)irn_in\[j\])+1;#(dmumps_par->irn)[j] = ((MUMPS_INT)irn_in[j])+1;#' \
+      -e 's#(dmumps_par->irn)\[pos\] = (int)irn_in\[j\]+1;#(dmumps_par->irn)[pos] = (MUMPS_INT)irn_in[j]+1;#' \
+      "$G"
+    grep -q 'mwSize i,j,pos;' "$G" || { echo "ERROR: 64-bit nnz patch did not apply."; exit 1; }
+    grep -q '(size_t)netrue' "$G" || { echo "ERROR: 64-bit nnz patch did not apply."; exit 1; }
+}
 
 echo "==> installing MATLAB/make.inc"
 sed -e "s#\$(MUMPSDIR)#$SRC#g" \

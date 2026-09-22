@@ -41,7 +41,8 @@
     - [Saving results to disk](#saving-results-to-disk)
     - [Figures produced during a run](#figures-produced-during-a-run)
     - [Post-processing](#post-processing)
-- [11. Common issues](#11-common-issues)
+- [11. Resolvent analysis](#11-resolvent-analysis)
+- [12. Common issues](#12-common-issues)
 
 ## Option index
 
@@ -494,6 +495,8 @@ wide it is and its shape, in the gridgen script. Seven forms are available; see
 ```matlab
 Stab = add_wall_forcing(Stab, StabGrid, Opt, struct('A', 1e-4));   % xc/w/shape from gridgen
 ```
+
+`A` is the peak of the forcing on the solver grid, exactly: the stored profile has unit peak as a function of `x`, but no grid node need sit at that peak, so `add_wall_forcing` rescales the sampled profile by its own maximum before applying `A`. The sampled maximum is returned as `info.peak_sampled` (typically 0.999-1).
 
 `spec` fields: `A` (amplitude, physical `2|û|` like `Stab.A0`, required), optional `phi` (phase), `comp` (1 u / 2 v / 3 w, and 4 T compressible; default 2), `mode` (`[m n]`, default `[1 0]`), and `which` to pick one forcing when gridgen stored several. The forcing is **added** to any existing `Stab.bcw`, so call once per source to stack several:
 
@@ -1056,9 +1059,31 @@ Reference data shipped in `literature/`:
 
 To overlay a different reference, point `ref_file` at any `.mat` file with a `StabRes` struct in the format that `plot_amplitudes` expects (see `src/plot/plot_amplitudes.m`).
 
+## 11. Resolvent analysis
+
+The resolvent finds, for a mode (ω, β), the body force `f` that produces the largest response, and its gain `σ` (Sipp & Marquet, TCFD 2013). `resolvent.m` (`src/hns/`) reuses the operator and LU factors of a linear run (`Opt.lu_mode = 'full'`):
+
+```matlab
+[StabRes, StabGrid, LHS] = main(Stab, StabGrid, Opt);
+Res = resolvent(StabGrid, Opt, LHS, struct('omega', Stab.omega_0, 'k', 2));
+Res.sigma                        % gains, largest first
+Res.uf(:,:,1), Res.ur(:,:,1)     % optimal forcing (unit energy) and its response (energy sigma^2)
+```
+
+| `spec` field | meaning | default |
+|---|---|---|
+| `omega`, `beta` | mode | `beta = 0` |
+| `k` | number of modes | 2 |
+| `xf`, `xr`, `yf`, `yr` | forcing and response windows, `[lo hi]` in grid units | station 2 to the buffer, full height |
+| `comp_f`, `comp_r` | velocity components forced and measured | `[1 2]` (u, v) |
+
+The forcing enters the momentum equations as `ML q = B f`, with `B`, `C` the selectors of the two windows and `W` the quadrature weights. The gain is `σ² = (q^H C^H W C q) / (f^H W f)`; its maxima are the singular values of `R = W_r^{1/2} C ML^{-1} B W_f^{-1/2}`, computed with `svds` from one forward and one adjoint solve per iteration with the same LU factors. Boundary rows, continuity rows and the buffer are excluded; incompressible operator only. Use a Dirichlet freestream, drop `Res.F` (the LU factors) before saving, and multiply `σ` by `lref/L` to compare with a code scaled on `L`.
+
+Reference: D. Sipp, O. Marquet. *Characterization of noise amplifiers with global singular modes: the case of the leading-edge flat-plate boundary layer.* Theoretical and Computational Fluid Dynamics 27, 617–635 (2013). [DOI](https://doi.org/10.1007/s00162-012-0265-y)
+
 ---
 
-## 11. Common issues
+## 12. Common issues
 
 | Problem | Likely cause | Fix |
 |---|---|---|

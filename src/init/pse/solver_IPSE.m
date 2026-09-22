@@ -315,11 +315,11 @@ p   = phi(3*N+1:4*N,:);
 %% Normalise shape functions and correct the growth rate
 
 % Calculate the streamwise derivative of u
-dux = gradient(u,dx);
+dux = zeros(size(u));           % march grid is non-uniform in x
+for k = 1:size(u,1); dux(k,:) = gradient(u(k,:), x_md(1,:)); end
 
 % Residual growth of the eigenfunction evaluated at umax (Bertolotti thesis,
-% p.28). The real part of the correction, in error in the thesis, is fixed
-% here.
+% p.28). 
 alphaphi = zeros(1,nx);
 
 yinteg=linspace(0,max(y),4000);

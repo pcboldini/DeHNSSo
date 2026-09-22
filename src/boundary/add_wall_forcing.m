@@ -35,7 +35,8 @@ function [Stab, info] = add_wall_forcing(Stab, StabGrid, Opt, spec)
 %   overwriting) any forcing already stored there.
 %
 %   spec fields:
-%     A      peak amplitude, physical 2|u| convention like Stab.A0 (required)
+%     A      peak amplitude, physical 2|u| convention like Stab.A0 (required);
+%            exact on the solver grid, max|Stab.bcw| == A
 %     phi    phase [rad] (default 0)
 %     comp   velocity component 1 u / 2 v / 3 w (default 2)
 %     mode   [m n] mode the forcing drives (default [1 0], fundamental)
@@ -62,7 +63,7 @@ function [Stab, info] = add_wall_forcing(Stab, StabGrid, Opt, spec)
 %% Outputs
 % Name size         unit   explanation
 % Stab (1,1) struct [-]    disturbance specification: modal truncation, frequencies, inflow condition and amplitudes
-% info (1,1) struct [-]    what was applied: amplitude, phase, component, mode and the affected stations
+% info (1,1) struct [-]    what was applied: amplitude, phase, component, mode, the affected stations and the sampled peak before renormalisation
 
 x  = StabGrid.xun(1, :);
 nx = numel(x);
@@ -94,8 +95,14 @@ else
            'or spec.xc/spec.w (actuator).']);
 end
 
+% ---- renormalise on the solver grid -------------------------------------------
+pk = max(abs(vprof));
+assert(pk > 0, 'add_wall_forcing:offGrid', ...
+    'Forcing profile is zero on every grid station (xc=%.4g, w=%.4g).', xc, w);
+vprof = vprof / pk;
+
 % ---- resolution check: does the grid resolve the profile? -------------------
-active = abs(vprof) > 1e-6 * max(abs(vprof));
+active = abs(vprof) > 1e-6;
 if nnz(active) < 4
     warning('add_wall_forcing:underResolved', ...
         ['Wall forcing spans only %d grid stations. Refine the mesh in gridgen: ' ...
@@ -133,7 +140,7 @@ end
 if nargout > 1
     info = struct('xc', xc, 'w', w, 'kind', kind, 'active', active, ...
                   'idx', find(active), 'x', x, 'comp', comp, 'mode', mode, ...
-                  'j', j, 'jc', jc);
+                  'j', j, 'jc', jc, 'peak_sampled', pk);
 end
 
 fprintf(['Wall forcing (%s): comp %d, mode [%d %d], xc=%.4g, w=%.4g, A=%.3e, ' ...
