@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/logo/DeHNSSo_logo.svg" alt="DeHNSSo: Delft Harmonic Navier-Stokes Solver" width="420">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/DeHNSSo_logo_dark.svg">
+    <img src="docs/logo/DeHNSSo_logo.svg" alt="DeHNSSo: Delft Harmonic Navier-Stokes Solver" width="420">
+  </picture>
 </p>
 
 # DeHNSSo-v2
