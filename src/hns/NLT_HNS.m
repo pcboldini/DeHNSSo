@@ -2,17 +2,17 @@ function [ f ] = NLT_HNS(Grid,RunJ,StabRes,D1,HB,use_parfor)
 %% License (GNU GENERAL PUBLIC LICENSE v3)
 %                  Delft Harmonic Navier-Stokes Solver
 %     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
-% 
+%
 %     This program is free software: you can redistribute it and/or modify
 %     it under the terms of the GNU General Public License as published by
 %     the Free Software Foundation, either version 3 of the License, or
 %     (at your option) any later version.
-% 
+%
 %     This program is distributed in the hope that it will be useful,
 %     but WITHOUT ANY WARRANTY; without even the implied warranty of
 %     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 %     GNU General Public License for more details.
-% 
+%
 %     You should have received a copy of the GNU General Public License
 %     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %
@@ -74,7 +74,7 @@ if nargin < 6 || isempty(use_parfor); use_parfor = false; end
 iu = 1i;
 
 if isfield(StabRes, 'q') && ~isempty(StabRes.q)
-    nvar = round(size(StabRes.q, 2) / (ny*nx));   % 4 incompressible | 5 compressible
+    nvar = round(size(StabRes.q, 2) / (ny*nx));
 elseif isfield(StabRes, 'T') && ~isempty(StabRes.T)
     nvar = 5;
 else
@@ -132,7 +132,7 @@ if nvar == 5
         dTdxi(j,:,:)  = squeeze(StabRes.T(j,:,:)) * D_xi.';
         dTdeta(j,:,:) = D1 * squeeze(StabRes.T(j,:,:));
     end
-    Ec = (Grid.gamma - 1) * Grid.Ma^2;        % Eckert number = (gamma-1) Ma^2
+    Ec = (Grid.gamma - 1) * Grid.Ma^2;
     % base-flow fields/gradients for the rho'-coupling group -rho'(d_t + Ubar.grad + u'.grad Ubar)
     Ubar = Grid.U; Vbar = Grid.V; Wbar = Grid.W;
     bdxU = Grid.dxU; bdyU = Grid.dyU; bdxV = Grid.dxV; bdyV = Grid.dyV;
@@ -160,9 +160,9 @@ Re = Grid.Re;
 % Pr is compressible-only; NaN so a compressible path without it fails loudly.
 if isfield(Grid,'Pr'); RePr = Grid.Re*Grid.Pr; else; RePr = NaN; end
 muT_b=[]; muTT_b=[]; mu_b=[]; lamT_b=[]; lamTT_b=[]; lam_b=[];
-if isfield(Grid,'dmuT')            % base-flow viscosity terms (constant across modes)
+if isfield(Grid,'dmuT')
     muT_b = Grid.dmuT;  muTT_b = Grid.d2muT2;  mu_b = Grid.mu;
-    lamT_b = -2/3*muT_b; lamTT_b = -2/3*muTT_b; lam_b = -2/3*mu_b;   % Stokes bulk lambda=-2/3 mu
+    lamT_b = -2/3*muT_b; lamTT_b = -2/3*muTT_b; lam_b = -2/3*mu_b;
 end
 
 % Solve the upper half of the spectrum only (the rest follows by conjugate
@@ -170,7 +170,7 @@ end
 % parallel (poolM=Inf) with identical results.
 jlist = RunJ(RunJ >= round(nf/2));
 nj    = numel(jlist);
-frows = zeros(nj, nvar*ny*(nx-1));    % one forcing row per solved mode
+frows = zeros(nj, nvar*ny*(nx-1));
 poolM = 0; if use_parfor; poolM = Inf; end
 parfor (idx = 1:nj, poolM)
     j = jlist(idx);
@@ -187,9 +187,9 @@ parfor (idx = 1:nj, poolM)
     xm_j = zeros(ny, nx);
     ym_j = zeros(ny, nx);
     zm_j = zeros(ny, nx);
-    cm_j = zeros(ny, nx);          % continuity (rho) NLT: -div(rho' u')
-    em_j = zeros(ny, nx);          % energy (T) NLT: convection + dilatation + viscous
-    xmr_j = zeros(ny, nx);         % momentum rho'-coupling (not rho_bar-weighted)
+    cm_j = zeros(ny, nx);
+    em_j = zeros(ny, nx);
+    xmr_j = zeros(ny, nx);
     ymr_j = zeros(ny, nx);
     zmr_j = zeros(ny, nx);
 
@@ -293,7 +293,7 @@ parfor (idx = 1:nj, poolM)
             dwg_y = squeeze(dwdxi(gh,:,:)).*xiy + squeeze(dwdeta(gh,:,:)).*etay;
             dTg_x = squeeze(dTdxi(gh,:,:)).*xix + squeeze(dTdeta(gh,:,:)).*etax;
             dTg_y = squeeze(dTdxi(gh,:,:)).*xiy + squeeze(dTdeta(gh,:,:)).*etay;
-            divU = du_jk_dx + dv_jk_dy + iu*beta.*w_jk;     % div u'_jk
+            divU = du_jk_dx + dv_jk_dy + iu*beta.*w_jk;
             % c_v pressure-dilatation -(gamma-1)(rho T div u)'.
             em_j = em_j - (Grid.gamma-1)*( Grid.rho.*T_gh.*divU ...
                                          + rho_gh.*Grid.T.*divU ...
@@ -343,7 +343,7 @@ parfor (idx = 1:nj, poolM)
                 + (Grid.gamma*Ec/Re)*mu_b.*( dwg_y.*dw_jk_dy + 2*dwg_y.*(iu*beta.*v_jk) + (iu*beta_gh.*v_gh).*(iu*beta.*v_jk) ) ...
                 + (Grid.gamma*Ec/Re)*2*muT_b.*T_gh.*( bdyW.*dw_jk_dy + bdyW.*(iu*beta.*v_jk) ) ...
                 + (Grid.gamma*Ec/Re)*mu_b.*( dwg_x.*dw_jk_dx + 2*dwg_x.*(iu*beta.*u_jk) + (iu*beta_gh.*u_gh).*(iu*beta.*u_jk) ) ...
-                + (Grid.gamma*Ec/Re)*2*muT_b.*T_gh.*( bdxW.*(iu*beta.*w_jk + dw_jk_dx) + bdxW.*(iu*beta.*u_jk) );
+                + (Grid.gamma*Ec/Re)*2*muT_b.*T_gh.*( bdxW.*dw_jk_dx + bdxW.*(iu*beta.*u_jk) );
         end
     end
 

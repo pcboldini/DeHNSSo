@@ -1,17 +1,17 @@
 %% License (GNU GENERAL PUBLIC LICENSE v3)
 %                  Delft Harmonic Navier-Stokes Solver
 %     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
-% 
+%
 %     This program is free software: you can redistribute it and/or modify
 %     it under the terms of the GNU General Public License as published by
 %     the Free Software Foundation, either version 3 of the License, or
 %     (at your option) any later version.
-% 
+%
 %     This program is distributed in the hope that it will be useful,
 %     but WITHOUT ANY WARRANTY; without even the implied warranty of
 %     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 %     GNU General Public License for more details.
-% 
+%
 %     You should have received a copy of the GNU General Public License
 %     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %
@@ -50,11 +50,11 @@ params.plot      = false;
 %   params.forcing = struct('xc', [1379.1, 2000, 3000], 'w', 18);
 %   params.forcing = {struct('xc',1379.1,'w',18), struct('x',x_data,'v',v_data)};
 params.forcing = struct('xc', 1379.1, 'w', 18, 'shape', 'cosine');
-params.refine  = 10/3;           % ag = 0.3
+params.refine  = 10/3;
 
 %% Grid operators
 params.FD_xi_order_1 = 4;
-params.FD_xi_order_2 = 2;
+params.FD_xi_order_2 = 4;
 params.FD_eta_method = 'cheb';
 params.FD_eta_order  = 4;
 

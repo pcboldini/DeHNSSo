@@ -26,7 +26,7 @@
 %   Solves the self-similar compressible boundary layer for the case set in the
 %   USER INPUTS block and writes baseflow/output/bf_ts_compressible.mat, ready for
 %   gridgen. The shipped settings are the Zanus and Bertolotti compressible
-%   PSE benchmark: Ma = 0.5, Pr = 0.72, adiabatic flat plate at Te = 206 K.
+%   PSE benchmark: Ma = 0.5, Pr = 0.70, adiabatic flat plate at Te = 206 K.
 %
 %   Run this before gridgen/benchmark/ts_compressible.m.
 clc; clear all; format long
@@ -40,7 +40,7 @@ addpath(genpath(rootdir));
 
 % Flow parameters
 BL.Ma       = 0.50;
-BL.Pr       = 0.72;
+BL.Pr       = 0.70;
 BL.gamma    = 1.4;
 
 % Boundary layer type
@@ -59,7 +59,7 @@ p_e      = 1500;            % [Pa]
 R_gas    = 287.1;           % [J/(kg K)] air
 mu_ref   = 1.716e-5;        % Sutherland reference μ
 T_ref_mu = 273.15;          % Sutherland reference T
-S_suth   = 110.4;           % [K]
+S_suth   = 110.6;           % [K]
 
 % Non-dim domain (Blasius lref convention: R_start = Re_0).  Zanus/Bertolotti M05 data
 % spans R ~ 643 to 1381 — start upstream, end past branch II + buffer.

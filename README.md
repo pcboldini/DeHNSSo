@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo/DeHNSSo_logo.svg" alt="DeHNSSo: Delft Harmonic Navier-Stokes Solver" width="420">
+</p>
+
 # DeHNSSo-v2
 
 [![MATLAB](https://img.shields.io/badge/MATLAB-R2025b-0076A8)](https://www.mathworks.com/products/matlab.html)
@@ -15,21 +19,19 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 
 > **First draft (September 2026), paper in preparation.** For questions about the method or implementation, contact **Pietro Carlo Boldini** — P.C.Boldini@tudelft.nl
 
-**Last updated:** 11 September 2026
+**Last updated:** 22 September 2026
 
 ---
 
 ## Recent updates (September 2026)
 
-- **Benchmark cases renamed** — one name per case through all three stages: `baseflow/output/benchmark/bf_<case>.mat`, `gridgen/benchmark/<case>.m` writing `input/DeHNSSo_input_<case>.mat`, and `callers/benchmark/<case>.m`. `ts_` cases are Tollmien-Schlichting (`ts_blasius`, `ts_compressible`), `cfi_` cases crossflow (`cfi_flat_plate`, `cfi_hump`, `cfi_step`, `cfi_curved_airfoil`); `wall_jet`, `resonator`, `newton_continuation` and `csv_input` complete the set. Old names such as `blasius.m` and `sweptwing_flat.m` are gone; see `docs/reference_cases.md`
-- **MUMPS on Linux** — `src/external/mumps_5.3.5/install/install_mumps_linux.sh` builds MUMPS 5.3.5 and its MATLAB gateway on x86-64 Linux (ILP64, MATLAB's own BLAS, METIS); the macOS build moved to `install_mumps_macos.sh`. Both in `docs/dependencies.md`, which replaces `installation.md`
-- **Mean-flow distortion on Chebyshev grids** — the (0,0) operator is real and its sparse LU now uses full partial pivoting, fixing a factor-of-two error in the swept-wing MFD that the incomplete pivoting had introduced
-- **Inflow seeding rewritten** — `inflow.m` is one `switch` over `Stab.IC` with small per-mode helpers
-- **Source restyled** — short description blocks and lean comments across `src/`, `gridgen/`, `baseflow/` and the callers
-- **MUMPS diagnostics** — `Opt.newton_analyze_only` (analysis only) and back-solve timing in `Opt.newton_stats_file`
-- **`Opt.xloc`** — station of the local energy measure; `Opt.iter_history` documented
-- **Resonator benchmark** — Gaussian-clustered grid at the neck, Ma=0.061 base flow included
-- **Resolvent analysis** — `src/hns/resolvent.m` gives the optimal forcing and response of one mode from the LU factors of a linear run. Incompressible only.
+- **Benchmark cases renamed** — one name per case for base flow, grid and caller (`bf_<case>.mat`, `gridgen/benchmark/<case>.m`, `callers/benchmark/<case>.m`); see `docs/reference_cases.md`
+- **MUMPS on Linux** — `install_mumps_linux.sh` (ILP64, MATLAB BLAS, METIS) next to `install_mumps_macos.sh`; see `docs/dependencies.md`
+- **Mean-flow distortion on Chebyshev grids** — full partial pivoting in the (0,0) LU fixes a factor-of-two error in the swept-wing MFD
+- **Inflow seeding rewritten** — one `switch` over `Stab.IC` in `inflow.m`
+- **MUMPS diagnostics** — `Opt.newton_analyze_only` and `Opt.newton_stats_file`
+- **`Opt.xloc`** — station of the local energy measure
+- **Resolvent analysis** — `src/hns/resolvent.m`, optimal forcing and response of one mode (incompressible)
 
 ## Recent updates (August 2026)
 
@@ -386,7 +388,6 @@ Contact P.C.Boldini@tudelft.nl if interested in contributing.
 ## References
 
 - S. Westerbeek, S. Hulshoff, H. Schuttelaars, M. Kotsonis. *DeHNSSo: The Delft Harmonic Navier-Stokes Solver for nonlinear stability problems with complex geometric features.* Computer Physics Communications 302, 109250 (2024). [DOI](https://doi.org/10.1016/j.cpc.2024.109250)
-- D. Sipp, O. Marquet. *Characterization of noise amplifiers with global singular modes: the case of the leading-edge flat-plate boundary layer.* Theoretical and Computational Fluid Dynamics 27, 617–635 (2013). [DOI](https://doi.org/10.1007/s00162-012-0265-y) (resolvent analysis)
 
 ## License
 

@@ -49,7 +49,7 @@ params.plot      = false;
 
 %% Grid operators
 params.FD_xi_order_1 = 4;
-params.FD_xi_order_2 = 2;
+params.FD_xi_order_2 = 4;
 params.FD_eta_method = 'cheb';
 params.FD_eta_order  = 4;
 

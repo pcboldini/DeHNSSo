@@ -88,6 +88,11 @@ BF.dxU = StabGrid.dxU;  BF.dxV = StabGrid.dxV;  BF.dxW = StabGrid.dxW;
 BF.dyU = StabGrid.dyU;  BF.dyV = StabGrid.dyV;  BF.dyW = StabGrid.dyW;
 
 if is_compr
+    % Viscosity and its temperature derivatives are recomputed from T and S*, not taken
+    % from the stored grid: grids generated before 4 Oct 2026 carry a wrong d2muT2.
+    if isfield(StabGrid,'Sstar') && ~isempty(StabGrid.Sstar) && isfield(StabGrid,'T')
+        [StabGrid.mu, StabGrid.dmuT, StabGrid.d2muT2] = sutherland(StabGrid.T, StabGrid.Sstar);
+    end
     required = {'rho','T','dxrho','dyrho','dxT','dyT', ...
                 'dxxU','dxxV','dxxW','dxxT', ...
                 'ddyU','ddyV','ddyW','ddyT','dxyU','dxyV', ...

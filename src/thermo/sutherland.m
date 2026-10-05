@@ -27,13 +27,13 @@ function [mu, dmuT, d2muT2] = sutherland(T, Sstar)
 %   [mu, dmuT, d2muT2] = sutherland(T, Sstar)
 %
 %   Non-dimensional form: mu = T^(3/2) (1 + S*) / (T + S*)
-%   where S* = S / T_inf  (S = 110.4 K for air).
+%   where S* = S / T_inf  (S = 110.6 K for air).
 %
 
 %% Inputs
 % Name  size unit   explanation
 % T          [-]    non-dimensional temperature T/T_inf  (array)
-% Sstar      [-]    S/T_inf  (scalar, e.g. 110.4/288 for air at T_inf = 288 K)
+% Sstar      [-]    S/T_inf  (scalar, e.g. 110.6/288 for air at T_inf = 288 K)
 
 %% Outputs
 % Name   size unit   explanation
@@ -52,9 +52,10 @@ end
 
 %% Second derivative
 if nargout >= 3
-    % obtained by differentiating dmu/dT
+    % d2mu/dT2 = mu/T^2 * (3/4 - T(T + 3S*)/(T + S*)^2), from mu'' = mu*(g^2 + g'),
+    % g = dln(mu)/dT = 3/(2T) - 1/(T + S*); for S* -> 0 it gives -1/4, as for mu = sqrt(T)
     TpS = T + Sstar;
-    d2muT2 = mu ./ T.^2 .* (3/4 + Sstar * (3*Sstar - T) ./ (2 * TpS.^2));
+    d2muT2 = mu ./ T.^2 .* (3/4 - T .* (T + 3*Sstar) ./ TpS.^2);
 end
 
 end

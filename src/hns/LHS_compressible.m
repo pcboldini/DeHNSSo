@@ -2,17 +2,17 @@ function [MLAMFD,MLA1,MLA2,MLA3,MLA4,MLA5] = LHS_compressible(BF,Bound,Grid,Init
 %% License (GNU GENERAL PUBLIC LICENSE v3)
 %                  Delft Harmonic Navier-Stokes Solver
 %     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
-% 
+%
 %     This program is free software: you can redistribute it and/or modify
 %     it under the terms of the GNU General Public License as published by
 %     the Free Software Foundation, either version 3 of the License, or
 %     (at your option) any later version.
-% 
+%
 %     This program is distributed in the hope that it will be useful,
 %     but WITHOUT ANY WARRANTY; without even the implied warranty of
 %     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 %     GNU General Public License for more details.
-% 
+%
 %     You should have received a copy of the GNU General Public License
 %     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %
@@ -110,7 +110,6 @@ D1_is_sparse = issparse(Grid.D1) && (nnz(Grid.D1) < 0.2 * ny^2);
 use_full = (ny >= 60) && ~D1_is_sparse;
 
 fd_order_x = 4;
-if isfield(Grid,'FD_eta_order') && Grid.FD_eta_order == 6; fd_order_x = 6; end
 if use_full
     D1f = full(D1);  D2f = full(D2);  If = full(I);  Zf = full(Z);
 else
@@ -563,7 +562,7 @@ end
 
 % blk1 (MLA1): Ei*d/dxi + Fi*d2/dxi2 across the stencil, Ai on the current block;
 % blk5 (MLA5, spanwise Ki): first-derivative only (Ki*d/dxi).
-nblk = numel(stenr) / bsize;         % number of stencil stations (blocks)
+nblk = numel(stenr) / bsize;
 blk1MFD = cell(1, nblk);  blk5c = cell(1, nblk);
 for kk = 1:nblk
     blk1MFD{kk} = Ei*w1(kk) + Fi*w2(kk);

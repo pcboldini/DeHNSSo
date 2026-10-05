@@ -1,4 +1,4 @@
-# Dependencies
+# <img src="logo/dehnsso_mark_small.svg" alt="" height="40"> Dependencies
 
 Everything you need before running DeHNSSo, in the order you need it.
 

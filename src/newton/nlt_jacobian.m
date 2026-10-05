@@ -2,17 +2,17 @@ function [Jh, Ja] = nlt_jacobian(q_complex, ctx)
 %% License (GNU GENERAL PUBLIC LICENSE v3)
 %                  Delft Harmonic Navier-Stokes Solver
 %     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
-% 
+%
 %     This program is free software: you can redistribute it and/or modify
 %     it under the terms of the GNU General Public License as published by
 %     the Free Software Foundation, either version 3 of the License, or
 %     (at your option) any later version.
-% 
+%
 %     This program is distributed in the hope that it will be useful,
 %     but WITHOUT ANY WARRANTY; without even the implied warranty of
 %     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 %     GNU General Public License for more details.
-% 
+%
 %     You should have received a copy of the GNU General Public License
 %     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %
@@ -22,7 +22,7 @@ function [Jh, Ja] = nlt_jacobian(q_complex, ctx)
 % DOI:
 
 %% Description
-% Analytical Jacobian of NLT_HNS with respect to q (2D case only).
+% Analytical Jacobian of NLT_HNS with respect to q (spanwise-invariant base flow).
 %
 %   [Jh, Ja] = nlt_jacobian(q_complex, ctx)
 %
@@ -34,18 +34,19 @@ function [Jh, Ja] = nlt_jacobian(q_complex, ctx)
 %   Jh collecting the terms where the differentiated slot is a physical mode and
 %   Ja those where it is the conjugate of one. NB these are the forcing derivatives
 %   alone, dr/dQ and dr/dQ*: the paper's J_h and J_a are ML - Jh and -Ja, formed
-%   in jacobian_apply. Only the momentum rows (u, v, w) are filled; the inflow
-%   rows (station i=1) are zero. Buffer attenuation from ctx.Bound.bufcf applied.
+%   in jacobian_apply. The momentum rows (u, v, w) are filled for both operators;
+%   for nvar=5 the continuity and energy rows are filled as well (groups b-g
+%   below). The inflow rows (station i=1) are zero. Buffer attenuation from
+%   ctx.Bound.bufcf applied.
 %
-%   For nvar=5 the convective momentum forcing is weighted by the base density
-%   and keeps the spanwise iu*beta*w_gh coupling:
+%   The convective momentum forcing, weighted by the base density for nvar=5
+%   (rho_bar = 1 for nvar=4), is
 %
 %       xm_j = rho_bar * ( - u_gh*Dx(u_jk) - v_gh*Dy(u_jk) - i*beta_jk*w_gh*u_jk )
 %       ym_j = rho_bar * ( - u_gh*Dx(v_jk) - v_gh*Dy(v_jk) - i*beta_jk*w_gh*v_jk )
 %       zm_j = rho_bar * ( - u_gh*Dx(w_jk) - v_gh*Dy(w_jk) - i*beta_jk*w_gh*w_jk )
 %
-%   For nvar=4, rho_bar = 1 and beta = 0, so these reduce to the plain
-%   convective bilinear terms.
+%   where the spanwise terms enter whenever beta_jk ~= 0, for both operators.
 %
 %   ctx fields used: nphys, nf, ny, nx, bsize, phys_modes, HB, dxi, D1, xix,
 %   etax, xiy, etay, Bound.bufcf. Optionally cached on first call: ctx.Dx_op,
@@ -69,7 +70,7 @@ nx    = ctx.nx;
 bsize = ctx.bsize;
 phys  = ctx.phys_modes;
 half  = round(nf/2);
-nv    = ctx.nvar;                       % 4 incompressible | 5 compressible
+nv    = ctx.nvar;
 Ntot  = nphys * bsize;
 
 % Grid -> block-local index base for gmap: gbase(k) maps a grid index k in
@@ -85,7 +86,7 @@ gbase = floor(gk/ny)*nv*ny + mod(gk, ny) + 1;
 jgroups = 'abcdefg';
 if isfield(ctx,'jac_groups') && ~isempty(ctx.jac_groups); jgroups = lower(ctx.jac_groups); end
 wantg = @(c) any(jgroups==c);
-wa = (nv == 4) || wantg('a');   % momentum convection (always on for incompressible)
+wa = (nv == 4) || wantg('a');
 
 % Base density for the compressible density-weighted convection rho_bar*(u'.grad)u'.
 % Incompressible: rho_bar = 1. Stored column-major (y fastest) to match the
@@ -110,6 +111,7 @@ if nv == 5
     if isfield(G,'dzV')&&~isempty(G.dzV), bdzV=G.dzV(:); end
     if isfield(G,'dzW')&&~isempty(G.dzW), bdzW=G.dzW(:); end
     if isfield(G,'dzT')&&~isempty(G.dzT), bdzT=G.dzT(:); end
+    Tb_vec = G.T(:);  dilB_g = bdxU + bdyV + bdzW;
     % Variable-mu viscous coefficients (groups e/f): mu'(T) = muT*T',
     % lambda = -2/3 mu (Stokes' hypothesis)
     Re_ = G.Re;  RePr_ = G.Re*G.Pr;
@@ -235,7 +237,7 @@ for kk = 1:nphys
     for ip = 1:numel(gharray)
         gh = gharray(ip);
         jk = jkarray(ip);
-        beta_jk = ctx.betavec(jk);         % spanwise wavenumber of the jk slot
+        beta_jk = ctx.betavec(jk);
         if nv == 5; beta_gh = ctx.betavec(gh); end
 
         % Skip if either mode is not in the active set
@@ -264,7 +266,7 @@ for kk = 1:nphys
         % Rows u/v/w_row, columns u/v/w_col_gh in col_blk(gh).
         cb_gh  = col_blk(gh);
         conj_gh = is_conj(gh);
-        if cb_gh > 0 && wa   % gh mode active + group (a) selected
+        if cb_gh > 0 && wa
             col_off_gh = (cb_gh-1)*bsize;
             ucol_gh = col_off_gh + u_col_local;
             vcol_gh = col_off_gh + v_col_local;
@@ -309,7 +311,7 @@ for kk = 1:nphys
         %   ∂q_m/∂q_jk = -diag(u_gh)*Dx - diag(v_gh)*Dy - i*beta_jk*diag(w_gh)
         cb_jk   = col_blk(jk);
         conj_jk = is_conj(jk);
-        if cb_jk > 0 && wa   % jk mode active + group (a) selected
+        if cb_jk > 0 && wa
             col_off_jk = (cb_jk-1)*bsize;
 
             B_op = -spdiags(u_gh(:), 0, ny*nx, ny*nx) * Dx_op ...
@@ -320,7 +322,7 @@ for kk = 1:nphys
 
             [bi, bj, bv] = find(B_op);
             if ~isempty(bi)
-                bv = bv .* rhob_vec(bi);         % rho_bar at the row grid point
+                bv = bv .* rhob_vec(bi);
                 rows_xm = row_off + (floor((bi-1)/ny))*nv*ny + mod(bi-1,ny) + 1;
                 cols_uj = col_off_jk + (floor((bj-1)/ny))*nv*ny + mod(bj-1,ny) + 1;
                 [Ih, Jh_cols, Vh, Ia, Ja_cols, Va] = push_entries( ...
@@ -344,8 +346,8 @@ for kk = 1:nphys
         % Shared by groups (b)-(e): gh density, jk temperature, and their gradients.
         if nv == 5
             rho_gh    = squeeze(rho_mode(gh,:,:));
-            Dx_rho_gh = reshape(Dx_op*rho_gh(:), ny, nx);   % d rho_gh / dx
-            Dy_rho_gh = reshape(Dy_op*rho_gh(:), ny, nx);   % d rho_gh / dy
+            Dx_rho_gh = reshape(Dx_op*rho_gh(:), ny, nx);
+            Dy_rho_gh = reshape(Dy_op*rho_gh(:), ny, nx);
             T_jk      = squeeze(T_mode(jk,:,:));
             Dx_T_jk   = reshape(Dx_op*T_jk(:), ny, nx);
             Dy_T_jk   = reshape(Dy_op*T_jk(:), ny, nx);
@@ -465,8 +467,8 @@ for kk = 1:nphys
         end
 
         % Group (d): nonlinear EOS pressure. p' is linear in (rho',T'), so the
-        % quadratic rho'T' piece forces: momentum -grad(rho'T')/(gamma Ma^2),
-        % energy +Ec*(d_t+Ubar.grad)(rho'T')/(gamma Ma^2), d_t -> -i(om_gh+om_jk).
+        % quadratic rho'T' piece forces the momentum rows, -grad(rho'T')/(gamma Ma^2).
+        % The energy row is in the c_v form of NLT_HNS (group d2 below), with no pressure work.
         % Bilinear in rho_gh (gh, rho-col, from group b) and T_jk (jk, T-col, from c).
         if nv == 5 && wantg('d')
             n2   = ny*nx;
@@ -484,11 +486,7 @@ for kk = 1:nphys
                 rhocol_gh = col_off_gh + rho_col_local;
                 Ox = -ikM2*( spdiags(Tv,0,n2,n2)*Dx_op + spdiags(DxT,0,n2,n2) );
                 Oy = -ikM2*( spdiags(Tv,0,n2,n2)*Dy_op + spdiags(DyT,0,n2,n2) );
-                Eg = Ec*ikM2*( spdiags(-1i*(om_gh+om_jk).*Tv,0,n2,n2) ...
-                     + spdiags(Ub.*Tv,0,n2,n2)*Dx_op + spdiags(Ub.*DxT,0,n2,n2) ...
-                     + spdiags(Vb.*Tv,0,n2,n2)*Dy_op + spdiags(Vb.*DyT,0,n2,n2) ...
-                     + spdiags(Wb.*(1i*bsum).*Tv,0,n2,n2) );
-                gdM = { Ox,0; Oy,ny; Eg,4*ny };
+                gdM = { Ox,0; Oy,ny };
                 for s = 1:size(gdM,1)
                     [oi,oj,ov] = find(gdM{s,1});
                     if isempty(oi); continue; end
@@ -506,11 +504,7 @@ for kk = 1:nphys
                 Tcol_jk = col_off_jk + T_col_local;
                 Px = -ikM2*( spdiags(Dxr,0,n2,n2) + spdiags(rgv,0,n2,n2)*Dx_op );
                 Py = -ikM2*( spdiags(Dyr,0,n2,n2) + spdiags(rgv,0,n2,n2)*Dy_op );
-                Ej = Ec*ikM2*( spdiags(-1i*(om_gh+om_jk).*rgv,0,n2,n2) ...
-                     + spdiags(Ub.*Dxr,0,n2,n2) + spdiags(Ub.*rgv,0,n2,n2)*Dx_op ...
-                     + spdiags(Vb.*Dyr,0,n2,n2) + spdiags(Vb.*rgv,0,n2,n2)*Dy_op ...
-                     + spdiags(Wb.*(1i*bsum).*rgv,0,n2,n2) );
-                gdN = { Px,0; Py,ny; Ej,4*ny };
+                gdN = { Px,0; Py,ny };
                 for s = 1:size(gdN,1)
                     [oi,oj,ov] = find(gdN{s,1});
                     if isempty(oi); continue; end
@@ -520,6 +514,36 @@ for kk = 1:nphys
                 % z-mom diagonal: -ikM2*i(beta_gh+beta_jk)*diag(rho_gh)
                 [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, ...
                     w_row, Tcol_jk, -ikM2*1i*bsum.*rgv, conj_jk);
+            end
+        end
+
+        % Group (d2): energy row, c_v form as in NLT_HNS. Convection -rho_bar u'_gh.grad T'_jk
+        % and compression work -(gamma-1)[(rho_bar T'_gh + rho'_gh T_bar) div u'_jk
+        % + rho'_gh T'_jk div U_bar]. Selected together with group (d).
+        if nv == 5 && wantg('d')
+            n2 = ny*nx;  dg = @(f) spdiags(f(:),0,n2,n2);  gm1 = gamG - 1;
+            T_ghf = squeeze(T_mode(gh,:,:));  Tgv = T_ghf(:);  rgv = rho_gh(:);
+            divUj = Dx_u_jk(:) + Dy_v_jk(:) + 1i*beta_jk.*w_jk(:);
+            if cb_gh > 0
+                col_off_gh = (cb_gh-1)*bsize;
+                [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, T_row, col_off_gh+u_col_local, -rhob_vec.*Dx_T_jk(:), conj_gh);
+                [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, T_row, col_off_gh+v_col_local, -rhob_vec.*Dy_T_jk(:), conj_gh);
+                [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, T_row, col_off_gh+w_col_local, -rhob_vec.*(1i*beta_jk).*T_jk(:), conj_gh);
+                [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, T_row, col_off_gh+T_col_local, -gm1*rhob_vec.*divUj, conj_gh);
+                [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, T_row, col_off_gh+rho_col_local, -gm1*(Tb_vec.*divUj + T_jk(:).*dilB_g), conj_gh);
+            end
+            if cb_jk > 0
+                col_off_jk = (cb_jk-1)*bsize;
+                cw = rhob_vec.*Tgv + rgv.*Tb_vec;
+                eops = { -dg(rhob_vec.*u_gh(:))*Dx_op - dg(rhob_vec.*v_gh(:))*Dy_op ...
+                         - (1i*beta_jk)*dg(rhob_vec.*w_gh(:)) - gm1*dg(rgv.*dilB_g), 4*ny; ...
+                         -gm1*dg(cw)*Dx_op, 0; -gm1*dg(cw)*Dy_op, ny; -gm1*(1i*beta_jk)*dg(cw), 2*ny };
+                for s = 1:size(eops,1)
+                    [oi,oj,ov] = find(eops{s,1});
+                    if isempty(oi); continue; end
+                    [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, ...
+                        gmap(oi,gbase,row_off,4*ny), gmap(oj,gbase,col_off_jk,eops{s,2}), ov, conj_jk);
+                end
             end
         end
 
@@ -568,7 +592,7 @@ for kk = 1:nphys
             cS7=reI*(muTT_b.*bdzT.*Tg + muT_b.*(1i*bg).*Tg);
             g1=uxy+vyy+1i*b.*wy; g2=2*vyy+uxy; g3=vxx-b2*vj+1i*b.*wy;
             g4=divU; g5=vy; g6=uy+vx; g7=1i*b.*vj+wy;
-            J_yu = dg(cS1+cS2)*SDxy + dg(cS6)*SDy + dg(cS4)*SDx;  % cS4*SDx from divU d/du
+            J_yu = dg(cS1+cS2)*SDxy + dg(cS6)*SDy + dg(cS4)*SDx;
             J_yv = dg(cS1+2*cS2)*SDyy + dg(cS3)*(SDxx-b2*In) + dg(cS4+cS5)*SDy + dg(cS6)*SDx + (1i*b)*dg(cS7);
             J_yw = (1i*b)*dg(cS1+cS3)*SDy + (1i*b)*dg(cS4) + dg(cS7)*SDy;
             Gy_d  = reI*lamT_b.*g1 + reI*muT_b.*g2 + reI*muT_b.*g3 ...
@@ -630,16 +654,16 @@ for kk = 1:nphys
             n2 = ny*nx;
             dg = @(f) spdiags(f(:),0,n2,n2);
             SDx=Dx_op; SDy=Dy_op; SDxx=Dxx_op; SDyy=Dyy_op; In=speye(n2);
-            b=beta_jk; bg=beta_gh; b2=b^2; rp=1/RePr_;
+            b=beta_jk; bg=beta_gh; b2=b^2; rp=gamG/RePr_;
             T_ghf = squeeze(T_mode(gh,:,:)); Tg=T_ghf(:);
             dTgx = Dx_op*Tg;  dTgy = Dy_op*Tg;
             Tv=T_jk(:); DxT=Dx_T_jk(:); DyT=Dy_T_jk(:);
             Txx=Dxx_op*Tv; Tyy=Dyy_op*Tv;
             % --- conduction ---
-            cC1 = rp*(muTT_b.*bdxT.*Tg + muT_b.*dTgx);   % coeff of dT_jk_dx
-            cC3 = rp*(muTT_b.*bdyT.*Tg + muT_b.*dTgy);   % coeff of dT_jk_dy
-            cCm = rp*muT_b.*Tg;                           % coeff of Txx, Tyy, -b2*T
-            cC5 = rp*(muTT_b.*bdzT.*Tg + muT_b.*(1i*bg).*Tg);   % coeff of i*b*T_jk
+            cC1 = rp*(muTT_b.*bdxT.*Tg + muT_b.*dTgx);
+            cC3 = rp*(muTT_b.*bdyT.*Tg + muT_b.*dTgy);
+            cCm = rp*muT_b.*Tg;
+            cC5 = rp*(muTT_b.*bdzT.*Tg + muT_b.*(1i*bg).*Tg);
             % jk-slot d/dT_jk (T-col)
             J_ET = dg(cC1)*SDx + dg(cC3)*SDy + dg(cCm)*(SDxx + SDyy - b2*In) + (1i*b)*dg(cC5);
             % gh-slot d/dT_gh (T-col): fields multiplying T_gh-linear coefficients
@@ -650,30 +674,31 @@ for kk = 1:nphys
             G_ET = dg(GET_d) + dg(GET_dx)*SDx + dg(GET_dy)*SDy + (1i*bg)*dg(GET_bg);
 
             % --- dissipation D-B: muT*T_gh * base-grad * jk-vel-grad ---
-            gam=ctx.StabGrid.gamma; Ma=ctx.StabGrid.Ma; Ec=(gam-1)*Ma^2; er=Ec/Re_;
+            gam=ctx.StabGrid.gamma; Ma=ctx.StabGrid.Ma; Ec=(gam-1)*Ma^2; er=gam*Ec/Re_;
             ux=Dx_u_jk(:); uy=Dy_u_jk(:); vx=Dx_v_jk(:); vy=Dy_v_jk(:); wx=Dx_w_jk(:); wy=Dy_w_jk(:);
             uj=u_jk(:); vj=v_jk(:); wj=w_jk(:);
             divU = ux + vy + 1i*b.*wj;
-            dilB = bdxU + bdyV + bdzW;                    % base dilatation
+            dilB = bdxU + bdyV + bdzW;
             GDB = er*lamT_b.*(2*dilB).*divU ...
                 + er*4*muT_b.*(bdxU.*ux + bdyV.*vy + bdzW.*(1i*b.*wj)) ...
                 + er*2*muT_b.*((bdyU+bdxV).*(uy+vx)) ...
                 + er*2*muT_b.*(bdyW.*wy + bdyW.*(1i*b.*vj)) ...
-                + er*2*muT_b.*(bdxW.*(1i*b.*wj + wx) + bdxW.*(1i*b.*uj));
+                + er*2*muT_b.*(bdxW.*wx + bdxW.*(1i*b.*uj));
             G_ET = G_ET + dg(GDB);
-            cb1 = er*lamT_b.*(2*dilB).*Tg;                % B1 divU coeff (T_gh-weighted)
-            cbM = er*muT_b.*Tg;                           % base for B2..B5
+            cb1 = er*lamT_b.*(2*dilB).*Tg;
+            cbM = er*muT_b.*Tg;
             J_Eu = dg(cb1)*SDx + dg(4*cbM.*bdxU)*SDx + dg(2*cbM.*(bdyU+bdxV))*SDy + (1i*b)*dg(2*cbM.*bdxW);
             J_Ev = dg(cb1)*SDy + dg(4*cbM.*bdyV)*SDy + dg(2*cbM.*(bdyU+bdxV))*SDx + (1i*b)*dg(2*cbM.*bdyW);
             J_Ew = (1i*b)*dg(cb1) + (1i*b)*dg(4*cbM.*bdzW) + dg(2*cbM.*bdyW)*SDy ...
-                 + dg(2*cbM.*bdxW)*(SDx + 1i*b*In);
+                 + dg(2*cbM.*bdxW)*SDx;
 
             % --- dissipation D-A: (lam,mu)_b * grad(vel_gh) * grad(vel_jk) ---
             ugv=u_gh(:); vgv=v_gh(:); wgv=w_gh(:);
             dugx=Dx_op*ugv; dugy=Dy_op*ugv; dvgx=Dx_op*vgv; dvgy=Dy_op*vgv; dwgx=Dx_op*wgv; dwgy=Dy_op*wgv;
             ibg=1i*bg; ib=1i*b;
             % gh-slot vel-col operators (E-row <- u/v/w_gh)
-            G_Eug = dg(er*lam_b.*(ux+2*vy+2*ib.*wj) + 2*er*mu_b.*ux)*SDx + dg(er*mu_b.*(uy+2*vx))*SDy;
+            G_Eug = dg(er*lam_b.*(ux+2*vy+2*ib.*wj) + 2*er*mu_b.*ux)*SDx + dg(er*mu_b.*(uy+2*vx))*SDy ...
+                  + ibg*dg(er*mu_b.*(ib.*uj));
             G_Evg = dg(er*lam_b.*(vy+2*ib.*wj) + 2*er*mu_b.*vy)*SDy + dg(er*mu_b.*vx)*SDx ...
                   + ibg*dg(er*mu_b.*(ib.*vj));
             G_Ewg = ibg*dg(er*lam_b.*(ib.*wj) + 2*er*mu_b.*(ib.*wj)) ...
@@ -740,7 +765,7 @@ for kk = 1:nphys
                 Op_c = -dg(r1.*u2v)*Dx_op - dg(r1.*v2v)*Dy_op - dg(r1.*(ibc.*w2v));
                 [oi,oj,ov]=find(Op_c);
                 if ~isempty(oi)
-                    cc = [0 0; ny ny; 2*ny 2*ny; 4*ny 4*ny];  % [row_sub col_sub]: x<-u,y<-v,z<-w,E<-T
+                    cc = [0 0; ny ny; 2*ny 2*ny; 4*ny 4*ny];
                     for s=1:4
                         [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, ...
                             gmap(oi,gbase,row_off,cc(s,1)), gmap(oj,gbase,col_off_c,cc(s,2)), ov, conj_c);
@@ -787,7 +812,7 @@ for kk = 1:nphys
             du2x=Dx_op*u2v; du2y=Dy_op*u2v; dv2x=Dx_op*v2v; dv2y=Dy_op*v2v; dw2x=Dx_op*w2v; dw2y=Dy_op*w2v;
             ibu2=1i*bb.*u2v; ibv2=1i*bb.*v2v; ibw2=1i*bb.*w2v;
             ibu3=1i*bc.*u3v; ibv3=1i*bc.*v3v; ibw3=1i*bc.*w3v;
-            er3=EcG/Re_;
+            er3=gamG*EcG/Re_;
             cLT=er3*(lamT_b.*T1cv); cMT2=2*er3*(muT_b.*T1cv); cMT=er3*(muT_b.*T1cv);
             % a-slot d/dT_a: drop the T_a factor (forcing is coef*T_a*bracket)
             Gda = er3*lamT_b.*( du2x.*du3x + dv2y.*dv3y + ibw2.*ibw3 + 2*du2x.*dv3y + 2*du2x.*ibw3 + 2*dv2y.*ibw3 ) ...
@@ -822,33 +847,22 @@ for kk = 1:nphys
                 end
             end
 
-            % --- cubic pressure-work: Ec*ikM2 * u_b . grad(rho_a T_c) (E-row) ---
-            ba=ctx.betavec(a); dr1x=Dx_op*r1; dr1y=Dy_op*r1; eik=EcG*ikM2g;
+            % --- cubic c_v compression work: -(gamma-1) rho_a T_c div u_b (E-row) ---
+            gm1 = gamG - 1;  divU2 = du2x + dv2y + 1i*bb.*w2v;  c3 = r1.*T3v;
             if cba > 0
-                col_off_a=(cba-1)*bsize;
-                Pa = dg(eik*u2v.*T3v)*Dx_op + dg(eik*v2v.*T3v)*Dy_op ...
-                   + dg(eik*(u2v.*dT3x + v2v.*dT3y + w2v.*(1i*(ba+bc)).*T3v));
-                [oi,oj,ov]=find(Pa);
-                if ~isempty(oi)
-                    [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, ...
-                        gmap(oi,gbase,row_off,4*ny), gmap(oj,gbase,col_off_a,3*ny), ov, conj_a);
-                end
+                [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, T_row, (cba-1)*bsize+rho_col_local, -gm1*T3v.*divU2, conj_a);
             end
             if cbb > 0
                 col_off_b=(cbb-1)*bsize;
-                [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, T_row, col_off_b+u_col_local, eik*(dr1x.*T3v + r1.*dT3x), conj_b);
-                [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, T_row, col_off_b+v_col_local, eik*(dr1y.*T3v + r1.*dT3y), conj_b);
-                [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, T_row, col_off_b+w_col_local, eik*(1i*ba.*r1.*T3v + r1.*(1i*bc.*T3v)), conj_b);
+                pops = { -gm1*dg(c3)*Dx_op,0; -gm1*dg(c3)*Dy_op,ny; -gm1*(1i*bb)*dg(c3),2*ny };
+                for s=1:3
+                    [oi,oj,ov]=find(pops{s,1}); if isempty(oi); continue; end
+                    [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, ...
+                        gmap(oi,gbase,row_off,4*ny), gmap(oj,gbase,col_off_b,pops{s,2}), ov, conj_b);
+                end
             end
             if cbc > 0
-                col_off_c=(cbc-1)*bsize;
-                Pc = dg(eik*u2v.*r1)*Dx_op + dg(eik*v2v.*r1)*Dy_op ...
-                   + dg(eik*(u2v.*dr1x + v2v.*dr1y + w2v.*r1.*(1i*(ba+bc))));
-                [oi,oj,ov]=find(Pc);
-                if ~isempty(oi)
-                    [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, ...
-                        gmap(oi,gbase,row_off,4*ny), gmap(oj,gbase,col_off_c,4*ny), ov, conj_c);
-                end
+                [Ih,Jh_cols,Vh,Ia,Ja_cols,Va]=push_entries(Ih,Jh_cols,Vh,Ia,Ja_cols,Va, T_row, (cbc-1)*bsize+T_col_local, -gm1*r1.*divU2, conj_c);
             end
           end
         end
@@ -868,9 +882,9 @@ ib = ctx.Bound.ibuff;
 if ib <= nx
     % Build a diagonal scale matrix of size Ntot, with the per-station
     % bufcf value repeated across each station's rows.
-    bufcf = ctx.Bound.bufcf(:);              % nx x 1
-    per_station = repelem(bufcf, nv*ny);     % nv*ny per station
-    scale_one_mode = per_station;            % bsize x 1
+    bufcf = ctx.Bound.bufcf(:);
+    per_station = repelem(bufcf, nv*ny);
+    scale_one_mode = per_station;
     scale_all = repmat(scale_one_mode, nphys, 1);
     D = spdiags(scale_all, 0, Ntot, Ntot);
     Jh = D * Jh;
@@ -879,7 +893,7 @@ end
 
 % Zero the inflow station rows (i=1), as NLT_HNS leaves them: the gh-slot diagonal
 % uses u/v/w_row, which includes station 1, so clear the whole first block.
-inflow_rows_one = 1:nv*ny;   % all vars at station 1
+inflow_rows_one = 1:nv*ny;
 for kk = 1:nphys
     r = (kk-1)*bsize + inflow_rows_one;
     Jh(r, :) = 0;
@@ -964,11 +978,11 @@ D2 = G.D2;  if ~issparse(D2), D2 = sparse(D2); end
 if isfield(G,'D_xi2') && ~isempty(G.D_xi2), D_xi2 = G.D_xi2; else, D_xi2 = D_xi*D_xi; end
 
 Iny = speye(ny);  Inx = speye(nx);
-Xixi   = kron(D_xi2, Iny);   % d^2/dxi^2
-Etaeta = kron(Inx, D2);      % d^2/deta^2
-Xieta  = kron(D_xi, D1);     % d/deta d/dxi
-Xi     = kron(D_xi, Iny);    % d/dxi
-Eta    = kron(Inx, D1);      % d/deta
+Xixi   = kron(D_xi2, Iny);
+Etaeta = kron(Inx, D2);
+Xieta  = kron(D_xi, D1);
+Xi     = kron(D_xi, Iny);
+Eta    = kron(Inx, D1);
 
 dg = @(f) spdiags(f(:), 0, n, n);
 Dxx_op = dg(G.xix.^2)*Xixi + dg(2*G.xix.*G.etax)*Xieta + dg(G.etax.^2)*Etaeta ...

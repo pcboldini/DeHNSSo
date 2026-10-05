@@ -1,4 +1,4 @@
-# DeHNSSo — Developer Guide
+# <img src="logo/dehnsso_mark_small.svg" alt="" height="40"> DeHNSSo — Developer Guide
 
 **DeHNSSo-v2** | Delft Harmonic Navier-Stokes Solver
 

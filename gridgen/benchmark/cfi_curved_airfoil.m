@@ -16,12 +16,12 @@ input.structured = false;
 %% Resampling (unstructured path)
 params.n_eta_new = 60;
 params.n_xi_new  = 1200;
-params.y_i       = [];           % auto from delta_99
-params.H         = [];           % auto from projection
+params.y_i       = [];
+params.H         = [];
 params.xi_range  = [];
-params.xi_trim_inflow  = 0.10;   % drop noisy inflow
+params.xi_trim_inflow  = 0.10;
 params.xi_trim_outflow = [];
-params.elliptic  = false;        % true for strongly concave walls
+params.elliptic  = false;
 params.plot      = true;
 params.plot_opts.xi_slices  = linspace(0, 1, 8);
 params.plot_opts.eta_slices = [0.0, 0.1, 0.3];
@@ -35,7 +35,7 @@ params.Re      = 940;
 
 %% Grid operators (fd eta: cheb + curvilinear metrics too large for UMFPACK on 32 GB)
 params.FD_xi_order_1 = 4;
-params.FD_xi_order_2 = 2;
+params.FD_xi_order_2 = 4;
 params.FD_eta_method = 'fd';
 params.FD_eta_order  = 4;
 

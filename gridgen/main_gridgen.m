@@ -2,17 +2,17 @@ function StabGrid = main_gridgen(input, params, output)
 %% License (GNU GENERAL PUBLIC LICENSE v3)
 %                  Delft Harmonic Navier-Stokes Solver
 %     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
-% 
+%
 %     This program is free software: you can redistribute it and/or modify
 %     it under the terms of the GNU General Public License as published by
 %     the Free Software Foundation, either version 3 of the License, or
 %     (at your option) any later version.
-% 
+%
 %     This program is distributed in the hope that it will be useful,
 %     but WITHOUT ANY WARRANTY; without even the implied warranty of
 %     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 %     GNU General Public License for more details.
-% 
+%
 %     You should have received a copy of the GNU General Public License
 %     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 %
@@ -82,7 +82,7 @@ if isfield(params, 'forcing') && ~isempty(params.forcing)
     specs        = flatten_forcing(params.forcing);
     forcing      = cellfun(@prepare_forcing, specs, 'UniformOutput', false);
     params.mug   = cellfun(@(f) f.xc, forcing);
-    if ~isfield(params, 'spread') || isempty(params.spread)   % default: refine to the forcing width
+    if ~isfield(params, 'spread') || isempty(params.spread)
         params.spread = cellfun(@(f) f.w, forcing);
     end
     % A source must actually sit on the wall. The usual cause of a miss is a
@@ -168,7 +168,7 @@ if isfield(params, 'StepType') && ~isempty(params.StepType) && ~strcmpi(params.S
     end
     step.x = params.StepX;  step.h = params.StepH;
     step.seg     = [params.StepX, max(BF.X(:)), params.StepH];
-    step.seg_tol = [0, 0];             % stated by hand, so exact
+    step.seg_tol = [0, 0];
 end
 if ~strcmpi(step.type, 'FLAT')
     fprintf('Solid detected: %s, %d box(es), %d face(s)\n', step.type, size(step.seg,1), step.nface);
@@ -217,10 +217,10 @@ fprintf('StabGrid ready.\n');
 if ~isempty(forcing)
     xun = StabGrid.xun(1,:);
     if isfield(StabGrid, 'X') && ~isvector(StabGrid.X)
-        [~, wr] = min(abs(StabGrid.y(:)));      % wall row (y ~ 0)
+        [~, wr] = min(abs(StabGrid.y(:)));
         x_phys  = StabGrid.X(wr, :);
     else
-        x_phys  = xun;                          % cartesian: xun is physical x
+        x_phys  = xun;
     end
     F = struct('xc', {}, 'w', {}, 'x', {}, 'v', {}, 'kind', {});
     for k = 1:numel(forcing)
@@ -254,7 +254,7 @@ for k = 1:numel(passthrough)
 end
 % Sensible defaults when the caller doesn't set them
 if ~isfield(Grid, 'FD_xi_order_1');   Grid.FD_xi_order_1   = 4;      end
-if ~isfield(Grid, 'FD_xi_order_2');   Grid.FD_xi_order_2   = 2;      end
+if ~isfield(Grid, 'FD_xi_order_2');   Grid.FD_xi_order_2   = 4;      end
 if ~isfield(Grid, 'FD_eta_method');  Grid.FD_eta_method  = 'cheb'; end
 if ~isfield(Grid, 'FD_eta_order');Grid.FD_eta_order= 4;      end
 if ~isfield(Grid, 'plot');        Grid.plot        = false;  end

@@ -1,4 +1,4 @@
-# gridgen — User Guide
+# <img src="logo/dehnsso_mark_small.svg" alt="" height="40"> gridgen — User Guide
 
 gridgen turns a base flow into the `StabGrid` struct the solver reads: it resamples onto the
 numerical grid, clusters the mesh where you need resolution, computes the base-flow

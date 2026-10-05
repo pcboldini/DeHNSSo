@@ -1,4 +1,4 @@
-# Reference cases
+# <img src="logo/dehnsso_mark_small.svg" alt="" height="40"> Reference cases
 
 The reference cases below ship with the repository; a base flow marked (not shipped) has to be obtained separately. The first three reproduce published validations in Westerbeek et al., *DeHNSSo: The Delft Harmonic Navier-Stokes Solver for nonlinear stability problems with complex geometric features*, **Comput. Phys. Commun. 302 (2024) 109250** ([DOI](https://doi.org/10.1016/j.cpc.2024.109250)). The others are DeHNSSo-v2 additions, validated against other references.
 

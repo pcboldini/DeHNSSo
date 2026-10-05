@@ -52,7 +52,7 @@ function [sol, BL] = compressibleFSC(BL)
 %     Ma       — freestream Mach number
 %     Pr       — Prandtl number (default 0.72)
 %     gamma    — ratio of specific heats (default 1.4)
-%     Sstar    — Sutherland constant S/T_inf (default 110.4/288)
+%     Sstar    — Sutherland constant S/T_inf (default 110.6/288)
 %     beta_H   — Hartree parameter (0 = flat plate, 1 = stagnation)
 %     wall_bc  — 'adiabatic' or 'isothermal' (default 'adiabatic')
 %     Tw       — wall temperature T_wall/T_inf (required if isothermal)
@@ -74,7 +74,7 @@ function [sol, BL] = compressibleFSC(BL)
 %% Defaults
 if ~isfield(BL,'Pr');      BL.Pr = 0.72; end
 if ~isfield(BL,'gamma');   BL.gamma = 1.4; end
-if ~isfield(BL,'Sstar');   BL.Sstar = 110.4/288; end
+if ~isfield(BL,'Sstar');   BL.Sstar = 110.6/288; end
 if ~isfield(BL,'beta_H');  BL.beta_H = 0; end
 if ~isfield(BL,'wall_bc'); BL.wall_bc = 'adiabatic'; end
 if ~isfield(BL,'eta_inf'); BL.eta_inf = 20; end
