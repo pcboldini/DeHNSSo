@@ -16,13 +16,13 @@
 [![MUMPS](https://img.shields.io/badge/MUMPS-5.3.5-4a7c59)](src/external/)
 [![Parallel Computing Toolbox](https://img.shields.io/badge/Parallel%20Computing%20Toolbox-optional-4a7c59)](docs/DeHNSSo_guide.md)
 
-**Delft Harmonic Navier-Stokes Solver** — nonlinear stability analysis of laminar boundary layers over surfaces with complex geometric features.
+**Harmonic Navier–Stokes stability analysis** of incompressible and compressible boundary layers over curved and featured surfaces.
 
 DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.com/SvenWesterbeek/DeHNSSo) by Westerbeek, Hulshoff, Schuttelaars & Kotsonis (2024).
 
 > **First draft (September 2026), paper in preparation.** For questions about the method or implementation, contact **Pietro Carlo Boldini** — P.C.Boldini@tudelft.nl
 
-**Last updated:** 22 September 2026
+**Last updated:** 5 October 2026
 
 ---
 
