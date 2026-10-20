@@ -19,6 +19,8 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 
 > **First draft (September 2026), paper in preparation.** For questions about the method or implementation, contact **Pietro Carlo Boldini** — P.C.Boldini@tudelft.nl
 
+To be notified of new versions, watch this repository on GitHub (Watch → Custom → Releases).
+
 **Last updated:** 5 October 2026
 
 ---
@@ -215,8 +217,6 @@ See [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) for a full parameter referenc
 - **Discrete adjoint**
 - **Compressible physics extensions**
 - **HNS → PSE coupling**
-
-To be notified of new versions, watch this repository on GitHub (Watch → Custom → Releases).
 
 ## References
 
