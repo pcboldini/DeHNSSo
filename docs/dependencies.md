@@ -1,4 +1,4 @@
-# <picture><source media="(prefers-color-scheme: dark)" srcset="logo/dehnsso_mark_small_dark.svg"><img src="logo/dehnsso_mark_small.svg" alt="" height="64"></picture> Dependencies
+# <img src="logo/dehnsso_mark_small_card.svg" alt="" height="64"> Dependencies
 
 Everything you need before running DeHNSSo, in the order you need it.
 

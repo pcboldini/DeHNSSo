@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/DeHNSSo_logo_dark.svg">
-    <img src="docs/logo/DeHNSSo_logo.svg" alt="DeHNSSo: Delft Harmonic Navier-Stokes Solver" width="420">
-  </picture>
+  <img src="docs/logo/DeHNSSo_logo_card.svg" alt="DeHNSSo: Delft Harmonic Navier-Stokes Solver" width="440">
 </p>
 
 # DeHNSSo-v2
@@ -218,6 +215,8 @@ See [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) for a full parameter referenc
 - **Discrete adjoint**
 - **Compressible physics extensions**
 - **HNS → PSE coupling**
+
+To be notified of new versions, watch this repository on GitHub (Watch → Custom → Releases).
 
 ## References
 
