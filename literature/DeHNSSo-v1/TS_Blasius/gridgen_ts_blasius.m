@@ -23,46 +23,43 @@
 %% Description
 % Stability grid for the DeHNSSo-v1 TS Blasius test case.
 %
-% This is the gridgen benchmark grid with one change: the median collocation
-% height is halved to y_i = H/20, which is what the v1 caller
+% Grid of the v1 caller
 %   Callers/TS-Waves in a Blasius BL/Example_Caller_Blasius_BL_TS.m
-% prescribed via Grid.y_i = Grid.H/20. The shared gridgen/benchmark/ts_blasius.m
-% leaves params.y_i empty and so falls back to the gridgen default H/10, giving
-% half the near-wall resolution v1 used.
+% Grid.nx = 800 equidistant, Grid.ny = 40 Chebyshev, Grid.H = max(BF.Y),
+% Grid.y_i = Grid.H/20, built from the v1 base flow "Data Files/BF_Blasius.mat".
+% That base flow is not shipped with DeHNSSo-v2. Clone DeHNSSo-v1 next to this
+% repository,
+%   git clone https://github.com/SvenWesterbeek/DeHNSSo DeHNSSo-v1
+% or set v1dir below. The resulting grid is shipped as
+% sample/input/DeHNSSo_input_sample.mat.
 %
-% Everything else matches v1: 800 equidistant streamwise stations and 40
-% Chebyshev collocation points, taken straight from the base flow.
-%
-% Writes input/DeHNSSo_input_v1_blasius.mat, a separate file from the benchmark
-% grid, so the benchmark and verification cases that rely on
-% DeHNSSo_input_ts_blasius.mat are left untouched.
+% Writes input/DeHNSSo_input_v1_blasius.mat.
 
 clear all; close all; clc
 restoredefaultpath
 rootdir = fullfile(fileparts(mfilename('fullpath')), '..', '..', '..');
 addpath(fullfile(rootdir, 'gridgen'), genpath(fullfile(rootdir, 'gridgen', 'src')))
 
+v1dir = fullfile(rootdir, '..', 'DeHNSSo-v1');   % DeHNSSo-v1 repository
+
 %% Input
-input.folder     = fullfile(rootdir, 'baseflow', 'output', 'benchmark');
-input.filename   = 'bf_ts_blasius.mat';
+input.folder     = fullfile(v1dir, 'Data Files');
+input.filename   = 'BF_Blasius.mat';
 input.format     = 'mat';
 input.structured = true;
+if ~isfile(fullfile(input.folder, input.filename))
+    error('gridgen_ts_blasius:noBF', 'DeHNSSo-v1 base flow not found: %s', fullfile(input.folder, input.filename));
+end
 
-%% Resampling — pass-through (empty counts keep the source 800 x 40 grid)
-params.n_eta_new = [];
-params.n_xi_new  = [];
+%% Resampling — v1 values
+bf  = load(fullfile(input.folder, input.filename));
+BF  = bf.BF;
+params.n_eta_new = 40;
+params.n_xi_new  = 800;
+params.H         = max(BF.Y(:));   % v1: Grid.H = max(BF.Y)
+params.y_i       = params.H/20;    % v1: Grid.y_i = Grid.H/20
 params.rescale   = false;
 params.plot      = false;
-
-%% Wall-normal clustering — v1 used y_i = H/20
-% resample_cartesian takes H as 0.99 x the base-flow height when params.H is
-% empty; reproduce that here so y_i follows the same rule v1 applied.
-bf  = load(fullfile(input.folder, input.filename));
-fn  = fieldnames(bf);
-BF  = bf.(fn{1});
-H   = abs(max(BF.Y(:)) - min(BF.Y(:))) * 0.99;
-params.H   = H;
-params.y_i = H / 20;
 
 %% Grid operators
 params.FD_xi_order_1 = 4;

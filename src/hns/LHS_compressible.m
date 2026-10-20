@@ -48,7 +48,7 @@ function [MLAMFD,MLA1,MLA2,MLA3,MLA4,MLA5] = LHS_compressible(BF,Bound,Grid,Init
 % MLA2   nvar*ny*nx sparse [-]    mode-invariant operator block, first order in omega
 % MLA3   nvar*ny*nx sparse [-]    mode-invariant operator block, first order in beta
 % MLA4   nvar*ny*nx sparse [-]    mode-invariant operator block, second order in beta
-% MLA5   nvar*ny*nx sparse [-]    mode-invariant operator block, mixed omega-beta term
+% MLA5   nvar*ny*nx sparse [-]    mode-invariant operator block, i*beta*d_x cross-viscous term (linear in beta)
 
 nx    = Grid.nx;
 ny    = Grid.ny;

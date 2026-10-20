@@ -1,0 +1,229 @@
+
+ ______     _   _  _   _  _____ _____       
+ |  _  \   | | | || \ | |/  ___/  ___|      
+ | | | |___| |_| ||  \| |\ `--.\ `--.  ___  
+ | | | / _ \  _  || . ` | `--. \`--. \/ _ \ 
+ | |/ /  __/ | | || |\  |/\__/ /\__/ / (_) |
+ |___/ \___\_| |_/\_| \_/\____/\____/ \___/ 
+                                       v2.0    
+  Delft Harmonic Navier-Stokes Solver
+  =========================================
+Extracting base flow ... done (incompressible, 9 fields, Re = 400.00)
+ Calculating IC for nonzero modes with ILST: alpha = 0.102042 +0.002854i
+Initialising with ILST solution at inflow. 
+ Buffer: amplitude damping from 85% to 100%
+  --------------------------------------------
+  Grid
+    nx = 800,  ny = 40,  DOF = 128000
+    x = [400.00, 2847.74],  dxi = 3.0635
+    R = [400.00, 1067.28]   (sqrt(Re_x), local Blasius Reynolds)
+  Spectral content
+    M = 5,  N = 0  (5 modes)
+    omega_0 = 0.034576,  beta_0 = 0.000000
+  Inflow
+    IC: ILST,  phase ref: pwall,  A0 = 3.5355e-03
+    Mode: NONLINEAR
+  Solver
+    Buffer: on from 85%,  Conv: 1.0e-04
+    BC top: u=H_DR, v=H_DR, w=H_DR
+    LU mode: full
+  Memory estimates (cheb):
+    LHS:                   ~0.1 GB
+    LU per factorisation:  ~1.2 GB
+    LU full   (cache 6):  ~7.4 GB
+    LU auto   (cache 3):  ~3.7 GB
+    LU single (cache 1):   ~1.2 GB
+    Total peak (single):   ~1.4 GB
+  --------------------------------------------
+
+--- Convergence loop ---
+ Constructing LHS matrices ...
+   LHS: 25% (1s elapsed, ~2s remaining)
+   LHS: 50% (1s elapsed, ~1s remaining)
+   LHS: 75% (2s elapsed, ~1s remaining)
+   LHS: 100% (1.9s total)
+ LHS done in 2.1 s
+ LU (1,0) [full, 1/8 kept] ... done (3.7 s)
+ Solving (1,0) [full, kept] ... 0.1 s
+  Iter   1 [P] | AF=1.000 | 3 modes | max(A)=1.371e-02 | max(dal)=3.866e-01 | 6.1 s
+ LU (0,0) [full, 2/8 kept] ... done (3.1 s)
+ LU (2,0) [full, 3/8 kept] ... done (3.8 s)
+ Solving (0,0) [full, kept] ... 0.1 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter   2 [P] | AF=1.000 | 3 modes | max(A)=1.371e-02 | max(dal)=3.061e-01 | 7.2 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter   3 [P] | AF=1.000 | 3 modes | max(A)=1.901e-02 | max(dal)=9.802e-02 | 0.3 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter   4 [P] | AF=1.000 | 3 modes | max(A)=1.887e-02 | max(dal)=1.129e-01 | 0.3 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter   5 [P] | AF=1.000 | 3 modes | max(A)=2.227e-02 | max(dal)=6.056e-02 | 0.3 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter   6 [P] | AF=1.000 | 3 modes | max(A)=2.106e-02 | max(dal)=6.576e-02 | 0.3 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter   7 [P] | AF=1.000 | 3 modes | max(A)=2.065e-02 | max(dal)=5.983e-02 | 0.3 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter   8 [P] | AF=1.000 | 3 modes | max(A)=1.812e-02 | max(dal)=4.297e-02 | 0.3 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter   9 [P] | AF=1.000 | 3 modes | max(A)=1.840e-02 | max(dal)=5.014e-02 | 0.3 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter  10 [P] | AF=1.000 | 3 modes | max(A)=1.849e-02 | max(dal)=2.048e-02 | 0.3 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter  11 [P] | AF=1.000 | 3 modes | max(A)=1.838e-02 | max(dal)=1.318e-02 | 0.3 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter  12 [P] | AF=1.000 | 3 modes | max(A)=1.839e-02 | max(dal)=7.363e-03 | 0.3 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+  Iter  13 [P] | AF=1.000 | 4 modes | max(A)=1.842e-02 | max(dal)=5.894e-03 | 0.4 s
+ LU (3,0) [full, 4/8 kept] ... done (4.0 s)
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.2 s
+ Solving (3,0) [full, kept] ... 0.1 s
+  Iter  14 [P] | AF=1.000 | 4 modes | max(A)=1.842e-02 | max(dal)=3.247e-01 | 4.6 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+  Iter  15 [P] | AF=1.000 | 4 modes | max(A)=1.843e-02 | max(dal)=1.434e-02 | 0.5 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+  Iter  16 [P] | AF=1.000 | 4 modes | max(A)=1.860e-02 | max(dal)=9.571e-03 | 0.4 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+  Iter  17 [P] | AF=1.000 | 5 modes | max(A)=1.863e-02 | max(dal)=4.163e-03 | 0.5 s
+ LU (4,0) [full, 5/8 kept] ... done (4.0 s)
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+  Iter  18 [P] | AF=1.000 | 5 modes | max(A)=1.858e-02 | max(dal)=2.866e-01 | 4.5 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+  Iter  19 [P] | AF=1.000 | 5 modes | max(A)=1.852e-02 | max(dal)=7.018e-03 | 0.5 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+  Iter  20 [P] | AF=1.000 | 6 modes | max(A)=1.854e-02 | max(dal)=3.507e-03 | 0.6 s
+ LU (5,0) [full, 6/8 kept] ... done (4.1 s)
+ Solving (0,0) [full, kept] ... 0.4 s
+ Solving (1,0) [full, kept] ... 0.4 s
+ Solving (2,0) [full, kept] ... 0.3 s
+ Solving (3,0) [full, kept] ... 0.2 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.2 s
+  Iter  21 [P] | AF=1.000 | 6 modes | max(A)=1.856e-02 | max(dal)=2.523e-01 | 5.8 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  22 [P] | AF=1.000 | 6 modes | max(A)=1.855e-02 | max(dal)=4.876e-03 | 0.7 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  23 [P] | AF=1.000 | 6 modes | max(A)=1.854e-02 | max(dal)=7.308e-03 | 0.6 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  24 [P] | AF=1.000 | 6 modes | max(A)=1.854e-02 | max(dal)=8.297e-04 | 0.7 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  25 [P] | AF=1.000 | 6 modes | max(A)=1.855e-02 | max(dal)=1.060e-03 | 0.6 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  26 [P] | AF=1.000 | 6 modes | max(A)=1.854e-02 | max(dal)=4.347e-04 | 0.6 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  27 [P] | AF=1.000 | 6 modes | max(A)=1.854e-02 | max(dal)=5.612e-04 | 0.6 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  28 [P] | AF=1.000 | 6 modes | max(A)=1.854e-02 | max(dal)=2.545e-04 | 0.6 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  29 [P] | AF=1.000 | 6 modes | max(A)=1.854e-02 | max(dal)=2.357e-04 | 0.6 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  30 [P] | AF=1.000 | 6 modes | max(A)=1.854e-02 | max(dal)=1.368e-04 | 0.7 s
+ Solving (0,0) [full, kept] ... 0.1 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  31 [P] | AF=1.000 | 6 modes | max(A)=1.854e-02 | max(dal)=1.066e-04 | 0.7 s
+ Solving (0,0) [full, kept] ... 0.0 s
+ Solving (1,0) [full, kept] ... 0.1 s
+ Solving (2,0) [full, kept] ... 0.1 s
+ Solving (3,0) [full, kept] ... 0.1 s
+ Solving (4,0) [full, kept] ... 0.1 s
+ Solving (5,0) [full, kept] ... 0.1 s
+  Iter  32 [P] | AF=1.000 | 6 modes | max(A)=1.854e-02 | max(dal)=7.219e-05 | 0.7 s
+--- Converged in 32 iterations (41.6 s, peak 7.7 GB) ---
+
+
+=== DeHNSSo finished, output saved to output/StabRes_sample.mat ===
+
+Total execution time: 43.81 s

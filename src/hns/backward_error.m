@@ -71,7 +71,7 @@ function [eta_max, eta_mode, res_mode] = backward_error(Bound, StabGrid, Mode, O
 % MLA2     nvar*ny*nx sparse [-]    mode-invariant operator block, first order in omega
 % MLA3     nvar*ny*nx sparse [-]    mode-invariant operator block, first order in beta
 % MLA4     nvar*ny*nx sparse [-]    mode-invariant operator block, second order in beta
-% MLA5     nvar*ny*nx sparse [-]    mode-invariant operator block, mixed omega-beta term
+% MLA5     nvar*ny*nx sparse [-]    mode-invariant operator block, i*beta*d_x cross-viscous term (linear in beta)
 % MFD_diff nvar*ny*nx sparse [-]    difference operator for the mean-flow-distortion block
 
 %% Outputs

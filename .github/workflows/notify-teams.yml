@@ -1,0 +1,39 @@
+name: Notify Teams
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post push summary to Teams
+        env:
+          WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          COMMITS: ${{ toJson(github.event.commits) }}
+          PUSHER: ${{ github.event.pusher.name }}
+          COMPARE: ${{ github.event.compare }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          body=$(jq -n --argjson commits "$COMMITS" --arg pusher "$PUSHER" \
+            --arg compare "$COMPARE" --arg repo "$REPO" --arg branch "$BRANCH" '{
+            type: "message",
+            attachments: [{
+              contentType: "application/vnd.microsoft.card.adaptive",
+              content: {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                type: "AdaptiveCard",
+                version: "1.4",
+                body: (
+                  [{type: "TextBlock", weight: "Bolder", wrap: true,
+                    text: "\($pusher) pushed \($commits | length) commit(s) to \($repo) (\($branch))"}]
+                  + [$commits[] | {type: "TextBlock", wrap: true, spacing: "Small",
+                    text: "- \(.message | split("\n")[0]) (\(.id[0:7]))"}]
+                ),
+                actions: [{type: "Action.OpenUrl", title: "View changes", url: $compare}]
+              }
+            }]
+          }')
+          curl -sf -H "Content-Type: application/json" -d "$body" "$WEBHOOK"
