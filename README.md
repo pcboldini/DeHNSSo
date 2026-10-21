@@ -8,7 +8,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-DeHNSSo%20guide-2b6cb0)](docs/DeHNSSo_guide.md)
 [![DeHNSSo-v1 paper](https://img.shields.io/badge/DeHNSSo--v1-10.1016%2Fj.cpc.2024.109250-6f42c1)](https://doi.org/10.1016/j.cpc.2024.109250)
-[![DeHNSSo-v2 paper](https://img.shields.io/badge/DeHNSSo--v2-in%20preparation-lightgrey)](#)
+[![DeHNSSo-v2 paper](https://img.shields.io/badge/DeHNSSo--v2-arXiv%3A2610.27906-b31b1b)](https://arxiv.org/abs/2610.27906)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555)](docs/DeHNSSo_guide.md)
 [![MUMPS](https://img.shields.io/badge/MUMPS-5.3.5-4a7c59)](src/external/)
 [![Parallel Computing Toolbox](https://img.shields.io/badge/Parallel%20Computing%20Toolbox-optional-4a7c59)](docs/DeHNSSo_guide.md)
@@ -17,11 +17,11 @@
 
 DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.com/SvenWesterbeek/DeHNSSo) by Westerbeek, Hulshoff, Schuttelaars & Kotsonis (2024).
 
-> **First draft (September 2026), paper in preparation.** For questions about the method or implementation, contact **Pietro Carlo Boldini** — P.C.Boldini@tudelft.nl
+> **Paper submitted to Computer Physics Communications**, preprint available on [arXiv:2610.27906](https://arxiv.org/abs/2610.27906). For questions about the method or implementation, contact **Pietro Carlo Boldini** — P.C.Boldini@tudelft.nl
 
 To be notified of new versions, watch this repository on GitHub (Watch → Custom → Releases).
 
-**Last updated:** 5 October 2026
+**Last updated:** 21 October 2026
 
 ---
 
@@ -50,7 +50,7 @@ To be notified of new versions, watch this repository on GitHub (Watch → Custo
 - **Efficiency**: assembly of linear cost in the number of streamwise stations, reuse of the
   factorizations over the nonlinear iterations and over runs (`Opt.rerun`), and optional
   parallel solves (`Opt.parfor`). On the nonlinear test cases of DeHNSSo-v1, DeHNSSo-v2 is
-  9 to 19 times faster (see Sec. 7 of the DeHNSSo-v2 paper)
+  9 to 19 times faster (see Sec. 7 of the [DeHNSSo-v2 paper](https://arxiv.org/abs/2610.27906))
 - **Resolvent analysis** of a single mode, incompressible (`src/hns/resolvent.m`)
 
 ## Sample run
@@ -220,7 +220,23 @@ See [docs/DeHNSSo_guide.md](docs/DeHNSSo_guide.md) for a full parameter referenc
 
 ## References
 
+- P. C. Boldini, Y. Chen, M. Kotsonis. *DeHNSSo-v2: A compressible, curvilinear, and efficient extension of the Delft Harmonic Navier–Stokes Solver.* Submitted to Computer Physics Communications (2026). [arXiv:2610.27906](https://arxiv.org/abs/2610.27906)
 - S. Westerbeek, S. Hulshoff, H. Schuttelaars, M. Kotsonis. *DeHNSSo: The Delft Harmonic Navier-Stokes Solver for nonlinear stability problems with complex geometric features.* Computer Physics Communications 302, 109250 (2024). [DOI](https://doi.org/10.1016/j.cpc.2024.109250)
+
+If you use DeHNSSo-v2, please cite:
+
+```bibtex
+@misc{Boldini2026DeHNSSo,
+  title         = {{DeHNSSo-v2}: A compressible, curvilinear, and efficient extension of the {Delft Harmonic Navier--Stokes Solver}},
+  author        = {Boldini, Pietro Carlo and Chen, Yifu and Kotsonis, Marios},
+  year          = {2026},
+  eprint        = {2610.27906},
+  archivePrefix = {arXiv},
+  primaryClass  = {physics.comp-ph},
+  doi           = {10.48550/arXiv.2610.27906},
+  note          = {Submitted to Computer Physics Communications}
+}
+```
 
 Contact P.C.Boldini@tudelft.nl for questions or contributions.
 
