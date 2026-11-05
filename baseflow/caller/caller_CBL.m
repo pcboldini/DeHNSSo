@@ -95,7 +95,7 @@ Re_0 = Uref * lref / BL.nu;
 
 %% Similarity solver
 
-[sol, BL] = compressibleFSC(BL);
+[sol, BL] = compressibleFalknerSkanCooke(BL);
 
 %% Build physical BL fields on the Chebyshev grid, then non-dimensionalize
 

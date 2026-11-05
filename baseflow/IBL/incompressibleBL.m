@@ -1,4 +1,4 @@
-function [BL] = incompressibleBL_B1(BL)
+function [BL] = incompressibleBL(BL)
 %% License (GNU GENERAL PUBLIC LICENSE v3)
 %                  Delft Harmonic Navier-Stokes Solver
 %     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
@@ -24,16 +24,18 @@ function [BL] = incompressibleBL_B1(BL)
 %% Description
 % Non-similar incompressible boundary layer (implicit march).
 %
-%   BL = incompressibleBL_B1(BL)
+%   BL = incompressibleBL(BL)
 %
 %   Marches the boundary layer on [S,L] x [0,H] with an implicit second-order
 %   scheme in x and Chebyshev collocation in y. Inflow is a Falkner-Skan-Cooke
 %   profile at the local Hartree parameter; the nonlinear momentum/continuity
 %   system is solved by simple iteration to a 1e-10 threshold on u and v.
+%   Continuity is integrated spectrally from the wall, where v = vw.
 %   First/second streamwise derivatives predict the next station to speed
 %   convergence, and laminar separation is checked at each station (returns if hit).
 %
-%   Input struct BL: S, L, H, y_i, nu, nx, ny, Ue (1 x nx), We (scalar).
+%   Input struct BL: S, L, H, y_i, nu, nx, ny, Ue (1 x nx), We (scalar),
+%   optional vw (1 x nx) wall-normal wall velocity, negative for suction.
 %   Output adds: u, v, w (ny x nx), y (Chebyshev nodes), derivatives if queried.
 
 %% Inputs
@@ -61,31 +63,38 @@ u = zeros(ny,nx);
 v = zeros(ny,nx);
 w = zeros(ny,nx);
 
-% Check finiteness Ue at the inflow
 if Ue(1) == 0
     Ue(1) = 10^-4;          % Incoming (a non-zero value is needed)
 end
 
-% Check constancy We
 if ~isscalar(We)
     error(['The input freestream spanwise velocity We is not a scalar, but: [',num2str(size(We)),']']);
 end
 
-% Determine uniform grid spacing
-dx = (L-S)/(nx-1); % N nodes -> N-1 line segments
+% Wall suction/blowing (zero by default)
+if isfield(BL,'vw') && ~isempty(BL.vw)
+    vw = BL.vw;
+    if numel(vw) ~= nx
+        error('BL.vw must have nx = %d entries, not %d.', nx, numel(vw));
+    end
+    if vw(1) ~= 0 || vw(2) ~= 0
+        warning('Suction at the first two stations: the similarity inflow has an impermeable wall.');
+    end
+else
+    vw = zeros(1,nx);
+end
 
-% Initialize differentiation matrices
-[yvec,DM] = chebdif(ny,2); % differentiation matrices
+dx = (L-S)/(nx-1);
+
+[yvec,DM] = chebdif(ny,2);
 [y,D1,D2] = MappingMalik(H,y_i,yvec',DM(:,:,1),DM(:,:,2));
 clear DM yvec
 
-% Initialize identity matrix
 I = eye(size(D1)); 
 
 %% Initialize inflow with a similar solution at equivalent Hartree parameter
 
-% Extract Falkner-Skan parameters from external pressure gradient
-dUe = -FD1d4o(Ue,dx);   % high order gradient of external velocity distribution
+dUe = -FD1d4o(Ue,dx);
 
 m = (dUe(1))*S/Ue(1);       % Falkner-Skan parameter
 m = min(m,1);               % Limit m to m<=1 (stagnation)
@@ -97,58 +106,53 @@ fprintf(' Using Falkner-Skan inflow profile with beta=%.3f.\n',beta)
 eta_inf = 30; % Similar flow freestream condition is invariant to the case
 eta_n = 2000;
 
-% Solve FSC in real coordinates
 [y_init,u_init,v_init] = FalknerSkanCookeReal(eta_inf,eta_n,beta,nu,S,Ue(1),true);
 
-% Interpolate solution on collocation points grid
-u(:,1) = interp1(y_init,u_init,y,'linear',u_init(end))';
-v(:,1) = interp1(y_init,v_init,y,'linear','extrap')';
+u(:,1) = interp1(y_init,u_init,y,'spline',u_init(end))';
+v(:,1) = interp1(y_init,v_init,y,'spline','extrap')';
 
-% Duplicate profile at second station
 u(:,2) = u(:,1);
 v(:,2) = v(:,1);
 
 %% Initialize LHS & RHS including BCs
 LHS (1,1)   = 1; % Dirichlet type BC at freestream
 LHS (ny,ny) = 1; % Dirichlet type BC at wall
-RHSu(ny,1)  = 0; % No-slip u 
+RHSu(ny,1)  = 0; % No-slip u
 RHSw(ny,1)  = 0; % No-slip w
+
+% Continuity dv/dy = -du/dx, integrated spectrally from the wall
+LHSv          = D1;
+LHSv(ny,:)    = 0;
+LHSv(ny,ny)   = 1; % Dirichlet type BC at wall (suction/blowing)
 
 %% Start up Inflow Solution (1st order accurate in x)
 
 tic
-i = 1;     % profile x-index
+i = 1;
 in = 2:ny-1; 
 
 errv=1;
 err=1;
 count=0;
-while errv>thres && err>thres     % Continuity iteration
+while errv>thres || err>thres
 
     count=count+1;
 
     %% Momentum
     
-    % Build LHS
     LHS(in,:) = diag(u(in,i+1)/dx)*I(in,:) + diag(v(in,i+1))*D1(in,:) - nu*D2(in,:);
-    % Build RHS u component
     RHSu(in)  =      u(in,i+1).*u(in,i)/dx + Ue(i+1)*(Ue(i+1)-Ue(i))/dx;
-    % Freestream conditions
     RHSu(1)  = Ue(i+1); 
-    % Solve problems
     unew     = LHS\RHSu;
-    % Convergence error 
     err = max(abs( unew-u(:,i+1) )) / Ue(i+1);
-    % Update u
     u(:,i+1) = unew;
     
     %% Continuity
     
     vold=v(:,i+1);
-    % Integrate v
-    v(:,i+1) = cumtrapz(y,-(u(:,i+1)-u(:,i))/dx);
-    v(:,i+1) = (v(:,i+1)-v(end,i+1));
-    % Convergence error
+    RHSv     = -(u(:,i+1)-u(:,i))/dx;
+    RHSv(ny) = vw(i+1);
+    v(:,i+1) = LHSv\RHSv;
     errv = max(abs( vold-v(:,i+1) )) / Ue(i+1);
     
 end
@@ -162,7 +166,6 @@ if du(end)<0
     u = u(:,1:2); 
     v = v(:,1:2);
 
-    % Compute w component
     RHSw(in) = u(in,i+1).*w(in,i)/dx;
     RHSw(1) = We; 
     w(:,i+1) = LHS\RHSw;
@@ -170,7 +173,6 @@ if du(end)<0
     return
 end
 
-% Compute w component after convergence
 RHSw(in) = u(in,i+1).*w(in,i)/dx;
 RHSw(1) = We; 
 w(:,i+1) = LHS\RHSw;
@@ -186,58 +188,47 @@ fprintf(' Starting marching method.')
 fprintf(' Progress: %.0f percent',0)
 for i = 2:nx-1   
     
-    errv=1;     % start-up value
+    errv=1;
     err=1;
-    count=0;   % iteration counter
+    count=0;
 
-    while errv>thres && err>thres 
+    while errv>thres || err>thres 
         count=count+1;
 
         %% Momentum
         
-        % Build LHS
         LHS(in,:) = diag(3*u(in,i+1)/(2*dx))*I(in,:) + diag(v(in,i+1))*D1(in,:) - nu*D2(in,:);        
-        % Build RHS u component
         RHSu(in)  =        u(in,i+1).*(4*u(in,i)-u(in,i-1))/(2*dx) ...
                         + Ue(i+1)*(3*Ue(i+1)-4*Ue(i)+Ue(i-1))/(2*dx);
-        % Freestream conditions
         RHSu(1) = Ue(i+1);
-        % Solve problems
         unew     = LHS\RHSu;
-        % Convergence error
         err = max(abs( unew-u(:,i+1) )) / Ue(i+1);
-        % Update u and error
         u(:,i+1) = unew; 
         
         %% Continuity
         
         vold=v(:,i+1);
-        % Integrate v
-        v(:,i+1) = cumtrapz(y,-(3*u(:,i+1)-4*u(:,i)+u(:,i-1))/(2*dx));
-        v(:,i+1) = v(:,i+1)-v(end,i+1);
-        % Convergence error
+        RHSv     = -(3*u(:,i+1)-4*u(:,i)+u(:,i-1))/(2*dx);
+        RHSv(ny) = vw(i+1);
+        v(:,i+1) = LHSv\RHSv;
         errv = max(abs( v(:,i+1)-vold )) / Ue(i+1);
     
         %% Check for separation
 
-        du = (D1*u(:,i+1))/(Ue(i+1)/H); % first derivative
+        du = (D1*u(:,i+1))/(Ue(i+1)/H);
     
         if du(end)<0
             fprintf('\n Separation detected at x/c=%.2f with Ue=%.3f.\n Ending BL analysis.\n',i/nx,Ue(i))
-            % Toggle stop of marching (outer loop)
             breaker = true;
             break
         end
     end
     
-    % Compute w component after convergence
     RHSw(in) = u(in,i+1).*(4*w(in,i)-w(in,i-1))/(2*dx);
     RHSw(1) = We; 
     w(:,i+1) = LHS\RHSw;
     
-    % Stop marching if separation was found
     if breaker
-        % Select relevant part of the solution
         nx=i;
         u = u(:,1:i); 
         v = v(:,1:i);
@@ -245,7 +236,6 @@ for i = 2:nx-1
         break
     end
     
-    % Notify progress
     if 100*(i+1)/nx == percentage
         for j = 1:ceil(log10(percentage))+9; fprintf('\b'); end
         fprintf('%.0f percent ',percentage)
@@ -269,7 +259,6 @@ fprintf(' Computation concluded in %.2fs!\n',toc)
 
 %% Outputs
 
-% Produce additional derivatives 
 for i=1:nx
     Du(:,i)=D1*u(:,i);
     DDu(:,i)=D2*u(:,i);
@@ -285,7 +274,7 @@ dwdx = -FD1d4o(w, dx);
 
 %% Rename output variables as main structure
 
-BL.u = u; BL.v = v; BL.w = w; BL.y = y; BL.x = BL.S:(BL.L-BL.S)/(nx-1):BL.L;
+BL.u = u; BL.v = v; BL.w = w; BL.y = y; BL.x = S + (0:nx-1)*dx;
 BL.Du = Du; BL.DDu = DDu; BL.Dv = Dv; BL.DDv = DDv; BL.Dw = Dw; BL.DDw = DDw;
 BL.dudx = dudx; BL.dvdx = dvdx; BL.dwdx = dwdx;
 

@@ -54,7 +54,7 @@ BL.nu  = 1.511e-5;           % kinematic viscosity [m^2/s]
 plt.mainFig = 1;             % plot after solving (0 = off)
 
 %% Boundary-layer fields
-[BL] = incompressibleBL_B1(BL);
+[BL] = incompressibleBL(BL);
 
 %% Reference scales and non-dimensionalisation
 BF.Uref = V;                          % reference velocity [m/s]

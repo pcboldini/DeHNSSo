@@ -51,10 +51,10 @@ function [y,u,v] = FalknerSkanCookeReal(eta_inf,n,beta,nu,x,Ue,halfsine,toleranc
 % u    (n,1) [m/s]  streamwise velocity profile
 % v    (n,1) [m/s]  wall-normal velocity profile
 
-if nargin < 8
+if nargin < 7
     halfsine = false;
 end
-if nargin < 9
+if nargin < 8
     tolerance = 1e-8;
 end
 if beta==2

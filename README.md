@@ -21,7 +21,7 @@ DeHNSSo-v2 is an extended and refactored version of [DeHNSSo-v1](https://github.
 
 To be notified of new versions, watch this repository on GitHub (Watch → Custom → Releases).
 
-**Last updated:** 21 October 2026
+**Last updated:** 5 November 2026
 
 ---
 
@@ -80,8 +80,8 @@ DeHNSSo/
 │   └── src/                     — Mesh, metrics, resampling, elliptic smoother
 ├── baseflow/                    — Boundary-layer solvers
 │   ├── caller/                  — Entry points: caller_IBL.m, caller_CBL.m
-│   ├── IBL/                     — Incompressible BL (Blasius, Falkner-Skan-Cooke)
-│   ├── CBL/                     — Compressible BL (compressible FSC, Sutherland)
+│   ├── IBL/                     — Incompressible BL: non-similar march with suction, Falkner-Skan-Cooke
+│   ├── CBL/                     — Compressible BL: non-similar march with suction, compressible Falkner-Skan-Cooke
 │   └── output/benchmark/        — Shipped base flows
 ├── input/                       — Stability grids written by gridgen (DeHNSSo_input_<case>.mat)
 ├── output/                      — Saved results (Opt.save_output)
@@ -111,7 +111,7 @@ flowchart TD
     classDef ext fill:none,stroke:#6F96D1,stroke-width:1.5px,stroke-dasharray:5 4;
     classDef res fill:none,stroke:#5583C9,stroke-width:1.5px;
 
-    BL("<b>1 · Base flow</b><br/>baseflow/caller/caller_IBL.m, caller_CBL.m<br/><i>Blasius, Falkner–Skan–Cooke, compressible similarity</i>"):::step
+    BL("<b>1 · Base flow</b><br/>baseflow/caller/caller_IBL.m, caller_CBL.m<br/><i>incompressible march, compressible similarity</i>"):::step
     EXT("<b>1 · External base flow</b><br/><i>DNS, CFD (e.g. OpenFOAM), COMSOL</i>"):::ext
     GG("<b>2 · Stability grid</b><br/>gridgen/benchmark/&lt;case&gt;.m → main_gridgen()<br/><i>wall-fitted grid, metric terms, base-flow interpolation</i>"):::step
     HNS("<b>3 · Stability analysis</b><br/>callers/benchmark/&lt;case&gt;.m → main()<br/><i>linear or nonlinear, Picard or Newton,<br/>incompressible or compressible</i>"):::step

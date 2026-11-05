@@ -1,4 +1,4 @@
-function [sol, BL] = compressibleFSC(BL)
+function [sol, BL] = compressibleFalknerSkanCooke(BL)
 %% License (GNU GENERAL PUBLIC LICENSE v3)
 %                  Delft Harmonic Navier-Stokes Solver
 %     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
@@ -24,7 +24,7 @@ function [sol, BL] = compressibleFSC(BL)
 %% Description
 % Compressible Falkner-Skan-Cooke boundary layer solver.
 %
-%   [sol, BL] = compressibleFSC(BL)
+%   [sol, BL] = compressibleFalknerSkanCooke(BL)
 %
 %   Solves the compressible similarity equations in Lees-Dorodnitsyn variables
 %   for a swept wedge (Falkner-Skan-Cooke with energy equation):

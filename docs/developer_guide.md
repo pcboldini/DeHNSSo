@@ -115,8 +115,8 @@ DeHNSSo/
 │       └── plot/                   — plot_raw_bf, plot_resampled_bf
 └── baseflow/                       — Boundary-layer solvers
     ├── caller/                     — caller_IBL, caller_CBL (write bf_<case>.mat)
-    ├── IBL/                        — Incompressible BL (Blasius, Falkner-Skan-Cooke)
-    ├── CBL/                        — Compressible BL (compressibleFSC, continuity_V)
+    ├── IBL/                        — Incompressible BL: incompressibleBL (march with suction), FalknerSkanCooke(Real)
+    ├── CBL/                        — Compressible BL: compressibleBL (march with suction), compressibleFalknerSkanCooke, continuity_V
     ├── math/                       — chebdif, MappingMalik, FD1d4o (copies of src/math, kept separate on purpose)
     └── output/benchmark/           — Committed reference base flows: bf_ts_blasius, bf_ts_compressible, bf_cfi_flat_plate
                                       (the M006 resonator flow and the two CSV flows are local only, not shipped)

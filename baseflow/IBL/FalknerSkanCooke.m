@@ -74,7 +74,7 @@ warning('on','MATLAB:bvp5c:RelTolNotMet')
     % y = [f f' f'']
     dydt = [y(2) 
             y(3) 
-            -y(1)*y(3)];
+            -y(1)*y(3) - beta*(1 - y(2)^2)];
     end
 
 end
