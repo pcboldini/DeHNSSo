@@ -55,11 +55,11 @@ DeHNSSo/
 │   │   ├── inflow.m                — Inflow dispatch + per-mode seeding (local fns ilst_inflow/clst_inflow)
 │   │   ├── EVfilter.m              — Physical-mode selection (shared by LST and PSE)
 │   │   ├── lst/                    — Local stability theory eigen-solvers
-│   │   │   ├── solver_ILST.m       — Incompressible Orr-Sommerfeld/Squire eigenproblem (shared with PSE)
+│   │   │   ├── solver_ILST.m       — Incompressible Orr-Sommerfeld/Squire eigenproblem
 │   │   │   └── solver_CLST.m       — Compressible LST eigenproblem (assembly + polyeig; CLST_Matrix local)
 │   │   └── pse/                    — Parabolized stability equations inflow
-│   │       ├── solver_IPSE.m       — Incompressible linear PSE (folds in the PSE marcher; seeded by solver_ILST)
-│   │       └── solver_CPSE.m       — Compressible linear PSE (Chang & Malik)
+│   │       ├── solver_IPSE.m       — Incompressible linear PSE inflow, state [p;u;v;w]
+│   │       └── solver_CPSE.m       — Compressible linear PSE inflow, state [rho;u;v;w;T] (Chang & Malik); same structure as solver_IPSE
 │   ├── boundary/                   — Boundary conditions
 │   │   ├── setup_boundary.m        — Interpolate Stab.bcw/bct onto the grid; outflow buffer; resolve Opt.hr
 │   │   ├── add_wall_forcing.m      — Apply the gridgen-defined wall forcing (sets Stab.bcw)
@@ -378,9 +378,9 @@ resident, at the cost of re-factoring on every solve.
 
 `inflow.m` seeds each mode via its local function `ilst_inflow`, which calls
 `solver_ILST.m` at the inflow station to find the local stability eigenvalue and
-eigenfunction. `solver_ILST` is shared with the incompressible PSE inflow
-(`solver_IPSE`, which folds in the PSE marcher); the compressible path is
-`clst_inflow` → `solver_CLST.m`. The
+eigenfunction; the compressible path is `clst_inflow` → `solver_CLST.m`. The PSE
+inflow (`IC='PSE'`) is `init/pse/solver_IPSE.m` / `solver_CPSE.m`, with the same structure: each
+seeds the march with the local eigenmode of its own PSE operator, so neither calls the LST solvers. The
 eigen-solvers live in `init/lst/`; mode selection, normalization, and storage
 into `StabRes` stay in `inflow.m`.
 
