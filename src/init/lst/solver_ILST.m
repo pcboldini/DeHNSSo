@@ -1,4 +1,4 @@
-function [EV,u,v,w,p,y,fn]=solver_ILST(Re,Ur,Wr,dUr,dWr,y_md,omega,beta,N,y_max,y_i)
+function [EV,u,v,w,p,y,fn]=solver_ILST(Re,Ur,Wr,dUr,dWr,y_md,omega,beta,N,y_max,y_i,alpha0)
 %% License (GNU GENERAL PUBLIC LICENSE v3)
 %                  Delft Harmonic Navier-Stokes Solver
 %     Copyright (C) 2023 S.H.J. Westerbeek, S. Hulshoff, H. Schuttelaars
@@ -26,7 +26,7 @@ function [EV,u,v,w,p,y,fn]=solver_ILST(Re,Ur,Wr,dUr,dWr,y_md,omega,beta,N,y_max,
 %% Description
 % Solve the Orr-Sommerfeld eigenvalue problem for the inflow mode.
 %
-%   [EV, u, v, w, p, y, fn] = solver_ILST(Re, Ur, Wr, dUr, dWr, y_md, omega, beta, N, y_max, y_i)
+%   [EV, u, v, w, p, y, fn] = solver_ILST(Re, Ur, Wr, dUr, dWr, y_md, omega, beta, N, y_max, y_i, alpha0)
 %
 %   Solves the Orr-Sommerfeld problem on the domain y in [0, y_i, y_max],
 %   clustering half the nodes between y = 0 and y_i with the same scaling as
@@ -35,6 +35,8 @@ function [EV,u,v,w,p,y,fn]=solver_ILST(Re,Ur,Wr,dUr,dWr,y_md,omega,beta,N,y_max,
 %   extrapolating where y_max exceeds max(y_md). The quadratic eigenvalue
 %   problem is recast into companion (generalised linear) form and solved for
 %   the full spectrum; the calling routine filters it for the physical mode.
+%   With alpha0, only the eigenvalue nearest alpha0 is returned (shift-invert
+%   eigs), for marching in x.
 %
 %     Ur,Wr      streamwise / spanwise base-flow velocity profiles
 %     dUr,dWr    their wall-normal derivatives
@@ -53,6 +55,7 @@ function [EV,u,v,w,p,y,fn]=solver_ILST(Re,Ur,Wr,dUr,dWr,y_md,omega,beta,N,y_max,
 % N                     [-]    number of Chebyshev nodes
 % y_max                 [-]    outer domain height
 % y_i                   [-]    node-clustering height
+% alpha0                [-]    optional shift: return only the eigenvalue nearest alpha0
 
 %% Outputs
 % Name size    unit   explanation
@@ -192,7 +195,11 @@ fn = norm(A,'fro');
 
 %% Solve the eigenvalue problem
 
-[V,D] = eig(A,B);
+if exist('alpha0','var') && ~isempty(alpha0)
+    [V,D] = eigs(A,B,1,alpha0);
+else
+    [V,D] = eig(A,B);
+end
 
 % Extract the eigenvalues
 EV = diag(D);
@@ -201,9 +208,10 @@ EV = diag(D);
 V = V(1:end/2,:);
 
 % Augment the Dirichlet boundary conditions to the functions
-V = [zeros(1,2*(4*(N-2)+2)); V(0*(N-2)+1:1*(N-2)+0,:); zeros(1,2*(4*(N-2)+2));...
-     zeros(1,2*(4*(N-2)+2)); V(1*(N-2)+1:2*(N-2)+0,:); zeros(1,2*(4*(N-2)+2));...
-     zeros(1,2*(4*(N-2)+2)); V(2*(N-2)+1:3*(N-2)+0,:); zeros(1,2*(4*(N-2)+2));...
+Zv = zeros(1,size(V,2));
+V = [Zv; V(0*(N-2)+1:1*(N-2)+0,:); Zv;...
+     Zv; V(1*(N-2)+1:2*(N-2)+0,:); Zv;...
+     Zv; V(2*(N-2)+1:3*(N-2)+0,:); Zv;...
                              V(3*(N-2)+1:4*(N-2)+2,:)];
 
 % Extract the eigenvectors

@@ -1,4 +1,4 @@
-function [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha2)
+function [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha2, alpha0)
 %% License (GNU GENERAL PUBLIC LICENSE v3)
 %                  Delft Harmonic Navier-Stokes Solver
 %     Copyright (C) 2026 P.C. Boldini, Y. Chen & M. Kotsonis
@@ -24,14 +24,15 @@ function [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha
 %% Description
 % Assemble and solve the compressible LST (linear stability theory) eigenvalue problem.
 %
-%   [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha2)
+%   [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha2, alpha0)
 %
 %   Builds the spatial compressible stability operator at station i in
 %   variables (rho, u, v, w, T) and solves the quadratic eigenvalue problem
 %   (AA - alpha*BB - alpha^2*CCxx) q = 0 via polyeig. Matrix assembly is
 %   delegated to CLST_Matrix (one call per grid point), using the ideal-gas
 %   equation of state (EOS) and Sutherland's viscosity law. The caller
-%   filters Eval to find the physical mode (see EVfilter).
+%   filters Eval to find the physical mode (see EVfilter). With alpha0, only the
+%   eigenvalue nearest alpha0 is returned (shift-invert eigs), for marching in x.
 %
 %                   Re, Ma, Pr, gamma, Sstar)
 %     omega, beta   angular frequency, spanwise wavenumber
@@ -44,6 +45,7 @@ function [Eval, Evec] = solver_CLST(StabGrid, i, omega, beta, bc_top, drop_alpha
 % beta        (1,1) [-]    spanwise wavenumber of the mode
 % bc_top            [-]    freestream BC: 'H_DR' (default) or 'H_NM'
 % drop_alpha2       [-]    true zeroes CCxx (old linear GEP, paper comparison)
+% alpha0      (1,1) [-]    optional shift: return only the eigenvalue nearest alpha0
 
 %% Outputs
 % Name size unit   explanation
@@ -173,12 +175,17 @@ for m = 0:3
 end
 
 %% Solve QUADRATIC eigenvalue problem  (AA - alpha*BB - alpha^2*CCxx) q = 0
-%  via polyeig(AA,-BB,-CCxx). The alpha^2 (streamwise 2nd-deriv viscous) term is
-%  essential at finite Mach: dropping it under-damps the 2nd Mack mode (Im(alpha)
-%  ~11% low at Ma=4.5). drop_alpha2=true zeroes CCxx to reproduce the old
-%  linear generalised eigenvalue problem (GEP) used for paper comparison.
+%  via polyeig(AA,-BB,-CCxx) (full spectrum), or, with alpha0, via eigs on the
+%  companion form [AA 0; 0 I] z = alpha [BB CCxx; I 0] z, z = [q; alpha q]
+%  (only the eigenvalue nearest alpha0). 
 if drop_alpha2
     CCxx = 0*CCxx;
+end
+if exist('alpha0','var') && ~isempty(alpha0)
+    Z = zeros(N5); I = eye(N5);
+    [Evec, Eval] = eigs([AA Z; Z I], [BB CCxx; I Z], 1, alpha0);
+    Evec = Evec(1:N5);
+    return
 end
 [Evec, Eval] = polyeig(AA, -BB, -CCxx);
 fin = isfinite(Eval);  Eval = Eval(fin);  Evec = Evec(:, fin);

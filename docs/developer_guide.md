@@ -55,8 +55,8 @@ DeHNSSo/
 │   │   ├── inflow.m                — Inflow dispatch + per-mode seeding (local fns ilst_inflow/clst_inflow)
 │   │   ├── EVfilter.m              — Physical-mode selection (shared by LST and PSE)
 │   │   ├── lst/                    — Local stability theory eigen-solvers
-│   │   │   ├── solver_ILST.m       — Incompressible Orr-Sommerfeld/Squire eigenproblem
-│   │   │   └── solver_CLST.m       — Compressible LST eigenproblem (assembly + polyeig; CLST_Matrix local)
+│   │   │   ├── solver_ILST.m       — Incompressible Orr-Sommerfeld/Squire eigenproblem (optional eigs shift)
+│   │   │   └── solver_CLST.m       — Compressible LST eigenproblem (assembly + polyeig, or eigs with a shift; CLST_Matrix local)
 │   │   └── pse/                    — Parabolized stability equations inflow
 │   │       ├── solver_IPSE.m       — Incompressible linear PSE inflow, state [p;u;v;w]
 │   │       └── solver_CPSE.m       — Compressible linear PSE inflow, state [rho;u;v;w;T] (Chang & Malik); same structure as solver_IPSE
