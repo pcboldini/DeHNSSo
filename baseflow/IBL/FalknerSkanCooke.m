@@ -26,7 +26,7 @@ function [sol] = FalknerSkanCooke(eta_inf,n,beta,halfsine,tol)
 %
 %   sol = FalknerSkanCooke(eta_inf, n, beta, halfsine, tol)
 %
-%   Falkner-Skan: f''' + f f'' + beta(1 - f'^2) = 0;  Cooke: g'' + f' g = 0,
+%   Falkner-Skan: f''' + f f'' + beta(1 - f'^2) = 0;  Cooke: g'' + f g' = 0,
 %   with eta = y sqrt((m+1)/2 Ue/(nu x)), f' = u/Ue, g = w/We.
 %
 
@@ -71,10 +71,12 @@ warning('on','MATLAB:bvp5c:RelTolNotMet')
 
     function dydt = FSCfunction(~,y)
     % Falkner-Skan-Cooke equation in matrix form. 
-    % y = [f f' f'']
+    % y = [f f' f'' g g']
     dydt = [y(2) 
             y(3) 
-            -y(1)*y(3) - beta*(1 - y(2)^2)];
+            -y(1)*y(3) - beta*(1 - y(2)^2)
+            y(5)
+            -y(1)*y(5)];
     end
 
 end
@@ -83,6 +85,8 @@ function yinit = FSCinit(t)
 % Initial guess
 yinit = [ t - log(t+1)
           1 - (1/(t+1))
+          (t+1)^(-2)
+          1 - (1/(t+1))
           (t+1)^(-2)];
 end
 
@@ -90,6 +94,8 @@ function res = FSCbc(ya,yb)
 % ya is at eta=0, yb is at eta=infinity
 res = [ya(1)        % f(0) = 0
        ya(2)        % f'(0) = 0
-       yb(2)-1];      % f'(inf) = 1 
+       ya(4)        % g(0) = 0
+       yb(2)-1      % f'(inf) = 1
+       yb(4)-1];    % g(inf) = 1
 end
 

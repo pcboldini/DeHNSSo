@@ -106,13 +106,15 @@ fprintf(' Using Falkner-Skan inflow profile with beta=%.3f.\n',beta)
 eta_inf = 30; % Similar flow freestream condition is invariant to the case
 eta_n = 2000;
 
-[y_init,u_init,v_init] = FalknerSkanCookeReal(eta_inf,eta_n,beta,nu,S,Ue(1),true);
+[y_init,u_init,v_init,w_init] = FalknerSkanCookeReal(eta_inf,eta_n,beta,nu,S,Ue(1),We,true);
 
 u(:,1) = interp1(y_init,u_init,y,'spline',u_init(end))';
 v(:,1) = interp1(y_init,v_init,y,'spline','extrap')';
+w(:,1) = interp1(y_init,w_init,y,'spline',We)';
 
 u(:,2) = u(:,1);
 v(:,2) = v(:,1);
+w(:,2) = w(:,1);
 
 %% Initialize LHS & RHS including BCs
 LHS (1,1)   = 1; % Dirichlet type BC at freestream
